@@ -1,43 +1,89 @@
 import os
+import re
 import json
-from collections import defaultdict
-import pandas as pd
+import time
 import openai
+import tiktoken
 from tqdm import tqdm
-from thefuzz import fuzz
+from collections import defaultdict
 
-data_path = "/Users/nrahaman/Python/info-bazaar/data/dataset.json"
-dataset = json.load(open(data_path, "r"))
-
-# Set the API key
+data_root = "/Users/martinweiss/PycharmProjects/tn-learn/info-bazaar/data"
+dataset = json.load(open(os.path.join(data_root, "dataset.json"), "r"))
 openai.api_key = os.environ.get("OPENAI_API_KEY")
 
 
+def remove_invalid_escapes(input_string):
+    # Define a regular expression pattern to match invalid escape sequences
+    invalid_escape_pattern = r'\\(?!\\|/|[bfnrtvN])'
+
+    # Use re.sub to replace invalid escape sequences with an empty string
+    cleaned_string = re.sub(invalid_escape_pattern, '', input_string)
+
+    return cleaned_string
+
+
+
 def extract_nuggets(paper):
-    nugget_prompt = """
-    You will be given some scientific text in LaTeX. Your task is to extract from the text a list of valuable nuggets of information about Nature. For example, "A dynamical property of dark energy is the decay of large-scale gravitational potentials" is a valuable nugget. A bad nugget is "In this paper, we test these claims using yet another type of BOSS DR12 void catalogue". The reason the latter is not a valuable nugget is that it is primarily describing a method of study, not a fact about Nature. Each nugget should be self-contained, i.e. there should be no demonstrative pronouns, like "these" and "those". Any demonstrative pronoun should be replaced with a noun phrase, such that it is self-contained. If a nugget is written in such a way that it references other nuggets, then it should be rewritten as a standalone nugget. In other words, nuggets should not refer to each other. Do not emit any escape characters in the string that could cause the JSON to fail to parse.
-    
-    It is very important for you to return these nuggets as a JSON. For example:
-    ```
-    [
-      <nugget 1>,
-      <nugget 2>,
-      ... <more>
+    functions = [
+        {
+            "name": "return_qa_pairs",
+            "description": "Returns a list of question and answer pairs.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "qa_pairs": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "question": {
+                                    "type": "string",
+                                    "description": "A plain-text question (no latex or markdown)",
+                                },
+                                "answer": {
+                                    "type": "string",
+                                    "description": "A plain-text answer (no latex or markdown)",
+                                },
+                            },
+                            "required": ["question", "answer"],
+                        },
+                    },
+                },
+                "required": ["qa_pairs"],
+            },
+        }
     ]
-    ```
+    nugget_prompt = """
+    You are Question-Answer-GPT, and you read scientific texts to extract questions and answers. Each answer must be a factual and based on the text's content. Each question should be answered by its corresponding factual statement. Factual statements about the world are objective assertions that describe reality and can be empirically verified or supported by evidence. They can and often should be multiple sentences long to provide sufficient context.  Answers should read like an excerpt from wikipedia.
+
+    Your function call must follow these rules:
+    1. Only write about factual statements.
+    2. Do not refer to the provided text - your questions and answers should contain no phrases like "in this paper", or "findings are studied". Your questions and answers should be answerable in a world where this paper was never published.
+    3. Do not write any citations.
+    4. Do not refer to any published works.
+    5. Do not include LaTeX - only plain text.    
     """
     intro = paper.split("\section{Introduction}")[1].split("\section")[0]
-    messages = [{"role": "system", "content": nugget_prompt}, {"role": "user", "content": intro}]
+    encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
+    num_tokens = len(encoding.encode(intro))
+    while num_tokens > 1500:
+        intro = intro[:int(len(intro) * 0.8)]
+        num_tokens = len(encoding.encode(intro))
 
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=messages,
-        temperature=0.0,
-        max_tokens=2048,
-    )
-    content = response.choices[0]["message"]["content"]
+    messages = [{"role": "system", "content": nugget_prompt}, {"role": "user", "content": intro}]
     try:
-        nuggets = json.loads(content)
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=messages,
+            temperature=0.0,
+            max_tokens=2048,
+            functions=functions,
+            function_call={"name": "return_qa_pairs"},
+        )
+        # content = response.choices[0]["message"]["content"]
+        content = remove_invalid_escapes(response['choices'][0]['message']['function_call']['arguments'])
+        nuggets = json.loads(content)['qa_pairs']
+        breakpoint()
     except Exception as e:
         print(e)
         nuggets = []
@@ -46,20 +92,20 @@ def extract_nuggets(paper):
 def embed_nuggets(nuggets):
     EMBEDDING_MODEL = "text-embedding-ada-002"  # OpenAI's best embeddings as of Apr 2023
     BATCH_SIZE = 1000  # you can submit up to 2048 embedding inputs per request
-
+    nugget_questions = [nugget['question'] for nugget in nuggets]
+    nugget_answers = [nugget['answer'] for nugget in nuggets]
     embeddings = []
     for batch_start in range(0, len(nuggets), BATCH_SIZE):
         batch_end = batch_start + BATCH_SIZE
-        batch = nuggets[batch_start:batch_end]
+        batch = nugget_answers[batch_start:batch_end]
         print(f"Batch {batch_start} to {batch_end - 1}")
         response = openai.Embedding.create(model=EMBEDDING_MODEL, input=batch)
         for i, be in enumerate(response["data"]):
             assert i == be["index"]  # double check embeddings are in same order as input
         batch_embeddings = [e["embedding"] for e in response["data"]]
         embeddings.extend(batch_embeddings)
-
-    df = pd.DataFrame({"nugget": nuggets, "embedding": embeddings})
-    return df
+    embeddings = [list(embedding) for embedding in embeddings]
+    return {"nugget_questions": nugget_questions, "nugget_answers": nugget_answers, "embedding": embeddings}
 
 def vendor_dataset_mapping():
     vendors = defaultdict(list)
@@ -83,11 +129,12 @@ def vendor_dataset_mapping():
 if __name__ == "__main__":
     paper_samples = json.load(
         open(
-            "../data/paper_samples_concept_0.4_n_100_weighting_50_inst_50_conc.json",
+            os.path.join(data_root, "paper_samples_concept_0.4_n_100_weighting_50_inst_50_conc.json"),
             "r",
         )
     )[0]
 
+    dataset_w_nuggets = {}
     for blob in tqdm(dataset.values()):
         paper = blob["paper"]
 
@@ -95,5 +142,16 @@ if __name__ == "__main__":
             continue
         if blob['arxiv_id'] in paper_samples:
             nuggets = extract_nuggets(paper)
-            blob["nuggets"] = nuggets
-            embedding_df = embed_nuggets(blob['nuggets'])
+            if len(nuggets) == 0:
+                continue
+            embedding_dict = embed_nuggets(nuggets)
+            blob["embedding_df"] = embedding_dict
+            blob["vendor_id"] = blob["authorships"][0]["institutions"][0]["id"].replace(
+                "https://openalex.org/", ""
+            )
+            dataset_w_nuggets[blob["arxiv_id"]] = blob
+            json.dump(dataset_w_nuggets, open(os.path.join(data_root, "dataset_with_nuggets.json"), "w"))
+            time.sleep(10)
+            if len(dataset_w_nuggets) == 100:
+                break
+
