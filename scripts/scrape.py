@@ -1,71 +1,46 @@
 import concurrent
-import json
-import os.path
-from tqdm import tqdm
-import time
 from datetime import datetime
 import requests
+import pickle
 from itertools import islice
 from concurrent.futures import ThreadPoolExecutor
+import gzip
+import tarfile
+import os
+import re
+import json
+import time
+from pathlib import Path
+from pylatexenc.latex2text import LatexNodes2Text
+import openai
+import tiktoken
+from tqdm import tqdm
+
+EMBEDDING_MODEL = "text-embedding-ada-002"
+
+if Path("~").expanduser().name == "nrahaman":
+    data_root = "/Users/nrahaman/Python/info-bazaar/data"
+else:
+    data_root = "/Users/martinweiss/PycharmProjects/tn-learn/info-bazaar/data"
+    openai.api_key = os.environ.get("OPENAI_API_KEY")
+
 
 def chunks(data, size=50):
     it = iter(data)
     for i in range(0, len(data), size):
         yield {k: data[k] for k in islice(it, size)}
 
+
 def fetch_works(chunk):
-    dois = "|".join(metadata.get('doi') for metadata in chunk.values() if metadata.get('doi'))
+    dois = "|".join(
+        metadata.get("doi") for metadata in chunk.values() if metadata.get("doi")
+    )
     time.sleep(0.25)
-    result = requests.get(f"https://api.openalex.org/works?mailto=weissmar@mila.quebec&filter=doi:{dois}")
+    result = requests.get(
+        f"https://api.openalex.org/works?mailto=weissmar@mila.quebec&filter=doi:{dois}"
+    )
     return result
 
-if os.path.exists("data/arxiv-meta-astro-ph-2017-2023.json"):
-    with open("data/arxiv-meta-astro-ph-2017-2023.json", "r") as f:
-        selected_metadata = json.load(f)
-else:
-    selected_metadata = {}
-    with open("data/arxiv-metadata-oai-snapshot.json", "r") as f:
-        for line in tqdm(f.readlines()):
-            metadata = json.loads(line)
-            parsed_date = datetime.strptime(metadata['versions'][0]['created'], '%a, %d %b %Y %H:%M:%S %Z')
-            year = parsed_date.year
-            if year > 2016:
-                print(metadata["categories"])
-                if "astro-ph" in metadata["categories"]:
-                    selected_metadata[metadata['id']] = metadata
-
-oa_works = {}
-if os.path.exists("data/oa_works.json"):
-    with open("data/oa_works.json", "r") as f:
-        oa_works = json.load(f)
-
-else:
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        futures = [executor.submit(fetch_works, chunk) for chunk in chunks(selected_metadata)]
-        for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures)):
-            result = future.result()
-            if result.status_code == 200:
-                result = result.json()['results']
-            else:
-                print(result.text)
-                continue
-            for oa_work in result:
-                oa_works[oa_work['doi']] = oa_work
-
-    with open("data/oa_works.json", "w") as f:
-        json.dump(oa_works, f)
-
-if os.path.exists("data/oa_merge.json"):
-    with open("data/oa_merge.json", "r") as f:
-        oa_works = json.load(f)
-else:
-    for doi, oa_work in tqdm(oa_works.items()):
-        for arxiv_id, metadata in selected_metadata.items():
-            if f"https://doi.org/{metadata.get('doi')}" == doi:
-                oa_work['arxiv_id'] = arxiv_id
-                oa_work["metadata"] = metadata
-                break
-    json.dump(oa_works, open("data/oa_merge.json", "w"))
 
 def download_pdf(arxiv_id):
     url = f"https://arxiv.org/e-print/{arxiv_id}"
@@ -78,53 +53,371 @@ def download_pdf(arxiv_id):
         print(f"Error downloading file, status code: {response.status_code}")
 
 
-with ThreadPoolExecutor() as executor:
-    futures = []
-    for doi, oa_work in tqdm(oa_works.items()):
-        if not oa_work.get("arxiv_id"):
-            continue
-        futures.append(executor.submit(download_pdf, oa_work['arxiv_id']))
-    for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures)):
-        pass
-pass
-import os
-import gzip
-import tarfile
-import json
-from tqdm import tqdm
+def parse_latex(latex_string, model_name="gpt-3.5-turbo"):
+    # Remove comments
+    rm_comments = re.sub(r"(?<!\\)%.*$", "", latex_string, flags=re.MULTILINE)
 
-papers = {}
-for archive in tqdm(os.listdir('data/papers')):
-    if archive.endswith('.zip'):
-        try:
-            with gzip.open("data/papers/" + archive, 'rb') as gzip_file:
-                # Open the Tar archive from the Gzip file
-                with tarfile.open(fileobj=gzip_file, mode='r') as tar_archive:
-                    # Get a list of all the members (files and directories) in the Tar archive
-                    members = tar_archive.getmembers()
+    # Remove unnecessary information (here we remove the documentclass line as an example)
+    rm_unnecessary = re.sub(r"\\documentclass[^\n]*\n", "", rm_comments)
 
-                    # Iterate through the members and print the names of files
-                    for member in members:
-                        if member.isfile():
-                            if member.name.endswith(".tex"):
-                                try:
-                                    papers[archive.split(".zip")[0]] = tar_archive.extractfile(member).read().decode('utf-8')
-                                except Exception:
-                                    pass
-        except Exception as e:
-            print(f"Error extracting {archive}: {e}")
+    # Split by sections
+    removed_labels = re.sub(r"\\label\{.*?\}", "", rm_unnecessary)
+    content_emph = re.sub(r"\\emph\{(.*?)\}", r"\1", removed_labels)
+    content_emph = re.sub(r"\{\\emph (.*?)\}", r"\1", content_emph)
+    content_it = re.sub(r"\\textit\{(.*?)\}", r"\1", content_emph)
+    content_bf = re.sub(r"\\textbf\{(.*?)\}", r"\1", content_it)
+    content_ul = re.sub(r"\\underline\{(.*?)\}", r"\1", content_bf)
+
+    split_by_sections = re.split(
+        r"(\\section\{.*?\}|\\subsection\{.*?\}|\\subsubsection\{.*?\})", content_ul
+    )
+
+    all_blocks = []
+    for i in range(1, len(split_by_sections), 2):
+        section_title = re.search(
+            r"(\\section|\\subsection|\\subsubsection)\{(.*?)(\\label\{.*?\})?\}",
+            split_by_sections[i],
+        ).group(2)
+        section_title = LatexNodes2Text().latex_to_text(section_title.strip())
+        content = split_by_sections[i + 1]
+
+        # Separate figures and equations from the text
+        content_without_figures_equations = re.sub(
+            r"(\\begin\{figure\}.*?\\end\{figure\}|\\begin\{equation\}.*?\\end\{equation\}|\[.*?\])",
+            "",
+            content,
+            flags=re.DOTALL,
+        )
+
+        # Remove tags
+        # content_without_tags = re.sub(r"\\[^{]*\{.*?\}", "", content_without_figures_equations)
+        content_no_lone_newlines = re.sub(
+            r"(?<!\n)\n(?!\n)", r" ", content_without_figures_equations
+        )
+
+        content_cite = re.sub(r"\\citep\{(.*?)\}", r"[\1]", content_no_lone_newlines)
+        content_cite = re.sub(r"\\citet\{(.*?)\}", r"[\1]", content_cite)
+        content_cite = re.sub(r"\\cite\{(.*?)\}", r"[\1]", content_cite)
+        content_linebreak = re.sub(r"\\\\", " ", content_cite)
+
+        # Split the remaining text into paragraphs
+        blocks = re.split(r"\n\n\s*", content_linebreak)  # Split by blank lines
+        blocks = [
+            paragraph.strip() for paragraph in blocks if paragraph.strip()
+        ]  # Remove leading and trailing whitespace and ignore empty paragraphs
+        blocks = [
+            LatexNodes2Text().latex_to_text(paragraph).strip() for paragraph in blocks
+        ]
+        blocks = [block for block in blocks if len(block) > 10]
+        for idx, block in enumerate(blocks):
+            num_tokens = len(tiktoken.encoding_for_model(model_name).encode(block))
+            all_blocks.append(
+                {
+                    "block_id": f"{arxiv_id}/{section_title}/{idx}",
+                    "content": block,
+                    "num_tokens": num_tokens,
+                }
+            )
+    return all_blocks
+
+
+def remove_invalid_escapes(input_string):
+    # Define a regular expression pattern to match invalid escape sequences
+    invalid_escape_pattern = r"\\(?!\\|/|[bfnrtvN])"
+
+    # Use re.sub to replace invalid escape sequences with an empty string
+    cleaned_string = re.sub(invalid_escape_pattern, "", input_string)
+
+    return cleaned_string
+
+
+def extract_nuggets(block):
+    functions = [
+        {
+            "name": "return_qa_pairs",
+            "description": "Returns a list of question and answer pairs.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "qa_pairs": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "question": {
+                                    "type": "string",
+                                    "description": "A plain-text question (no latex or markdown)",
+                                },
+                                "answer": {
+                                    "type": "string",
+                                    "description": "A plain-text answer (no latex or markdown)",
+                                },
+                            },
+                            "required": ["question", "answer"],
+                        },
+                    },
+                },
+                "required": ["qa_pairs"],
+            },
+        }
+    ]
+    nugget_prompt = """
+    You are Question-Answer-GPT, and you read scientific texts to extract questions and answers. Each answer must be a factual and based on the text's content. Each question should be answered by its corresponding factual statement. Factual statements about the world are objective assertions that describe reality and can be empirically verified or supported by evidence. They can and often should be multiple sentences long to provide sufficient context.  Answers should read like an excerpt from wikipedia.
+
+    Your function call must follow these rules:
+    1. Only write about factual statements.
+    2. Do not refer to the provided text - your questions and answers should contain no phrases like "in this paper", or "findings are studied". Your questions and answers should be answerable in a world where this paper or study was never published.
+    3. Do not write any citations.
+    4. Do not refer to any published works.
+    5. Do not include LaTeX - only plain text.    
+    """
+    content = block['content']
+    encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
+    num_tokens = len(encoding.encode(content))
+    while num_tokens > 1500:
+        content = content[: int(len(content) * 0.8)]
+        num_tokens = len(encoding.encode(content))
+
+    messages = [
+        {"role": "system", "content": nugget_prompt},
+        {"role": "user", "content": content},
+    ]
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=messages,
+            temperature=0.0,
+            max_tokens=2048,
+            functions=functions,
+            function_call={"name": "return_qa_pairs"},
+        )
+        # content = response.choices[0]["message"]["content"]
+        content = remove_invalid_escapes(
+            response["choices"][0]["message"]["function_call"]["arguments"]
+        )
+        nuggets = json.loads(content)["qa_pairs"]
+    except Exception as e:
+        print(e)
+        nuggets = []
+    return nuggets
+
+
+def embed_nuggets(nuggets):
+    BATCH_SIZE = 1000  # you can submit up to 2048 embedding inputs per request
+    nugget_questions = [nugget["question"] for nugget in nuggets]
+    nugget_answers = [nugget["answer"] for nugget in nuggets]
+    embeddings = []
+    for batch_start in range(0, len(nuggets), BATCH_SIZE):
+        batch_end = batch_start + BATCH_SIZE
+        batch = nugget_answers[batch_start:batch_end]
+        print(f"Batch {batch_start} to {batch_end - 1}")
+        response = openai.Embedding.create(model=EMBEDDING_MODEL, input=batch)
+        batch_embeddings = [e["embedding"] for e in response["data"]]
+        embeddings.extend(batch_embeddings)
+    embeddings = [list(embedding) for embedding in embeddings]
+
+    for idx, embedding in enumerate(embeddings):
+        nuggets[idx]['embedding'] = embedding
+    return nuggets
+
+# PARSE ARXIV METADATA SNAPSHOT FOR ASTROPHYSICS
+# -----------------------------------------------------------
+if os.path.exists("data/arxiv-meta-astro-ph-2017-2023.json"):
+    print("Loading arxiv papers.")
+    with open("data/arxiv-meta-astro-ph-2017-2023.json", "r") as f:
+        selected_metadata = json.load(f)
+else:
+    print("Parsing arxiv papers.")
+    selected_metadata = {}
+    with open("data/arxiv-metadata-oai-snapshot.json", "r") as f:
+        for line in tqdm(f.readlines()):
+            metadata = json.loads(line)
+            parsed_date = datetime.strptime(
+                metadata["versions"][0]["created"], "%a, %d %b %Y %H:%M:%S %Z"
+            )
+            year = parsed_date.year
+            if year > 2016:
+                print(metadata["categories"])
+                if "astro-ph" in metadata["categories"]:
+                    selected_metadata[metadata["id"]] = metadata
+
+# SCRAPE OPENALEX WORKS
+# -----------------------------------------------------------
+oa_works = {}
+if os.path.exists("data/oa_works_w_arxiv.json"):
+    pass
+elif os.path.exists("data/oa_works.pkl"):
+    print("Loading OA Works papers.")
+    with open("data/oa_works.pkl", "rb") as f:
+        oa_works = pickle.load(f)
+else:
+    print("Scraping OpenAlex for Works.")
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = [
+            executor.submit(fetch_works, chunk) for chunk in chunks(selected_metadata)
+        ]
+        for future in tqdm(
+            concurrent.futures.as_completed(futures), total=len(futures)
+        ):
+            result = future.result()
+            if result.status_code == 200:
+                result = result.json()["results"]
+            else:
+                print(result.text)
+                continue
+            for oa_work in result:
+                oa_works[oa_work["doi"]] = oa_work
+
+    with open("data/oa_works.pkl", "wb") as f:
+        pickle.dump(oa_works, f)
+
+
+# DOWNLOAD ARXIV PAPERS
+# -----------------------------------------------------------
+if os.path.isdir("data/papers"):
+    print("We already have the Arxiv paper source files.")
+    pass
+else:
+    print("Scraping the Arxiv source files.")
+    with ThreadPoolExecutor() as executor:
+        futures = []
+        for doi, oa_work in tqdm(oa_works.items()):
+            if not oa_work.get("arxiv_id"):
+                continue
+            futures.append(executor.submit(download_pdf, oa_work["arxiv_id"]))
+        for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures)):
             pass
 
-json.dump(papers, open("data/papers.json", "w"))
 
-papers = json.load(open("data/papers.json", "r"))
-oa_meta = json.load(open("data/oa_merge.json", "r"))
-breakpoint()
-dataset = {}
-for arxiv_id, paper in tqdm(papers.items()):
-    for doi, oa_work in oa_meta.items():
-        if oa_work.get("arxiv_id") == arxiv_id:
-            oa_work["paper"] = paper
-            dataset[arxiv_id] = oa_work
+# GET LATEX SOURCE FROM ARXIV ARCHIVE
+# -----------------------------------------------------------
+papers = {}
+if os.path.exists("data/papers.json"):
+    print("Loading the latex source.")
+    with open("data/papers.json", "r") as f:
+        papers = json.load(f)
+else:
+    print("Parsing the latex source.")
+    for archive in tqdm(os.listdir("data/papers")):
+        if archive.endswith(".zip"):
+            try:
+                with gzip.open("data/papers/" + archive, "rb") as gzip_file:
+                    # Open the Tar archive from the Gzip file
+                    with tarfile.open(fileobj=gzip_file, mode="r") as tar_archive:
+                        # Get a list of all the members (files and directories) in the Tar archive
+                        members = tar_archive.getmembers()
+
+                        # Iterate through the members and print the names of files
+                        for member in members:
+                            if member.isfile():
+                                if member.name.endswith(".tex"):
+                                    try:
+                                        contents = (
+                                            tar_archive.extractfile(member)
+                                            .read()
+                                            .decode("utf-8")
+                                        )
+                                        if "\section{Introduction}" not in contents:
+                                            print(
+                                                f"Skipping {member.name} - no introduction found"
+                                            )
+                                            continue
+                                        else:
+                                            papers[archive.split(".zip")[0]] = contents
+                                            break
+                                    except Exception:
+                                        pass
+            except Exception as e:
+                print(f"Error extracting {archive}: {e}")
+                pass
+    json.dump(papers, open("data/papers.json", "w"))
+
+
+# FILTER OA_WORKS WITHOUT ARXIV PAPER
+# -----------------------------------------------------------
+oa_works_w_arxiv = {}
+if os.path.exists("data/oa_works_w_arxiv.json"):
+    print("Loading the filtered OA Work blobs w/ arxiv paper latex.")
+    with open("data/oa_works_w_arxiv.json", "r") as f:
+        oa_works_w_arxiv = json.load(f)
+else:
+    print("Filtering the OA Works for just those w/ arxiv paper latex.")
+    for arxiv_id, paper in tqdm(papers.items()):
+        for doi, oa_work in oa_works.items():
+            if oa_work.get("arxiv_id") == arxiv_id:
+                oa_work["paper"] = paper
+                oa_works_w_arxiv[arxiv_id] = oa_work
+                break
+    json.dump(oa_works_w_arxiv, open("data/oa_works_w_arxiv.json", "w"))
+
+paper_samples = json.load(
+    open(
+        os.path.join(
+            data_root, "paper_samples_concept_0.4_n_100_weighting_50_inst_50_conc.json",
+        ),
+        "r",
+    )
+)[0]
+
+
+# EMBED BLOCKS
+# -----------------------------------------------------------
+dataset_step_0 = {}
+if os.path.exists("data/dataset_step_0.pkl"):
+    print("Loading embedded blocks.")
+    with open("data/dataset_step_0.pkl", "rb") as f:
+        dataset_step_0 = pickle.load(f)
+else:
+    print("Embedding blocks.")
+
+    for arxiv_id in tqdm(paper_samples):
+        if arxiv_id not in oa_works_w_arxiv:
+            continue
+        try:
+            data = oa_works_w_arxiv[arxiv_id]
+            blocks = parse_latex(data["paper"])
+            block_contents = [block['content'] for block in blocks]
+            response = openai.Embedding.create(model=EMBEDDING_MODEL, input=block_contents)
+            batch_embeddings = [e["embedding"] for e in response["data"]]
+            for idx, block in enumerate(blocks):
+                block['embedding'] = batch_embeddings[idx]
+            data["blocks"] = blocks
+            dataset_step_0[arxiv_id] = data
+        except Exception as e:
+            print(e)
+
+    pickle.dump(dataset_step_0, open("data/dataset_step_0.pkl", "wb"))
+
+
+# EXTRACT NUGGETS
+# -----------------------------------------------------------
+dataset_step_1 = {}
+if os.path.exists("data/dataset_step_1.json"):
+    with open("data/dataset_step_1.json", "r") as f:
+        dataset_step_1 = json.load(f)
+        breakpoint()
+else:
+
+    for arxiv_id, data in tqdm(dataset_step_0.items()):
+        for block_id, block in tqdm(enumerate(data['blocks'])):
+            nuggets = extract_nuggets(block)
+            if len(nuggets) == 0:
+                block['nuggets'] = {}
+                continue
+            embedding_dict = embed_nuggets(nuggets)
+            block['nuggets'] = embedding_dict
+            if block_id > 2:
+                break
+
+        data["vendor_id"] = data["authorships"][0]["institutions"][0]["id"].replace(
+            "https://openalex.org/", ""
+        )
+        dataset_step_1[arxiv_id] = data
+        json.dump(
+            dataset_step_1,
+            open(os.path.join(data_root, "dataset_step_1.json"), "w"),
+        )
+        time.sleep(10)
+        if len(dataset_step_1) == 100:
             break
-json.dump(dataset, open("data/dataset.json", "w"))
+    json.dump(dataset_step_1, open("data/dataset_step_1.json", "w"))
