@@ -21,7 +21,8 @@ EMBEDDING_MODEL = "text-embedding-ada-002"
 if Path("~").expanduser().name == "nrahaman":
     data_root = "/Users/nrahaman/Python/info-bazaar/data"
 else:
-    data_root = "/Users/martinweiss/PycharmProjects/tn-learn/info-bazaar/data"
+    # data_root = "/Users/martinweiss/PycharmProjects/tn-learn/info-bazaar/data"
+    data_root = "/home/mila/w/weissmar/scratch/tn/info-bazaar/data"
     openai.api_key = os.environ.get("OPENAI_API_KEY")
 
 
@@ -42,11 +43,13 @@ def fetch_works(chunk):
     return result
 
 
-def download_pdf(arxiv_id):
+def download_pdf(arxiv_id, category):
     url = f"https://arxiv.org/e-print/{arxiv_id}"
     response = requests.get(url, stream=True)
+    time.sleep(0.025)
+
     if response.status_code == 200:
-        with open(f"data/papers/{arxiv_id}.zip", "wb") as file:
+        with open(f"data/{category}/papers/{arxiv_id}.zip", "wb") as file:
             for chunk in response.iter_content(chunk_size=1024):
                 file.write(chunk)
     else:
@@ -220,35 +223,60 @@ def embed_nuggets(nuggets):
         nuggets[idx]['embedding'] = embedding
     return nuggets
 
-# PARSE ARXIV METADATA SNAPSHOT FOR ASTROPHYSICS
+# PARSE ARXIV METADATA SNAPSHOT FOR CATEGORY
 # -----------------------------------------------------------
-if os.path.exists("data/arxiv-meta-astro-ph-2017-2023.json"):
-    print("Loading arxiv papers.")
-    with open("data/arxiv-meta-astro-ph-2017-2023.json", "r") as f:
-        selected_metadata = json.load(f)
+category = "machine-learning" # astrophysics
+if category == "astrophysics":
+    if os.path.exists("data/arxiv-meta-astro-ph-2017-2023.json"):
+        print("Loading arxiv papers.")
+        with open("data/arxiv-meta-astro-ph-2017-2023.json", "r") as f:
+            selected_metadata = json.load(f)
+    else:
+        print("Parsing arxiv papers.")
+        selected_metadata = {}
+        with open("data/arxiv-metadata-oai-snapshot.json", "r") as f:
+            for line in tqdm(f.readlines()):
+                metadata = json.loads(line)
+                parsed_date = datetime.strptime(
+                    metadata["versions"][0]["created"], "%a, %d %b %Y %H:%M:%S %Z"
+                )
+                year = parsed_date.year
+                if year > 2016:
+                    print(metadata["categories"])
+                    if "astro-ph" in metadata["categories"]:
+                        selected_metadata[metadata["id"]] = metadata
+elif category == "machine-learning":
+    if os.path.exists("data/arxiv-meta-ml-2020-2023.json"):
+        print("Loading arxiv papers.")
+        with open("data/arxiv-meta-ml-2020-2023.json", "r") as f:
+            selected_metadata = json.load(f)
+    else:
+        print("Parsing arxiv papers.")
+        selected_metadata = {}
+        with open("data/arxiv-metadata-oai-snapshot.json", "r") as f:
+            for line in tqdm(f.readlines()):
+                metadata = json.loads(line)
+                parsed_date = datetime.strptime(
+                    metadata["versions"][0]["created"], "%a, %d %b %Y %H:%M:%S %Z"
+                )
+                year = parsed_date.year
+                if year > 2020:
+                    if "cs.LG" in metadata["categories"]:
+                        selected_metadata[metadata["id"]] = metadata
+    with open("data/arxiv-meta-ml-2020-2023.json", "w") as f:
+        json.dump(selected_metadata, f)
 else:
-    print("Parsing arxiv papers.")
-    selected_metadata = {}
-    with open("data/arxiv-metadata-oai-snapshot.json", "r") as f:
-        for line in tqdm(f.readlines()):
-            metadata = json.loads(line)
-            parsed_date = datetime.strptime(
-                metadata["versions"][0]["created"], "%a, %d %b %Y %H:%M:%S %Z"
-            )
-            year = parsed_date.year
-            if year > 2016:
-                print(metadata["categories"])
-                if "astro-ph" in metadata["categories"]:
-                    selected_metadata[metadata["id"]] = metadata
+    raise ValueError("invalid category")
+
 
 # SCRAPE OPENALEX WORKS
 # -----------------------------------------------------------
 oa_works = {}
-if os.path.exists("data/oa_works_w_arxiv.json"):
+if os.path.exists(f"data/{category}/oa_works_w_arxiv.json"):
     pass
-elif os.path.exists("data/oa_works.pkl"):
+elif os.path.exists(f"data/{category}/oa_works.pkl"):
     print("Loading OA Works papers.")
-    with open("data/oa_works.pkl", "rb") as f:
+    with open(f"data/{category}/oa_works.pkl", "rb") as f:
         oa_works = pickle.load(f)
 else:
     print("Scraping OpenAlex for Works.")
@@ -266,25 +294,25 @@ else:
                 print(result.text)
                 continue
             for oa_work in result:
-                oa_works[oa_work["doi"]] = oa_work
+                for arxiv_id, metadata in selected_metadata.items():
+                    if metadata['doi'] == oa_work['doi'].replace("https://doi.org/", ""):
+                        oa_works[arxiv_id] = oa_work
 
-    with open("data/oa_works.pkl", "wb") as f:
+    with open(f"data/{category}/oa_works.pkl", "wb") as f:
         pickle.dump(oa_works, f)
-
 
 # DOWNLOAD ARXIV PAPERS
 # -----------------------------------------------------------
-if os.path.isdir("data/papers"):
+if os.path.isdir(f"data/{category}/papers"):
     print("We already have the Arxiv paper source files.")
     pass
 else:
     print("Scraping the Arxiv source files.")
-    with ThreadPoolExecutor() as executor:
+    os.makedirs(f"data/{category}/papers")
+    with ThreadPoolExecutor(max_workers=5) as executor:
         futures = []
-        for doi, oa_work in tqdm(oa_works.items()):
-            if not oa_work.get("arxiv_id"):
-                continue
-            futures.append(executor.submit(download_pdf, oa_work["arxiv_id"]))
+        for arxiv_id, oa_work in tqdm(oa_works.items()):
+            futures.append(executor.submit(download_pdf, arxiv_id, category))
         for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures)):
             pass
 
@@ -292,16 +320,16 @@ else:
 # GET LATEX SOURCE FROM ARXIV ARCHIVE
 # -----------------------------------------------------------
 papers = {}
-if os.path.exists("data/papers.json"):
+if os.path.exists(f"data/{category}/papers.json"):
     print("Loading the latex source.")
-    with open("data/papers.json", "r") as f:
+    with open(f"data/{category}/papers.json", "r") as f:
         papers = json.load(f)
 else:
     print("Parsing the latex source.")
-    for archive in tqdm(os.listdir("data/papers")):
+    for archive in tqdm(os.listdir(f"data/{category}/papers")):
         if archive.endswith(".zip"):
             try:
-                with gzip.open("data/papers/" + archive, "rb") as gzip_file:
+                with gzip.open(f"data/{category}/papers/" + archive, "rb") as gzip_file:
                     # Open the Tar archive from the Gzip file
                     with tarfile.open(fileobj=gzip_file, mode="r") as tar_archive:
                         # Get a list of all the members (files and directories) in the Tar archive
@@ -330,42 +358,45 @@ else:
             except Exception as e:
                 print(f"Error extracting {archive}: {e}")
                 pass
-    json.dump(papers, open("data/papers.json", "w"))
+    json.dump(papers, open(f"data/{category}/papers.json", "w"))
 
 
 # FILTER OA_WORKS WITHOUT ARXIV PAPER
 # -----------------------------------------------------------
 oa_works_w_arxiv = {}
-if os.path.exists("data/oa_works_w_arxiv.json"):
+if os.path.exists(f"data/{category}/oa_works_w_arxiv.json"):
     print("Loading the filtered OA Work blobs w/ arxiv paper latex.")
-    with open("data/oa_works_w_arxiv.json", "r") as f:
+    with open(f"data/{category}/oa_works_w_arxiv.json", "r") as f:
         oa_works_w_arxiv = json.load(f)
 else:
     print("Filtering the OA Works for just those w/ arxiv paper latex.")
     for arxiv_id, paper in tqdm(papers.items()):
-        for doi, oa_work in oa_works.items():
-            if oa_work.get("arxiv_id") == arxiv_id:
+        for oa_arxiv_id, oa_work in oa_works.items():
+            if oa_arxiv_id == arxiv_id:
                 oa_work["paper"] = paper
                 oa_works_w_arxiv[arxiv_id] = oa_work
                 break
-    json.dump(oa_works_w_arxiv, open("data/oa_works_w_arxiv.json", "w"))
+    json.dump(oa_works_w_arxiv, open(f"data/{category}/oa_works_w_arxiv.json", "w"))
 
-paper_samples = json.load(
-    open(
-        os.path.join(
-            data_root, "paper_samples_concept_0.4_n_100_weighting_50_inst_50_conc.json",
-        ),
-        "r",
-    )
-)[0]
+if category == "astrophysics":
+    paper_samples = json.load(
+        open(
+            os.path.join(
+                data_root, "paper_samples_concept_0.4_n_100_weighting_50_inst_50_conc.json",
+            ),
+            "r",
+        )
+    )[0]
+else:
+    paper_samples = list(oa_works_w_arxiv.keys())[-100:]
 
 
 # EMBED BLOCKS
 # -----------------------------------------------------------
 dataset_step_0 = {}
-if os.path.exists("data/dataset_step_0.pkl"):
+if os.path.exists(f"data/{category}/dataset_step_0.pkl"):
     print("Loading embedded blocks.")
-    with open("data/dataset_step_0.pkl", "rb") as f:
+    with open(f"data/{category}/dataset_step_0.pkl", "rb") as f:
         dataset_step_0 = pickle.load(f)
 else:
     print("Embedding blocks.")
@@ -386,38 +417,42 @@ else:
         except Exception as e:
             print(e)
 
-    pickle.dump(dataset_step_0, open("data/dataset_step_0.pkl", "wb"))
+    pickle.dump(dataset_step_0, open(f"data/{category}/dataset_step_0.pkl", "wb"))
 
 
 # EXTRACT NUGGETS
 # -----------------------------------------------------------
 dataset_step_1 = {}
-if os.path.exists("data/dataset_step_1.json"):
-    with open("data/dataset_step_1.json", "r") as f:
+breakpoint()
+
+if os.path.exists(f"data/{category}/dataset_step_1.json"):
+    with open(f"data/{category}/dataset_step_1.json", "r") as f:
         dataset_step_1 = json.load(f)
-        breakpoint()
 else:
 
     for arxiv_id, data in tqdm(dataset_step_0.items()):
         for block_id, block in tqdm(enumerate(data['blocks'])):
-            nuggets = extract_nuggets(block)
-            if len(nuggets) == 0:
+            try:
+                nuggets = extract_nuggets(block)
+                embedding_dict = embed_nuggets(nuggets)
+                block['nuggets'] = embedding_dict
+            except Exception as e:
+                print(e)
                 block['nuggets'] = {}
-                continue
-            embedding_dict = embed_nuggets(nuggets)
-            block['nuggets'] = embedding_dict
-            if block_id > 2:
-                break
-
-        data["vendor_id"] = data["authorships"][0]["institutions"][0]["id"].replace(
-            "https://openalex.org/", ""
-        )
+            break
+        try:
+            data["vendor_id"] = data["authorships"][0]["institutions"][0]["id"].replace(
+                "https://openalex.org/", ""
+            )
+        except Exception as e:
+            data["vendor_id"] = ""
         dataset_step_1[arxiv_id] = data
-        json.dump(
-            dataset_step_1,
-            open(os.path.join(data_root, "dataset_step_1.json"), "w"),
-        )
-        time.sleep(10)
+        if (len(dataset_step_1) % 10) == 0:
+            json.dump(
+                dataset_step_1,
+                open(f"data/{category}/dataset_step_1.json", "w"),
+            )
+        time.sleep(2)
         if len(dataset_step_1) == 100:
             break
-    json.dump(dataset_step_1, open("data/dataset_step_1.json", "w"))
+    json.dump(dataset_step_1, open(f"data/{category}/dataset_step_1.json", "w"))
