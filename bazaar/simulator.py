@@ -51,6 +51,9 @@ class BazaarAgentContext:
 class BazaarAgent(mesa.Agent):
     def __init__(self, principal: Principal):
         super().__init__(**BazaarAgentContext.get_mesa_agent_kwargs())
+        # Privates
+        self._credit = 0
+        # Publics
         self.principal = principal
         self.agent_status = AgentStatus.ACTIVE
         self.called_count = 0
@@ -59,6 +62,18 @@ class BazaarAgent(mesa.Agent):
     def now(self):
         self.model: "BazaarSimulator"
         return self.model.now
+
+    @property
+    def credit(self):
+        return self._credit
+
+    def credit_to_account(self, amount: int) -> "BazaarAgent":
+        self._credit += amount
+        return self
+
+    def deduct_from_account(self, amount: int) -> "BazaarAgent":
+        self._credit -= amount
+        return self
 
     def prepare(self):
         """This function is called once before the first forward call."""
@@ -154,8 +169,8 @@ class BuyerAgent(BazaarAgent):
         Initialize the agent's query queue from the principal's query.
         """
         self.principal: BuyerPrincipal
-        self._credit = self.principal.budget
         self._query_queue.append(self.principal.query)
+        self.credit_to_account(self.principal.budget)
 
     @property
     def final_response(self) -> str:
