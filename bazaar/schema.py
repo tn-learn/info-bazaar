@@ -73,6 +73,11 @@ class Quote:
 class BulletinBoard:
     queries: List[Query]
 
+    def maintain(self, now: int) -> "BulletinBoard":
+        # Remove queries that have passed their deadline
+        self.queries = [q for q in self.queries if not q.deadline_passed(now)]
+        return self
+
 
 @dataclass
 class Principal:

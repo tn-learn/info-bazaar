@@ -251,5 +251,15 @@ class BazaarSimulator(mesa.Model):
     def now(self):
         return self.schedule.time
 
+    @property
+    def all_buyer_agents_terminated(self) -> bool:
+        return all(
+            [
+                agent.agent_status == AgentStatus.TERMINATED
+                for agent in self.buyer_agents
+            ]
+        )
+
     def step(self):
         self.schedule.step()
+        self.bulletin_board.maintain(self.now)
