@@ -209,7 +209,6 @@ class Vendor:
     principal: Union[Author, Institution]
     block_price: List[int]
     observed_blocks: Optional[List[Block]] = field(default_factory=list)
-    response_time_guarantee: int = 0
 
 
 class AgentStatus(Enum):

@@ -4,6 +4,7 @@ from typing import Optional, List, Dict, Union
 
 import mesa
 
+from bazaar.database import retrieve_blocks
 from bazaar.schema import (
     Principal,
     BulletinBoard,
@@ -166,6 +167,8 @@ class BuyerAgent(BazaarAgent):
         self._quote_inbox: List[Quote] = []
         self._accepted_quotes: List[Quote] = []
         self._final_response: Optional[str] = None
+
+
 
     def prepare(self):
         """
