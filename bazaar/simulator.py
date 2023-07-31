@@ -5,6 +5,7 @@ import guidance
 import mesa
 
 from bazaar.database import retrieve_blocks
+from bazaar.lem_utils import clean_program_string
 from bazaar.schema import (
     Principal,
     BulletinBoard,
@@ -236,26 +237,40 @@ class BuyerAgent(BazaarAgent):
         # TODO
         pass
 
-    @staticmethod
-    def select_quote(self, candidate_quotes: List[Quote], selected_quotes: List[Quote]):
-        program = guidance("""
+    def select_quote(self, candidate_quotes: List[Quote]):
+        program_string = """
         {{#system~}}
-        You are a Question Answering Agent. You will be given a question, and a bunch of passages that might have an answer to that question in them. But beware that each passage has a cost. You want to minimize the amount you spend, while maximizing the quality of your answer. You will now be presented with several options; each has a price (in USD) and some text. You have the choice to buy no passage, one passage, or multiple passages. 
+        You are a Question Answering Agent operating inside an information market. You will be given a question, and a bunch of passages that might have an answer to that question in them. But beware that each passage has a cost. You want to minimize the amount you spend, while maximizing the quality of your answer. You will now be presented with several options; each has a price (in USD) and some text. You have the choice to buy no passage, one passage, or multiple passages.
         {{~/system}}
+
+        {{#user~}}
+        Your balance is ${{credit}}. Your question is: {{question}}?   
+
+        Here are your options: 
+        ---{{#each candidate_quotes}}
+        Option {{@index}} for ${{this.price}}: {{this.block}}
+        {{/each}}
+        ---
+        Please discuss each option very briefly (one line for pros, one for cons).
+        {{~/user}}
+        
+        {{#assistant~}}
+        {{gen 'procons' stop="\\n\\n" temperature=0.0}}
+        {{~/assistant}}
         
         {{#user~}}
-        {{#each candidate_quotes}}
-        {{this.text}}
-        {{/each}}
+        Which of the passages would you like to purchase? Reply with {{#each candidate_quotes}}
+        OPTION {{@index}} - Buy or Pass
+        {{/each~}}
         {{~/user}}
+        
+        {{#assistant~}}
+        {{gen 'buyorpass' stop="\\n\\n" temperature=0.0}}
+        {{~/assistant}}
         """
-        )
-
-        program = program(
-            user_query=candidate_quotes[0].query,
-            candidate_quotes=candidate_quotes
-        )
-        return program
+        program_string = clean_program_string(program_string)
+        program = guidance(program_string)
+        # TODO Custom parsing functions
 
     def forward(self) -> None:
         # Step 1: Check if there are quotes in the inbox that need to be processed.
