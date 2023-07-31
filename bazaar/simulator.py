@@ -1,7 +1,7 @@
 import uuid
 from contextlib import contextmanager
 from typing import Optional, List, Dict, Union
-
+import guidance
 import mesa
 
 from bazaar.database import retrieve_blocks
@@ -14,6 +14,7 @@ from bazaar.schema import (
     Quote,
     Institution,
     Author,
+    QuoteStatus,
 )
 
 
@@ -168,8 +169,6 @@ class BuyerAgent(BazaarAgent):
         self._accepted_quotes: List[Quote] = []
         self._final_response: Optional[str] = None
 
-
-
     def prepare(self):
         """
         Initialize the agent's query queue from the principal's query.
@@ -213,11 +212,15 @@ class BuyerAgent(BazaarAgent):
          -> If a quote is to be rejected, the quote is removed from the inbox.
          -> If a quote is to be waited on, the quote is left in the inbox.
         """
-        for quote in self._quote_inbox:
+        for quote_idx in range(len(self._quote_inbox)):
+            quote = self._quote_inbox[quote_idx]
+            if quote.quote_status == QuoteStatus.ACCEPTED:
+                continue
+            if quote.quote_status == QuoteStatus.REJECTED:
+                del self._quote_inbox[quote_idx]
+            elif quote.quote_status == QuoteStatus.WAITING:
+                pass
 
-            pass
-
-        pass
 
     def finalize_step(self):
         """
@@ -235,17 +238,24 @@ class BuyerAgent(BazaarAgent):
 
     @staticmethod
     def select_quote(self, candidate_quotes: List[Quote], selected_quotes: List[Quote]):
-        pass
-
-        program_string = """
+        program = guidance("""
         {{#system~}}
         You are a Question Answering Agent. You will be given a question, and a bunch of passages that might have an answer to that question in them. But beware that each passage has a cost. You want to minimize the amount you spend, while maximizing the quality of your answer. You will now be presented with several options; each has a price (in USD) and some text. You have the choice to buy no passage, one passage, or multiple passages. 
         {{~/system}}
         
         {{#user~}}
-        
+        {{#each candidate_quotes}}
+        {{this.text}}
+        {{/each}}
         {{~/user}}
         """
+        )
+
+        program = program(
+            user_query=candidate_quotes[0].query,
+            candidate_quotes=candidate_quotes
+        )
+        return program
 
     def forward(self) -> None:
         # Step 1: Check if there are quotes in the inbox that need to be processed.
