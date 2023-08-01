@@ -159,19 +159,11 @@ class Block:
 @dataclass
 class Institution(Principal):
     id: str
-    display_name: str
     ror: str
     country_code: str
     type: str
     blocks: Dict[str, Block] = field(default_factory=dict)
     block_prices: Dict[str, float] = field(default_factory=dict)
-
-    def __init__(self, name=None, *args, **kwargs):
-        if not name:
-            name = kwargs.get("display_name", "")
-        super().__init__(name)
-        for k, v in kwargs.items():
-            setattr(self, k, v)
 
     def __hash__(self):
         return hash(self.id)
@@ -180,7 +172,6 @@ class Institution(Principal):
 @dataclass
 class Author(Principal):
     id: str
-    display_name: str
     orcid: str
     last_known_institution: Optional[Institution] = None
     related_concepts: Optional[List[str]] = None
@@ -188,13 +179,6 @@ class Author(Principal):
     private_blocks: Dict[str, Block] = field(default_factory=dict)
     block_prices: Dict[str, float] = field(default_factory=dict)
     mean_response_time: Optional[int] = None
-
-    def __init__(self, name=None, *args, **kwargs):
-        if not name:
-            name = kwargs.get("display_name", "")
-        super().__init__(name)
-        for k, v in kwargs.items():
-            setattr(self, k, v)
 
     @property
     def blocks(self):

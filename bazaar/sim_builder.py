@@ -141,9 +141,13 @@ def build_authors_and_institutions(
         for authorship in data["authorships"]:
             for ins in authorship["institutions"]:
                 if ins["id"] not in institutions:
-                    institution = Institution(**ins, blocks={})
-                    institutions[institution.id] = institution
-            author = Author(**authorship["author"], blocks={})
+                    ins["name"] = ins["display_name"]
+                    del ins["display_name"]
+                    institutions[ins['id']] = Institution(**ins)
+            author = authorship["author"]
+            author["name"] = author["display_name"]
+            del author["display_name"]
+            author = Author(**author)
             if author not in authors:
                 authors[author.id] = author
 

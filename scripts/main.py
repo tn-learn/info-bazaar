@@ -1,28 +1,28 @@
+import yaml
+import argparse
+
 from bazaar.sim_builder import load, SimulationConfig
 from bazaar.simulator import BazaarSimulator
 
 
 def main():
-
-    config = SimulationConfig(
-        rng_seed=0,
-        author_block_price_mean=0,
-        author_block_price_sigma=0,
-        institution_block_price_mean=0,
-        institution_block_price_sigma=0,
-        author_fraction_of_private_blocks=0,
-        institution_num_blocks=0,
-        author_response_time_mean=0,
-        author_response_time_sigma=0,
-        buyer_max_budget_mean=0,
-        buyer_max_budget_sigma=0,
-        buyer_urgency_min=0,
-        buyer_urgency_max=0,
-        query_creation_time_start=0,
-        query_creation_time_end=0,
+    # make argparser
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--config",
+        type=str,
+        default="/Users/martinweiss/PycharmProjects/tn-learn/info-bazaar/configs/default.yml",
+        help="path to config file",
     )
+    parser.add_argument(
+        "--dataset_path",
+        type=str,
+        default="data/dataset_step_1.json",
+    )
+    args = parser.parse_args()
+    config = SimulationConfig(**yaml.load(open(args.config, "r"), Loader=yaml.FullLoader))
 
-    principals = load(path="", config=config)
+    principals = load(path=args.dataset_path, config=config)
     # Make a buyer agent for each principal
     buyer_principals = principals["buyers"]
     vendor_principals = principals["institutions"] + principals["authors"]

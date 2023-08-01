@@ -28,8 +28,9 @@ def retrieve_blocks(
     # query_embeddings.shape = (num_queries, embedding_dim)
     query_embeddings = np.array(query_embeddings)
     # block_embeddings.shape = (num_blocks, embedding_dim)
-    block_embeddings = np.array([block.embedding for block in blocks])
+    block_embeddings = np.array([block.embedding for block in blocks.values()])
     # cosine_similarities.shape = (num_queries, num_blocks)
+    breakpoint()
     cosine_similarities = cosine_similarity(query_embeddings, block_embeddings)
     # Now gather the blocks for each query
     retrieval_outputs = []

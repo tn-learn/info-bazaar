@@ -202,8 +202,11 @@ class BuyerAgent(BazaarAgent):
         """
         This function submits the queries in the query queue to the bulletin board.
         """
-        # TODO
-        pass
+        self.model: "BazaarSimulator"
+        for query in self._query_queue:
+            if query.created_at_time == self.now:
+                self.model.bulletin_board.submit_query(query)
+
 
     def process_quotes(self):
         """
@@ -214,6 +217,7 @@ class BuyerAgent(BazaarAgent):
          -> If a quote is to be waited on, the quote is left in the inbox.
         """
         for quote_idx in range(len(self._quote_inbox)):
+            breakpoint()
             quote = self._quote_inbox[quote_idx]
             if quote.quote_status == QuoteStatus.ACCEPTED:
                 continue
@@ -273,6 +277,8 @@ class BuyerAgent(BazaarAgent):
         # TODO Custom parsing functions
 
     def forward(self) -> None:
+        breakpoint()
+
         # Step 1: Check if there are quotes in the inbox that need to be processed.
         self.process_quotes()
         # Step 2: Check if there are queries that need to be submitted to the bulletin board

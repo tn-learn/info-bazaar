@@ -1,0 +1,17 @@
+rng_seed: 0
+author_block_price_mean: 5
+author_block_price_sigma: 3
+institution_block_price_mean: 5
+institution_block_price_sigma: 3
+author_fraction_of_private_blocks: 0.5
+institution_num_blocks: 10
+author_response_time_mean: 5
+author_response_time_sigma: 3
+buyer_max_budget_mean: 5
+buyer_max_budget_sigma: 3
+buyer_urgency_min: 1
+buyer_urgency_max: 10
+query_creation_time_start: 0
+query_creation_time_end: 168
+vendor_top_k: 1
+vendor_score_threshold: 0.5
