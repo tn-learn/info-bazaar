@@ -64,6 +64,23 @@ class Query:
             )
         return self._text_embedding
 
+    def compare_content(self, other: "Query") -> bool:
+        return (
+            self.text,
+            self.max_budget,
+            self.created_at_time,
+            self.issued_by.unique_id,
+            self.urgency,
+            self.required_by_time,
+        ) == (
+            other.text,
+            other.max_budget,
+            other.created_at_time,
+            other.issued_by.unique_id,
+            other.urgency,
+            other.required_by_time,
+        )
+
 
 class QuoteStatus(Enum):
     NOT_ISSUED = "not_issued"
@@ -94,6 +111,10 @@ class Quote:
 
     def reject_quote(self) -> "Quote":
         self.quote_status = QuoteStatus.REJECTED
+        return self
+
+    def issue(self) -> "Quote":
+        self.quote_status = QuoteStatus.PENDING
         return self
 
 

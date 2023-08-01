@@ -3,6 +3,7 @@ from contextlib import contextmanager
 from typing import Optional, List, Dict, Union
 import guidance
 import mesa
+import numpy as np
 
 from bazaar.database import retrieve_blocks
 from bazaar.lem_utils import clean_program_string
@@ -76,6 +77,11 @@ class BazaarAgent(mesa.Agent):
 
     def deduct_from_account(self, amount: int) -> "BazaarAgent":
         self._credit -= amount
+        return self
+
+    def transfer_to_agent(self, amount: int, agent: "BazaarAgent") -> "BazaarAgent":
+        self.deduct_from_account(amount)
+        agent.credit_to_account(amount)
         return self
 
     def prepare(self):
@@ -153,7 +159,7 @@ class VendorAgent(BazaarAgent):
                 created_at_time=self.now,
                 issued_by=self,
             )
-            retrieved.query.issued_by.receive_quote(quote)
+            retrieved.query.issued_by.receive_quote(quote.issue())
             self._outstanding_quotes.append(quote)
 
     def forward(self) -> None:
@@ -166,6 +172,7 @@ class BuyerAgent(BazaarAgent):
         super().__init__(principal)
         self._credit: int = 0
         self._query_queue: List[Query] = []
+        self._submitted_queries: List[Query] = []
         self._quote_inbox: List[Quote] = []
         self._accepted_quotes: List[Quote] = []
         self._final_response: Optional[str] = None
@@ -198,15 +205,16 @@ class BuyerAgent(BazaarAgent):
         self.principal: "BuyerPrincipal"
         return self.principal.time_left == 0
 
-    def submit_query_queue_to_bulletin_board(self):
+    def post_queries_to_bulletin_board(self):
         """
         This function submits the queries in the query queue to the bulletin board.
         """
         self.model: "BazaarSimulator"
-        for query in self._query_queue:
+        for query in list(self._query_queue):
             if query.created_at_time == self.now:
-                self.model.bulletin_board.submit_query(query)
-
+                self.model.bulletin_board.post(query)
+                self._query_queue.remove(query)
+                self._submitted_queries.append(query)
 
     def process_quotes(self):
         """
@@ -216,16 +224,41 @@ class BuyerAgent(BazaarAgent):
          -> If a quote is to be rejected, the quote is removed from the inbox.
          -> If a quote is to be waited on, the quote is left in the inbox.
         """
-        for quote_idx in range(len(self._quote_inbox)):
-            breakpoint()
-            quote = self._quote_inbox[quote_idx]
-            if quote.quote_status == QuoteStatus.ACCEPTED:
-                continue
-            if quote.quote_status == QuoteStatus.REJECTED:
-                del self._quote_inbox[quote_idx]
-            elif quote.quote_status == QuoteStatus.WAITING:
-                pass
 
+        pending_quotes = [
+            quote
+            for quote in self._quote_inbox
+            if quote.quote_status == QuoteStatus.PENDING
+        ]
+        # Reject the quotes that will take too long
+
+        # Todo replace with call to select_quotes
+        # Randomly sample a quote to accept
+        if len(pending_quotes) > 0:
+            quote_to_accept = np.random.choice(pending_quotes)
+            quote_to_accept.accept_quote()
+            self.transfer_to_agent(quote_to_accept.price, quote_to_accept.issued_by)
+            self._accepted_quotes.append(quote_to_accept)
+            self._quote_inbox.remove(quote_to_accept)
+            for quote in list(self._quote_inbox):
+                if quote.query == quote_to_accept.query:
+                    quote.reject_quote()
+                    self._quote_inbox.remove(quote)
+
+    def gathered_quotes_are_good_enough(self) -> bool:
+        # TODO: LEM call - with the  quotes and query
+        pass
+
+    def generate_final_response(self) -> str:
+        # TODO: LEM call - given the responses so far, generate a final response.
+        pass
+
+    def generate_follow_up_query(self) -> Query:
+        pass
+
+    def needs_to_generate_follow_up_query(self) -> bool:
+        # TODO: implement this
+        return False
 
     def finalize_step(self):
         """
@@ -238,8 +271,17 @@ class BuyerAgent(BazaarAgent):
                are rejected.
           3. It should do nothing and wait for quotes to come in.
         """
-        # TODO
-        pass
+        # TODO: implement multi-hop queries to acquire compound information; requires splitting a query into multiple simpler queries and posting these.
+        if self.response_submission_due_now:
+            # Submit final response and terminate
+            response = self.generate_final_response()
+            self.submit_final_response(response)
+            for quote in self._quote_inbox:
+                quote.reject_quote()
+
+        elif self.needs_to_generate_follow_up_query():
+            # Submit follow-up query
+            self._query_queue.append(self.generate_follow_up_query())
 
     def select_quote(self, candidate_quotes: List[Quote]):
         program_string = """
@@ -282,7 +324,7 @@ class BuyerAgent(BazaarAgent):
         # Step 1: Check if there are quotes in the inbox that need to be processed.
         self.process_quotes()
         # Step 2: Check if there are queries that need to be submitted to the bulletin board
-        self.submit_query_queue_to_bulletin_board()
+        self.post_queries_to_bulletin_board()
         # Step 3: Finalize the step (this decides what happens in the next step)
         self.finalize_step()
 
