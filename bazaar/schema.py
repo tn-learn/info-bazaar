@@ -2,8 +2,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, List, Union, Optional, Dict
 
-from bazaar.lem_utils import generate_hyde_passage, generate_embedding
-
 if TYPE_CHECKING:
     from bazaar.simulator import BuyerAgent, VendorAgent
 
@@ -42,6 +40,8 @@ class Query:
 
     @property
     def hyde_text(self):
+        from bazaar.lem_utils import generate_hyde_passage
+
         if self._hyde_text is None:
             self._hyde_text = generate_hyde_passage(
                 self.text, model=self.processor_model
@@ -50,6 +50,8 @@ class Query:
 
     @property
     def hyde_embedding(self):
+        from bazaar.lem_utils import generate_embedding
+
         if self._hyde_embedding is None:
             self._hyde_embedding = generate_embedding(
                 self.hyde_text, model=self.embedding_model
@@ -58,6 +60,8 @@ class Query:
 
     @property
     def text_embedding(self):
+        from bazaar.lem_utils import generate_embedding
+
         if self._text_embedding is None:
             self._text_embedding = generate_embedding(
                 self.text, model=self.embedding_model
