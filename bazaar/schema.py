@@ -125,6 +125,8 @@ class Quote:
 @dataclass
 class BulletinBoard:
     queries: List[Query] = field(default_factory=list)
+    top_k: int = 1
+    score_threshold: float = 0.7
 
     def post(self, query: Query):
         assert query.issued_by is not None, "Query must have an issuer."
@@ -187,7 +189,8 @@ class Institution(Principal):
     ror: str
     country_code: str
     type: str
-    blocks: Dict[str, Block] = field(default_factory=dict)
+    public_blocks: Dict[str, Block] = field(default_factory=dict)
+    private_blocks: Dict[str, Block] = field(default_factory=dict)
     block_prices: Dict[str, float] = field(default_factory=dict)
 
     def __hash__(self):
@@ -204,10 +207,6 @@ class Author(Principal):
     private_blocks: Dict[str, Block] = field(default_factory=dict)
     block_prices: Dict[str, float] = field(default_factory=dict)
     mean_response_time: Optional[int] = None
-
-    @property
-    def blocks(self):
-        return self.public_blocks
 
     def __hash__(self):
         return hash(self.id)

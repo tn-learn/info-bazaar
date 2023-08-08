@@ -22,12 +22,13 @@ def main():
     args = parser.parse_args()
     config = SimulationConfig(**yaml.load(open(args.config, "r"), Loader=yaml.FullLoader))
 
-    principals = load(path=args.dataset_path, config=config)
+    results = load(path=args.dataset_path, config=config)
     # Make a buyer agent for each principal
-    buyer_principals = principals["buyers"]
-    vendor_principals = principals["institutions"] + principals["authors"]
+    buyer_principals = results["buyers"]
+    vendor_principals = results["institutions"] + results["authors"]
+    bulletin_board = results["bulletin_board"]
     bazaar = BazaarSimulator(
-        buyer_principals=buyer_principals, vendor_principals=vendor_principals
+        bulletin_board=bulletin_board, buyer_principals=buyer_principals, vendor_principals=vendor_principals
     )
     # Run it for a week
     bazaar.run(168)

@@ -13,5 +13,5 @@ buyer_urgency_min: 1
 buyer_urgency_max: 10
 query_creation_time_start: 0
 query_creation_time_end: 168
-vendor_top_k: 1
-vendor_score_threshold: 0.5
+bulletin_board_retrieval_top_k: 1
+bulletin_board_retrieval_score_threshold: 0.7

@@ -135,9 +135,12 @@ class VendorAgent(BazaarAgent):
         queries_in_bulletin_board = self.model.bulletin_board.new_queries_since(
             self._bulletin_board_last_checked_at
         )
+        if queries_in_bulletin_board == []:
+            return
+
         all_retrieved_outputs = retrieve_blocks(
             queries=queries_in_bulletin_board,
-            blocks=self.principal.blocks,
+            blocks=self.principal.public_blocks,
             use_hyde=True,
             top_k=self._bulletin_board_retrieval_top_k,
             score_threshold=self._bulletin_board_retrieval_score_threshold,
@@ -152,6 +155,7 @@ class VendorAgent(BazaarAgent):
             for retrieved_block in retrieved.blocks:
                 price += self.principal.block_prices[retrieved_block.block_id]
                 answer_blocks.append(retrieved_block)
+
             quote = Quote(
                 query=retrieved.query,
                 price=price,
@@ -164,6 +168,7 @@ class VendorAgent(BazaarAgent):
 
     def forward(self) -> None:
         # Step 1: Check the bulletin board for new queries
+        print(f"Agent {self.unique_id} is checking the bulletin board...")
         self.check_bulletin_board_and_issue_quotes()
 
 
@@ -212,6 +217,7 @@ class BuyerAgent(BazaarAgent):
         self.model: "BazaarSimulator"
         for query in list(self._query_queue):
             if query.created_at_time == self.now:
+                query.issued_by = self
                 self.model.bulletin_board.post(query)
                 self._query_queue.remove(query)
                 self._submitted_queries.append(query)
@@ -230,11 +236,10 @@ class BuyerAgent(BazaarAgent):
             for quote in self._quote_inbox
             if quote.quote_status == QuoteStatus.PENDING
         ]
-        # Reject the quotes that will take too long
-
-        # Todo replace with call to select_quotes
         # Randomly sample a quote to accept
         if len(pending_quotes) > 0:
+            quote_to_accept = self.select_quote(pending_quotes)
+
             quote_to_accept = np.random.choice(pending_quotes)
             quote_to_accept.accept_quote()
             self.transfer_to_agent(quote_to_accept.price, quote_to_accept.issued_by)
@@ -315,12 +320,16 @@ class BuyerAgent(BazaarAgent):
         {{~/assistant}}
         """
         program_string = clean_program_string(program_string)
+        guidance.llm = guidance.llms.OpenAI("gpt-3.5-turbo")
+
         program = guidance(program_string)
+        candidates = [quote.answer_blocks[0].content for quote in candidate_quotes]
+        program(credit=100, question=self._quote_inbox[0].query.text, candidate_quotes=candidates)
+        breakpoint()
         # TODO Custom parsing functions
 
     def forward(self) -> None:
-        breakpoint()
-
+        print("Buyer Agent Run Forward")
         # Step 1: Check if there are quotes in the inbox that need to be processed.
         self.process_quotes()
         # Step 2: Check if there are queries that need to be submitted to the bulletin board
@@ -332,19 +341,20 @@ class BuyerAgent(BazaarAgent):
 class BazaarSimulator(mesa.Model):
     def __init__(
         self,
+        bulletin_board: BulletinBoard,
         buyer_principals: List[BuyerPrincipal],
         vendor_principals: List[Union[Institution, Author]],
     ):
         super().__init__()
         self.schedule = mesa.time.RandomActivation(self)
         with BazaarAgentContext.activate(self):
+            self.bulletin_board = bulletin_board
             self.buyer_agents = [
                 BuyerAgent(principal) for principal in buyer_principals
             ]
             self.vendor_agents = [
                 VendorAgent(principal) for principal in vendor_principals
             ]
-        self.bulletin_board = BulletinBoard()
 
         for agent in self.buyer_agents:
             self.schedule.add(agent)

@@ -30,7 +30,6 @@ def retrieve_blocks(
     # block_embeddings.shape = (num_blocks, embedding_dim)
     block_embeddings = np.array([block.embedding for block in blocks.values()])
     # cosine_similarities.shape = (num_queries, num_blocks)
-    breakpoint()
     cosine_similarities = cosine_similarity(query_embeddings, block_embeddings)
     # Now gather the blocks for each query
     retrieval_outputs = []
@@ -48,7 +47,8 @@ def retrieve_blocks(
         sorted_indices = np.argsort(cosine_similarities_for_query)[::-1]
         sorted_scores = cosine_similarities_for_query[sorted_indices]
         sorted_block_indices = block_indices_for_query[sorted_indices]
-        sorted_blocks = [blocks[idx] for idx in sorted_block_indices]
+        blocks_items = list(blocks.items())
+        sorted_blocks = [blocks_items[idx][1] for idx in sorted_block_indices]
         if top_k is not None:
             sorted_blocks = sorted_blocks[:top_k]
             sorted_scores = sorted_scores[:top_k]
