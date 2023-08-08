@@ -1,4 +1,4 @@
-from typing import List, Optional, SupportsFloat
+from typing import List, Optional, SupportsFloat, Dict
 import re
 import guidance
 import openai
@@ -95,6 +95,7 @@ def select_quotes(
     quotes: List[Quote],
     budget: Optional[SupportsFloat] = None,
     fraction_of_max_budget: Optional[float] = None,
+    model_name: str = "gpt-3.5-turbo",
 ) -> List[Quote]:
     assert all(
         [quotes[0].query.compare_content(quote.query) for quote in quotes[1:]]
@@ -150,7 +151,7 @@ def select_quotes(
     """
     program_string = clean_program_string(program_string)
     # Run the program
-    program = guidance(program_string)  # noqa
+    program = guidance(program_string, llm=guidance.llms.OpenAI(model_name))  # noqa
     program_output = program(
         question=question,
         options=options,
@@ -207,6 +208,76 @@ def select_quotes(
             selected_quotes.append(quote)
             total_price += quote.price
     return selected_quotes
+
+
+def synthesize_answer(quotes: List[Quote], model_name="gpt-3.5-turbo") -> str:
+    question = quotes[0].query.text
+    passages = [
+        {
+            "answer_block": " [...] ".join(
+                [block.content for block in quote.answer_blocks]
+            ),
+        }
+        for quote in quotes
+    ]
+
+    program_string = """
+    {{#system~}}
+    You are an AnswerSynthesisBot. Your task is to synthesize an answer to a question given some passages that should contain the answer. You will combine and synthesize the information provided to you. 
+
+    Your answer must include citations from the passages like you would find in a Wikipedia article. You must cite by putting the passage numbers in square brackets, e.g. "<some text> [<source passage number>] <some more text> [<more passage numbers>]".
+    {{~/system}}
+    
+    {{#user~}}
+    The question is "{{question}}?"
+    
+    Here are the passages that contain the answer.
+    
+    ---{{#each quotes}}
+    {{add @index 1}}. {{this.answer_block}}
+    {{/each}}---
+    
+    Please strategize about answering the question. Start with "STRATEGY: <your strategy>"
+
+    Once you're done, begin your answer with "ANSWER: <your answer>"
+    
+    Let's go.
+    {{~/user}}
+    
+    {{#assistant~}}
+    {{gen "answer" temperature=0.0}}
+    {{~/assistant}}    
+    """
+    program_string = clean_program_string(program_string)
+    # Run the program
+    program = guidance(program_string, llm=guidance.llms.OpenAI(model_name))  # noqa
+    program_output = program(question=question, quotes=passages)
+    answer = program_output["answer"]
+
+    def separate_text_to_dict_corrected(text: str) -> Dict[str, str]:
+        """
+        Splits the provided text into sections based on the given keywords and returns a dictionary.
+        """
+        # Split the text by the keywords "STRATEGY:" and "ANSWER:"
+        sections = ["STRATEGY:", "ANSWER:"]
+        parts = {}
+
+        for idx, section in enumerate(sections):
+            start_idx = text.find(section)
+
+            if idx < len(sections) - 1:
+                # If it's not the last section, find the next section to determine the end index
+                end_idx = text.find(sections[idx + 1])
+                parts[section.strip(":").lower()] = text[start_idx + len(section):end_idx].strip()
+            else:
+                # If it's the last section, use the end of the text
+                parts[section.strip(":").lower()] = text[start_idx + len(section):].strip()
+
+        return parts
+
+    answer = separate_text_to_dict_corrected(answer)["answer"]
+
+    return answer
 
 
 def _test_main():

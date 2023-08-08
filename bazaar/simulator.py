@@ -6,7 +6,7 @@ import mesa
 import numpy as np
 
 from bazaar.database import retrieve_blocks
-from bazaar.lem_utils import clean_program_string
+from bazaar.lem_utils import clean_program_string, select_quotes, synthesize_answer
 from bazaar.schema import (
     Principal,
     BulletinBoard,
@@ -113,17 +113,11 @@ class VendorAgent(BazaarAgent):
     def __init__(
         self,
         principal: Union[Institution, Author],
-        bulletin_board_retrieval_top_k: Optional[int] = None,
-        bulletin_board_retrieval_score_threshold: Optional[float] = None,
     ):
         super().__init__(principal)
         # Privates
         self._outstanding_quotes: List[Quote] = []
         self._bulletin_board_last_checked_at: int = -1
-        self._bulletin_board_retrieval_top_k = bulletin_board_retrieval_top_k
-        self._bulletin_board_retrieval_score_threshold = (
-            bulletin_board_retrieval_score_threshold
-        )
 
     def check_bulletin_board_and_issue_quotes(self):
         """
@@ -137,13 +131,14 @@ class VendorAgent(BazaarAgent):
         )
         if queries_in_bulletin_board == []:
             return
+        breakpoint()
 
         all_retrieved_outputs = retrieve_blocks(
             queries=queries_in_bulletin_board,
             blocks=self.principal.public_blocks,
             use_hyde=True,
-            top_k=self._bulletin_board_retrieval_top_k,
-            score_threshold=self._bulletin_board_retrieval_score_threshold,
+            top_k=self.model.bulletin_board.top_k,
+            score_threshold=self.model.bulletin_board.score_threshold,
         )
         self._bulletin_board_last_checked_at = self.now
         # Issue the quotes
@@ -238,24 +233,19 @@ class BuyerAgent(BazaarAgent):
         ]
         # Randomly sample a quote to accept
         if len(pending_quotes) > 0:
-            quote_to_accept = self.select_quote(pending_quotes)
-
-            quote_to_accept = np.random.choice(pending_quotes)
-            quote_to_accept.accept_quote()
-            self.transfer_to_agent(quote_to_accept.price, quote_to_accept.issued_by)
-            self._accepted_quotes.append(quote_to_accept)
-            self._quote_inbox.remove(quote_to_accept)
+            quotes_to_accept = self.select_quote(pending_quotes)
+            for quote_to_accept in quotes_to_accept:
+                quote_to_accept.accept_quote()
+                self.transfer_to_agent(quote_to_accept.price, quote_to_accept.issued_by)
+                self._accepted_quotes.append(quote_to_accept)
+                self._quote_inbox.remove(quote_to_accept)
             for quote in list(self._quote_inbox):
-                if quote.query == quote_to_accept.query:
+                if len(quotes_to_accept) == 0 or quote.query == quotes_to_accept[0].query:
                     quote.reject_quote()
                     self._quote_inbox.remove(quote)
 
     def gathered_quotes_are_good_enough(self) -> bool:
         # TODO: LEM call - with the  quotes and query
-        pass
-
-    def generate_final_response(self) -> str:
-        # TODO: LEM call - given the responses so far, generate a final response.
         pass
 
     def generate_follow_up_query(self) -> Query:
@@ -279,7 +269,8 @@ class BuyerAgent(BazaarAgent):
         # TODO: implement multi-hop queries to acquire compound information; requires splitting a query into multiple simpler queries and posting these.
         if self.response_submission_due_now:
             # Submit final response and terminate
-            response = self.generate_final_response()
+            breakpoint()
+            response = synthesize_answer(self._accepted_quotes)
             self.submit_final_response(response)
             for quote in self._quote_inbox:
                 quote.reject_quote()
@@ -288,45 +279,8 @@ class BuyerAgent(BazaarAgent):
             # Submit follow-up query
             self._query_queue.append(self.generate_follow_up_query())
 
-    def select_quote(self, candidate_quotes: List[Quote]):
-        program_string = """
-        {{#system~}}
-        You are a Question Answering Agent operating inside an information market. You will be given a question, and a bunch of passages that might have an answer to that question in them. But beware that each passage has a cost. You want to minimize the amount you spend, while maximizing the quality of your answer. You will now be presented with several options; each has a price (in USD) and some text. You have the choice to buy no passage, one passage, or multiple passages.
-        {{~/system}}
-
-        {{#user~}}
-        Your balance is ${{credit}}. Your question is: {{question}}?   
-
-        Here are your options: 
-        ---{{#each candidate_quotes}}
-        Option {{@index}} for ${{this.price}}: {{this.block}}
-        {{/each}}
-        ---
-        Please discuss each option very briefly (one line for pros, one for cons).
-        {{~/user}}
-        
-        {{#assistant~}}
-        {{gen 'procons' stop="\\n\\n" temperature=0.0}}
-        {{~/assistant}}
-        
-        {{#user~}}
-        Which of the passages would you like to purchase? Reply with {{#each candidate_quotes}}
-        OPTION {{@index}} - Buy or Pass
-        {{/each~}}
-        {{~/user}}
-        
-        {{#assistant~}}
-        {{gen 'buyorpass' stop="\\n\\n" temperature=0.0}}
-        {{~/assistant}}
-        """
-        program_string = clean_program_string(program_string)
-        guidance.llm = guidance.llms.OpenAI("gpt-3.5-turbo")
-
-        program = guidance(program_string)
-        candidates = [quote.answer_blocks[0].content for quote in candidate_quotes]
-        program(credit=100, question=self._quote_inbox[0].query.text, candidate_quotes=candidates)
-        breakpoint()
-        # TODO Custom parsing functions
+    def select_quote(self, candidate_quotes: List[Quote]) -> List[Quote]:
+        return list(select_quotes(candidate_quotes, budget=self.credit))
 
     def forward(self) -> None:
         print("Buyer Agent Run Forward")

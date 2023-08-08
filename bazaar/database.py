@@ -38,7 +38,11 @@ def retrieve_blocks(
     for query_idx, query in enumerate(queries):
         if score_threshold is not None:
             mask = cosine_similarities > score_threshold
-            block_indices_for_query = block_indices[mask]
+            try:
+                block_indices_for_query = block_indices[mask]
+            except Exception:
+                breakpoint()
+                pass
             cosine_similarities_for_query = cosine_similarities[query_idx, mask]
         else:
             block_indices_for_query = block_indices

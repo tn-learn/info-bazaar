@@ -1,6 +1,7 @@
 import yaml
 import argparse
-
+import numpy as np
+import random
 from bazaar.sim_builder import load, SimulationConfig
 from bazaar.simulator import BazaarSimulator
 
@@ -21,8 +22,11 @@ def main():
     )
     args = parser.parse_args()
     config = SimulationConfig(**yaml.load(open(args.config, "r"), Loader=yaml.FullLoader))
-
+    np.random.seed(42)
+    random.seed(42)
     results = load(path=args.dataset_path, config=config)
+    # FIXME: This is a temporary check
+    results["buyers"] = results["buyers"][0:1]
     # Make a buyer agent for each principal
     buyer_principals = results["buyers"]
     vendor_principals = results["institutions"] + results["authors"]

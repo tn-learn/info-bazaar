@@ -85,6 +85,8 @@ class Query:
             other.required_by_time,
         )
 
+    def __repr__(self):
+        return f"Query(text={self.text}, max_budget={self.max_budget}, created_at_time={self.created_at_time}, urgency={self.urgency}, required_by_time={self.required_by_time})"
 
 class QuoteStatus(Enum):
     NOT_ISSUED = "not_issued"
@@ -170,6 +172,8 @@ class Nugget:
     answer: str
     embedding: str
 
+    def __repr__(self):
+        return f"Nugget(question={self.question}, answer={self.answer})"
 
 @dataclass(frozen=True)
 class Block:
@@ -182,6 +186,8 @@ class Block:
     embedding: List[float]
     nuggets: List[Nugget] = field(default_factory=list)
 
+    def __repr__(self):
+        return f"Block(document_id={self.document_id}, document_title={self.document_title}, block_id={self.block_id})"
 
 @dataclass
 class Institution(Principal):
