@@ -91,7 +91,7 @@ def generate_embedding(text: str, model="text-embedding-ada-002"):
     return openai.Embedding.create(input=[text], model=model)["data"][0]["embedding"]
 
 
-def select_quotes(
+def select_quotes_with_heuristic(
     quotes: List[Quote],
     budget: Optional[SupportsFloat] = None,
     fraction_of_max_budget: Optional[float] = None,
@@ -210,6 +210,124 @@ def select_quotes(
     return selected_quotes
 
 
+def select_quotes_with_debate(
+    quotes: List[Quote],
+    budget: Optional[SupportsFloat] = None,
+    fraction_of_max_budget: Optional[float] = None,
+    model_name: str = "gpt-3.5-turbo",
+) -> List[Quote]:
+    assert all(
+        [quotes[0].query.compare_content(quote.query) for quote in quotes[1:]]
+    ), "All quotes must have the same query."
+    # Get the budget
+    if budget is None:
+        budget = quotes[0].query.max_budget
+    else:
+        budget = float(budget)
+    if fraction_of_max_budget is not None:
+        budget = round(fraction_of_max_budget * quotes[0].query.max_budget, 1)
+
+    # We need to scale the prices. For this, we can assume that the scaled budget
+    # will always be $100. The prices must be scaled accordingly.
+    scale_factor = 100 / budget
+
+    # Get the question
+    question = quotes[0].query.text
+    # Get the options
+    options = [
+        {
+            "answer_block": " [...] ".join(
+                [block.content for block in quote.answer_blocks]
+            ),
+            "price": max(int(round(quote.price * scale_factor)), 1),
+        }
+        for quote in quotes
+    ]
+    program_string = """
+    {{#system~}}
+    Bobby William and Michael Burry are employed by a company that specializes in acquiring information. They are trying to answer a question by purchasing information from an information market. In this market, vendors sell pieces of information at a price. 
+
+    Bobby wants to do a really good job at answering the question. This entails knowing as much as possible.
+
+    Michael, on the other hand, is financially responsible. Michael wants to make sure ensures that they don't waste money buying unnecessary information. For instance, if two pieces of information offer the same insight, then Michael would go for the cheaper one.  
+    {{~/system}}
+
+    {{#user~}}
+    The question is "{{question}}?"
+
+    Here are your options.
+    ---{{#each options}}
+    Option {{add @index 1}}: {{this.answer_block}}
+    {{/each}}---
+
+    {{#each options~}}
+    Option {{add @index 1}} costs ${{this.price}}
+    {{/each}}
+    Together, Bobby and Michael must decide which options to buy and which ones to not buy with their budget of ${{balance}}. Simulate a constructive argument between Bobby and Michael, where they debate about the usefulness of the information provided in each option towards answering the question, and whether their price is worth paying. 
+
+    Note that Bobby and Michael may choose to buy any number of options, or none at all. At the end of the argument, they must arrive at a verdict. This verdict must be printed as: 
+
+    VERDICT:
+
+    {{#each options~}}
+    Option {{add @index 1}}: <Buy or Pass>
+    {{/each}}
+    {{~/user}}
+
+    {{#assistant~}}
+    {{gen "answer" temperature=0.0 max_tokens=2048}}
+    {{~/assistant}}
+    """
+    program_string = clean_program_string(program_string)
+
+    # Run the program
+    program = guidance(program_string, llm=guidance.llms.OpenAI(model_name))  # noqa
+    program_output = program(
+        question=question,
+        options=options,
+        # Remember that the prices are scaled, and the budget normed to 100
+        balance=100,
+    )
+    answer = program_output["answer"]
+
+    # Now parse the answer
+    def extract_verdicts(s: str) -> List[bool]:
+        # Split the text into sections based on "VERDICT:"
+        sections = re.split(r"\bVERDICT\b\s*:\s*", s, flags=re.IGNORECASE)
+        if len(sections) < 2:
+            return []
+
+        # Dictionary to store the verdicts of each option
+        option_verdicts = {}
+        for section in sections[1:]:
+            # Extract options and their verdicts in a case-insensitive manner
+            options = re.findall(
+                r"Option (\d+): (Buy|Pass)", section, flags=re.IGNORECASE
+            )
+
+            for option_num, verdict in options:
+                option_num = int(option_num)
+                is_buy = verdict.lower() == "buy"
+
+                # Check if this option was seen before
+                if option_num in option_verdicts:
+                    # If the verdict is inconsistent, raise an exception
+                    if option_verdicts[option_num] != is_buy:
+                        raise ValueError(
+                            f"Inconsistent verdict for Option {option_num}."
+                        )
+                else:
+                    option_verdicts[option_num] = is_buy
+
+        # Convert the verdicts dictionary to a sorted list based on option numbers
+        return [option_verdicts[num] for num in sorted(option_verdicts.keys())]
+
+    # Parse the verdicts, select the quotes and return
+    verdicts = extract_verdicts(answer)
+    selected_quotes = [quote for quote, verdict in zip(quotes, verdicts) if verdict]
+    return selected_quotes
+
+
 def synthesize_answer(quotes: List[Quote], model_name="gpt-3.5-turbo") -> str:
     question = quotes[0].query.text
     passages = [
@@ -268,10 +386,14 @@ def synthesize_answer(quotes: List[Quote], model_name="gpt-3.5-turbo") -> str:
             if idx < len(sections) - 1:
                 # If it's not the last section, find the next section to determine the end index
                 end_idx = text.find(sections[idx + 1])
-                parts[section.strip(":").lower()] = text[start_idx + len(section):end_idx].strip()
+                parts[section.strip(":").lower()] = text[
+                    start_idx + len(section) : end_idx
+                ].strip()
             else:
                 # If it's the last section, use the end of the text
-                parts[section.strip(":").lower()] = text[start_idx + len(section):].strip()
+                parts[section.strip(":").lower()] = text[
+                    start_idx + len(section) :
+                ].strip()
 
         return parts
 

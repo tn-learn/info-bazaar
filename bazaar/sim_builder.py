@@ -4,7 +4,14 @@ from typing import Tuple, List
 
 import numpy as np
 
-from bazaar.schema import Block, Query, BuyerPrincipal, Institution, Author, BulletinBoard
+from bazaar.schema import (
+    Block,
+    Query,
+    BuyerPrincipal,
+    Institution,
+    Author,
+    BulletinBoard,
+)
 
 
 @dataclass
@@ -33,6 +40,9 @@ class SimulationConfig:
     # Query creation times
     query_creation_time_start: int
     query_creation_time_end: int
+    # Buyer agent kwargs
+    buyer_agent_kwargs: dict
+    vendor_agent_kwargs: dict
 
 
 def load(path: str, config: SimulationConfig):
@@ -52,12 +62,12 @@ def load(path: str, config: SimulationConfig):
         "bulletin_board": bulletin_board,
     }
 
+
 def build_bulletin_board(config: SimulationConfig, rng: np.random.RandomState):
     return BulletinBoard(
-        top_k=config.bulletin_board_retrieval_top_k, score_threshold=config.bulletin_board_retrieval_score_threshold
+        top_k=config.bulletin_board_retrieval_top_k,
+        score_threshold=config.bulletin_board_retrieval_score_threshold,
     )
-
-
 
 
 def build_buyers(
@@ -86,13 +96,16 @@ def build_buyers(
                     created_at_time=created_at_time,
                 )
                 buyer = BuyerPrincipal(
-                    name=f"buyer-{block['block_id']}-{idx}", query=query,
+                    name=f"buyer-{block['block_id']}-{idx}",
+                    query=query,
                 )
                 buyers.append(buyer)
     return buyers
 
+
 def sample_block_prices(mean: float, sigma: float, blocks: List["Block"]):
     return np.random.lognormal(mean=mean, sigma=sigma, size=len(blocks))
+
 
 def allocate_block_prices(entity, mean, sigma, rng):
     # Sample block prices from a log normal distribution
@@ -104,6 +117,7 @@ def allocate_block_prices(entity, mean, sigma, rng):
     for idx, block_id in enumerate(entity.public_blocks.keys()):
         entity.block_prices[block_id] = block_prices[idx]
     return entity
+
 
 def shuffle_blocks(entity, fraction_to_move, rng):
     num_blocks = len(entity.public_blocks)
@@ -118,9 +132,12 @@ def shuffle_blocks(entity, fraction_to_move, rng):
         del entity.public_blocks[key]
     return entity
 
+
 def distribute_blocks(authors, institutions, config, rng):
     for author in authors.values():
-        author = allocate_block_prices(author, config.author_block_price_mean, config.author_block_price_sigma, rng)
+        author = allocate_block_prices(
+            author, config.author_block_price_mean, config.author_block_price_sigma, rng
+        )
         author = shuffle_blocks(author, config.author_fraction_of_private_blocks, rng)
         # Sample response time from a log normal distribution
         author.mean_response_time = rng.lognormal(
@@ -130,14 +147,22 @@ def distribute_blocks(authors, institutions, config, rng):
         )
 
     for institution in institutions.values():
-        institution = allocate_block_prices(institution, config.author_block_price_mean, config.author_block_price_sigma, rng)
-        institution = shuffle_blocks(institution, config.author_fraction_of_private_blocks, rng)
+        institution = allocate_block_prices(
+            institution,
+            config.author_block_price_mean,
+            config.author_block_price_sigma,
+            rng,
+        )
+        institution = shuffle_blocks(
+            institution, config.author_fraction_of_private_blocks, rng
+        )
         institution.mean_response_time = rng.lognormal(
             mean=config.author_response_time_mean,
             sigma=config.author_response_time_sigma,
             size=1,
         )
     return authors, institutions
+
 
 def build_authors_and_institutions(
     dataset: dict, config: SimulationConfig, rng: np.random.RandomState
@@ -148,11 +173,11 @@ def build_authors_and_institutions(
 
     for arxiv_id, data in dataset.items():
         for authorship in data["authorships"]:
-            for ins in authorship["institutions"]:
-                if ins["id"] not in institutions:
-                    ins["name"] = ins["display_name"]
-                    del ins["display_name"]
-                    institutions[ins["id"]] = Institution(**ins)
+            for institution in authorship["institutions"]:
+                if institution["id"] not in institutions:
+                    institution["name"] = institution["display_name"]
+                    del institution["display_name"]
+                    institutions[institution["id"]] = Institution(**institution)
             author = authorship["author"]
             author["name"] = author["display_name"]
             del author["display_name"]
@@ -174,13 +199,17 @@ def build_authors_and_institutions(
                 num_tokens=block["num_tokens"],
                 embedding=block["embedding"],
             )
-
             for authorship in data["authorships"]:
-                for ins in authorship["institutions"]:
-                    institutions[ins["id"]].public_blocks[block_obj.block_id] = block_obj
-                authors[authorship["author"]["id"]].public_blocks[
-                    block_obj.block_id
-                ] = block_obj
+                if authorship.get("author_position") == "first":
+                    institution = authorship.get("institutions", [])
+                    if not institution:
+                        continue
+                    institutions[institution[0]["id"]].public_blocks[
+                        block_obj.block_id
+                    ] = block_obj
+                    authors[authorship["author"]["id"]].public_blocks[
+                        block_obj.block_id
+                    ] = block_obj
 
     # Distribute blocks in authors and institutions
     authors, institutions = distribute_blocks(authors, institutions, config, rng)

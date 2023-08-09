@@ -1,9 +1,17 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, List, Union, Optional, Dict
+from typing import TYPE_CHECKING, List, Union, Optional, Dict, Any
 
 if TYPE_CHECKING:
     from bazaar.simulator import BuyerAgent, VendorAgent
+
+
+def repr_factory(obj, **attributes):
+    class_name = obj.__class__.__name__
+    attribute_strings = []
+    for attribute_name, attribute_value in attributes.items():
+        attribute_strings.append(f"{attribute_name}={attribute_value}")
+    return f"{class_name}({', '.join(attribute_strings)})"
 
 
 @dataclass
@@ -86,7 +94,31 @@ class Query:
         )
 
     def __repr__(self):
-        return f"Query(text={self.text}, max_budget={self.max_budget}, created_at_time={self.created_at_time}, urgency={self.urgency}, required_by_time={self.required_by_time})"
+        return repr_factory(
+            self,
+            text=self.text,
+            max_budget=self.max_budget,
+            created_at_time=self.created_at_time,
+            urgency=self.urgency,
+            required_by_time=self.required_by_time,
+            issued_by=(
+                self.issued_by.unique_id if self.issued_by is not None else None
+            ),
+        )
+
+    def evaluation_summary(self) -> Dict[str, Any]:
+        return dict(
+            text=self.text,
+            max_budget=float(self.max_budget),
+            created_at_time=self.created_at_time,
+            urgency=self.urgency,
+            required_by_time=self.required_by_time,
+            issued_by=(
+                self.issued_by.unique_id if self.issued_by is not None else None
+            ),
+            gold_block_id=self._gold_block_id,
+        )
+
 
 class QuoteStatus(Enum):
     NOT_ISSUED = "not_issued"
@@ -123,6 +155,21 @@ class Quote:
         self.quote_status = QuoteStatus.PENDING
         return self
 
+    def __repr__(self):
+        return repr_factory(
+            self,
+            query=self.query,
+            price=self.price,
+            answer_blocks=self.answer_blocks,
+            relevance_scores=self.relevance_scores,
+            created_at_time=self.created_at_time,
+            issued_by=(
+                self.issued_by.unique_id if self.issued_by is not None else None
+            ),
+            eta=self.eta,
+            quote_status=self.quote_status,
+        )
+
 
 @dataclass
 class BulletinBoard:
@@ -147,10 +194,14 @@ class BulletinBoard:
 class Principal:
     name: str
 
+    def evaluation_summary(self) -> Dict[str, Any]:
+        return dict(name=self.name)
+
 
 @dataclass
 class BuyerPrincipal(Principal):
     query: Optional[Query] = None
+    answer: Optional[Answer] = None
 
     def bind_query(self, query: Query):
         assert self.query is None, "Cannot overwrite query."
@@ -165,6 +216,27 @@ class BuyerPrincipal(Principal):
             return float("inf")
         return self.query.required_by_time - now
 
+    def submit_final_response(
+        self,
+        answer: Optional[str] = None,
+        success: Optional[bool] = None,
+        blocks: Optional[List] = None,
+    ) -> "BuyerPrincipal":
+        if success is None:
+            success = answer is not None
+        if blocks is None:
+            blocks = []
+        self.answer = Answer(success=success, text=answer, blocks=blocks)
+        return self
+
+    def evaluation_summary(self) -> Dict[str, Any]:
+        super_summary = super().evaluation_summary()
+        return dict(
+            **super_summary,
+            query=self.query.evaluation_summary(),
+            answer=self.answer.evaluation_summary(),
+        )
+
 
 @dataclass(frozen=True)
 class Nugget:
@@ -174,6 +246,7 @@ class Nugget:
 
     def __repr__(self):
         return f"Nugget(question={self.question}, answer={self.answer})"
+
 
 @dataclass(frozen=True)
 class Block:
@@ -187,7 +260,16 @@ class Block:
     nuggets: List[Nugget] = field(default_factory=list)
 
     def __repr__(self):
-        return f"Block(document_id={self.document_id}, document_title={self.document_title}, block_id={self.block_id})"
+        return repr_factory(
+            self,
+            document_id=self.document_id,
+            document_title=self.document_title,
+            block_id=self.block_id,
+        )
+
+    def evaluation_summary(self) -> Dict[str, Any]:
+        return dict(block_id=self.block_id, content=self.content)
+
 
 @dataclass
 class Institution(Principal):
@@ -201,6 +283,21 @@ class Institution(Principal):
 
     def __hash__(self):
         return hash(self.id)
+
+    def evaluation_summary(self) -> Dict[str, Any]:
+        return dict(
+            **super().evaluation_summary(),
+            id=self.id,
+            type=self.type,
+            ror=self.ror,
+            public_blocks=[
+                block.evaluation_summary() for block in self.public_blocks.values()
+            ],
+            private_blocks=[
+                block.evaluation_summary() for block in self.private_blocks.values()
+            ],
+            block_prices=self.block_prices,
+        )
 
 
 @dataclass
@@ -217,12 +314,24 @@ class Author(Principal):
     def __hash__(self):
         return hash(self.id)
 
-
-@dataclass
-class Vendor:
-    principal: Union[Author, Institution]
-    block_price: List[int]
-    observed_blocks: Optional[List[Block]] = field(default_factory=list)
+    def evaluation_summary(self) -> Dict[str, Any]:
+        return dict(
+            **super().evaluation_summary(),
+            id=self.id,
+            last_known_institution=(
+                self.last_known_institution.id
+                if self.last_known_institution is not None
+                else None
+            ),
+            related_concepts=self.related_concepts,
+            public_blocks=[
+                block.evaluation_summary() for block in self.public_blocks.values()
+            ],
+            private_blocks=[
+                block.evaluation_summary() for block in self.private_blocks.values()
+            ],
+            block_prices={k: float(v) for k, v in self.block_prices.items()},
+        )
 
 
 class AgentStatus(Enum):
