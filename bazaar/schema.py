@@ -28,6 +28,7 @@ class Query:
     _text_embedding: Optional[List[float]] = None
     _hyde_text: Optional[str] = None
     _hyde_embedding: Optional[List[float]] = None
+    _gold_block_id: Optional[str] = None
 
     def __post_init__(self):
         if self.urgency is not None:
@@ -133,6 +134,7 @@ class QuoteStatus(Enum):
 class Quote:
     query: Query
     price: float
+    relevance_scores: List[float]
     created_at_time: int
     issued_by: "VendorAgent"
     answer_blocks: List["Block"] = field(default_factory=list)
@@ -196,6 +198,20 @@ class Principal:
 
     def evaluation_summary(self) -> Dict[str, Any]:
         return dict(name=self.name)
+
+
+@dataclass
+class Answer:
+    success: bool
+    text: Optional[str] = None
+    blocks: List["Block"] = field(default_factory=list)
+
+    def evaluation_summary(self) -> Dict[str, Any]:
+        return dict(
+            success=self.success,
+            text=self.text,
+            blocks=[block.evaluation_summary() for block in self.blocks],
+        )
 
 
 @dataclass

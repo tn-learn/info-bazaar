@@ -94,6 +94,7 @@ def build_buyers(
                     max_budget=max_budget,
                     urgency=urgency,
                     created_at_time=created_at_time,
+                    _gold_block_id=block["block_id"]
                 )
                 buyer = BuyerPrincipal(
                     name=f"buyer-{block['block_id']}-{idx}",

@@ -11,6 +11,10 @@ buyer_max_budget_mean: 5
 buyer_max_budget_sigma: 3
 buyer_urgency_min: 1
 buyer_urgency_max: 10
+buyer_agent_kwargs:
+  quote_review_top_k: 3
+  num_quote_gathering_steps: 2
+vendor_agent_kwargs: {}
 query_creation_time_start: 0
 query_creation_time_end: 168
 bulletin_board_retrieval_top_k: 1

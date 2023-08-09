@@ -185,7 +185,6 @@ class VendorAgent(BazaarAgent):
 
     def forward(self) -> None:
         # Step 1: Check the bulletin board for new queries
-        print(f"Agent {self.unique_id} is checking the bulletin board...")
         self.check_bulletin_board_and_issue_quotes()
 
 
@@ -345,7 +344,6 @@ class BuyerAgent(BazaarAgent):
         return list(select_quotes_with_debate(candidate_quotes, budget=self.credit))
 
     def forward(self) -> None:
-        print("Buyer Agent Run Forward")
         # Step 1: Check if there are quotes in the inbox that need to be processed.
         self.process_quotes()
         # Step 2: Check if there are queries that need to be submitted to the bulletin board
