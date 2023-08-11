@@ -201,6 +201,7 @@ class BuyerAgent(BazaarAgent):
         self._submitted_queries: List[Query] = []
         self._quote_inbox: List[Quote] = []
         self._accepted_quotes: List[Quote] = []
+        self._rejected_quotes: List[Quote] = []
         self._final_response: Optional[str] = None
         # Publics
         self.quote_review_top_k = quote_review_top_k
@@ -235,6 +236,11 @@ class BuyerAgent(BazaarAgent):
                 for quote in self._accepted_quotes
                 for block in quote.answer_blocks
             ],
+            relevance_scores=[
+                relevance_score
+                for quote in self._accepted_quotes
+                for relevance_score in quote.relevance_scores
+            ]
         )
         return self.terminate_agent()  # F
 
@@ -254,6 +260,19 @@ class BuyerAgent(BazaarAgent):
                 self.model.bulletin_board.post(query)
                 self._query_queue.remove(query)
                 self._submitted_queries.append(query)
+
+    def accept_quote(self, quote: Quote) -> "BuyerAgent":
+        quote.accept_quote()
+        self.transfer_to_agent(quote.price, quote.issued_by)
+        self._accepted_quotes.append(quote)
+        self._quote_inbox.remove(quote)
+        return self
+
+    def reject_quote(self, quote: Quote) -> "BuyerAgent":
+        quote.reject_quote()
+        self._rejected_quotes.append(quote)
+        self._quote_inbox.remove(quote)
+        return self
 
     def process_quotes(self):
         """
@@ -282,17 +301,13 @@ class BuyerAgent(BazaarAgent):
         ):
             quotes_to_accept = self.select_quote(valid_pending_quotes)
             for quote_to_accept in quotes_to_accept:
-                quote_to_accept.accept_quote()
-                self.transfer_to_agent(quote_to_accept.price, quote_to_accept.issued_by)
-                self._accepted_quotes.append(quote_to_accept)
-                self._quote_inbox.remove(quote_to_accept)
+                self.accept_quote(quote_to_accept)
             for quote in list(self._quote_inbox):
                 if (
                     len(quotes_to_accept) == 0
                     or quote.query == quotes_to_accept[0].query
                 ):
-                    quote.reject_quote()
-                    self._quote_inbox.remove(quote)
+                    self.reject_quote(quote)
 
     def gathered_quotes_are_good_enough(self) -> bool:
         # TODO: LEM call - with the  quotes and query
@@ -324,8 +339,8 @@ class BuyerAgent(BazaarAgent):
             else:
                 response = None
             self.submit_final_response(response)
-            for quote in self._quote_inbox:
-                quote.reject_quote()
+            for quote in list(self._quote_inbox):
+                self.reject_quote(quote)
 
         elif self.needs_to_generate_follow_up_query():
             # Submit follow-up query
@@ -350,6 +365,18 @@ class BuyerAgent(BazaarAgent):
         self.post_queries_to_bulletin_board()
         # Step 3: Finalize the step (this decides what happens in the next step)
         self.finalize_step()
+
+    def evaluation_summary(self) -> Dict[str, Any]:
+        summary = super().evaluation_summary()
+        summary.update(
+            dict(
+                accepted_quotes=[quote.evaluation_summary() for quote in self._accepted_quotes],
+                rejected_quotes=[quote.evaluation_summary() for quote in self._rejected_quotes],
+                submitted_queries=[query.evaluation_summary() for query in self._submitted_queries],
+                quote_inbox=[quote.evaluation_summary() for quote in self._quote_inbox],
+            )
+        )
+        return summary
 
 
 class BazaarSimulator(mesa.Model):

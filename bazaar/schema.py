@@ -118,6 +118,7 @@ class Query:
                 self.issued_by.unique_id if self.issued_by is not None else None
             ),
             gold_block_id=self._gold_block_id,
+            hyde_text=self.hyde_text,
         )
 
 
@@ -172,6 +173,20 @@ class Quote:
             quote_status=self.quote_status,
         )
 
+    def evaluation_summary(self) -> Dict[str, Any]:
+        return dict(
+            query=self.query.evaluation_summary(),
+            price=float(self.price),
+            answer_blocks=[block.evaluation_summary() for block in self.answer_blocks],
+            relevance_scores=[float(s) for s in self.relevance_scores],
+            created_at_time=self.created_at_time,
+            issued_by=(
+                self.issued_by.unique_id if self.issued_by is not None else None
+            ),
+            eta=self.eta,
+            quote_status=str(self.quote_status),
+        )
+
 
 @dataclass
 class BulletinBoard:
@@ -205,12 +220,19 @@ class Answer:
     success: bool
     text: Optional[str] = None
     blocks: List["Block"] = field(default_factory=list)
+    relevance_scores: List[float] = field(default_factory=list)
+
+    def __post_init__(self):
+        assert len(self.blocks) == len(
+            self.relevance_scores
+        ), "Must have same number of blocks and relevance scores."
 
     def evaluation_summary(self) -> Dict[str, Any]:
         return dict(
             success=self.success,
             text=self.text,
             blocks=[block.evaluation_summary() for block in self.blocks],
+            relevance_scores=[float(s) for s in self.relevance_scores],
         )
 
 
@@ -237,12 +259,20 @@ class BuyerPrincipal(Principal):
         answer: Optional[str] = None,
         success: Optional[bool] = None,
         blocks: Optional[List] = None,
+        relevance_scores: Optional[List] = None,
     ) -> "BuyerPrincipal":
         if success is None:
             success = answer is not None
         if blocks is None:
             blocks = []
-        self.answer = Answer(success=success, text=answer, blocks=blocks)
+        if relevance_scores is None:
+            relevance_scores = []
+        self.answer = Answer(
+            success=success,
+            text=answer,
+            blocks=blocks,
+            relevance_scores=relevance_scores,
+        )
         return self
 
     def evaluation_summary(self) -> Dict[str, Any]:

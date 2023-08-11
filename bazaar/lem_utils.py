@@ -402,6 +402,177 @@ def synthesize_answer(quotes: List[Quote], model_name="gpt-3.5-turbo") -> str:
     return answer
 
 
+def get_closed_book_answer(question: str, model_name="gpt-3.5-turbo") -> str:
+    program_string = """
+    {{#system~}}
+    You are an intelligent AI assistant. You will be given a question. Your task is to answer it to the best of your ability. 
+    {{~/system}}
+    
+    {{#user~}}
+    {{question}}
+    {{~/user}}
+    
+    {{#assistant~}}
+    {{gen "answer" temperature=0.0 max_tokens=512}}
+    {{~/assistant}}
+    """
+    program_string = clean_program_string(program_string)
+    # Run the program
+    program = guidance(program_string, llm=guidance.llms.OpenAI(model_name))  # noqa
+    program_output = program(question=question)
+    answer = program_output["answer"]
+    # Done
+    return answer
+
+
+def get_open_book_answer(
+    question: str, gold_passage: str, model_name="gpt-3.5-turbo"
+) -> str:
+    program_string = """
+    {{#system~}}
+    You are an intelligent AI assistant. You will be given a question, and a passage that contains the answer to that question. Your task is to answer the question to the best of your ability using the information in the passage.
+    {{~/system}}
+    
+    {{#user~}}
+    Question: {{question}}
+    
+    Passage with Answer: "{{gold_passage}}"
+    {{~/user}}
+    
+    {{#assistant~}}
+    {{gen "answer" temperature=0.0 max_tokens=512}}
+    {{~/assistant}}
+    """
+    program_string = clean_program_string(program_string)
+    # Run the program
+    program = guidance(program_string, llm=guidance.llms.OpenAI(model_name))  # noqa
+    program_output = program(question=question, gold_passage=gold_passage)
+    answer = program_output["answer"]
+    # Done
+    return answer
+
+
+def evaluate_answer_with_debate(
+    question: str,
+    gold_passage: str,
+    retrieved_answer: Optional[str],
+    open_book_answer: str,
+    closed_book_answer: str,
+    model_name="gpt-4",
+) -> Dict[str, Dict[str, int]]:
+    program_string = """
+    {{#system~}}
+    Bobby and Michael are college professors co-teaching a class on Machine Learning. It's the end of semester, and their three students took the final exams. Bobby and Michael must now grade their exams. 
+
+    There are no absolute grades for their class, meaning that the grades are relative. Bobby and Michael must therefore collectively decide how a student's answer ranks along several dimensions, namely:
+    1. Comprehensiveness.
+    2. Correctness.
+    3. Simplicity. 
+    4. Relevance. 
+    
+    You will be given the question, a passage containing the true gold answer ("gold passage"), and the answers of each student. Your task is to simulate a constructive argument between Bobby and Michael, as they deliberate how to rank each student along these dimensions. It's important for you to note that there cannot be ties. When they are done, they will produce a ranking as follows: 
+    
+    COMPREHENSIVENESS: 
+    Rank 1: <name>
+    Rank 2: <name> 
+    Rank 3: <name>
+    
+    CORRECTNESS: 
+    Rank 1: <name>
+    Rank 2: <name> 
+    Rank 3: <name>
+    
+    SIMPLICITY: 
+    Rank 1: <name>
+    Rank 2: <name> 
+    Rank 3: <name>
+    
+    RELEVANCE: 
+    Rank 1: <name>
+    Rank 2: <name> 
+    Rank 3: <name>
+    {{~/system}}
+    
+    {{#user~}}
+    Question: {{question}}
+    
+    Gold Passage: "{{gold_passage}}"
+    
+    Answer of John: {{open_book_answer}}
+    
+    Answer of James: {{closed_book_answer}}
+    
+    Answer of Robert: {{retrieved_answer}}
+    {{~/user}}
+    
+    {{#assistant~}}
+    {{gen "answer" temperature=0.0 max_tokens=2048}}
+    {{~/assistant}}
+    """
+    program_string = clean_program_string(program_string)
+    # Run the program
+    program = guidance(program_string, llm=guidance.llms.OpenAI(model_name))  # noqa
+    excuse_answer = "I'm sorry, I cannot not answer this question. I pass."
+    program_output = program(
+        question=question,
+        gold_passage=gold_passage,
+        retrieved_answer=(
+            retrieved_answer if retrieved_answer is not None else excuse_answer
+        ),
+        open_book_answer=open_book_answer,
+        closed_book_answer=closed_book_answer,
+    )
+    answer = program_output["answer"]
+
+    # Parse the answer.
+    def extract_ranks(text: str) -> Dict[str, List[str]]:
+        # Splitting the text into potential categories with case-insensitive matching
+        potential_categories = re.split(r"([A-Za-z]+):", text, flags=re.IGNORECASE)[1:]
+        potential_categories = [
+            potential_categories[i : i + 2]
+            for i in range(0, len(potential_categories), 2)
+        ]
+
+        result_dict = {}
+        for category, ranks in potential_categories:
+            # Extracting names based on "Rank n: Name" pattern
+            names = re.findall(r"Rank \d+: (\w+)", ranks, flags=re.IGNORECASE)
+            if names:  # Only include categories that have ranks
+                result_dict[category.lower()] = names
+
+        return result_dict
+
+    rank_dict = extract_ranks(answer)
+
+    # Create a set of unique names
+    unique_names = set()
+    for ranks in rank_dict.values():
+        unique_names.update(ranks)
+
+    # Calculate max score
+    max_score = max(len(ranks) for ranks in rank_dict.values()) - 1
+
+    # Convert ranks to scores
+    score_dict = {}
+    for name in unique_names:
+        scores = {}
+        for category, ranks in rank_dict.items():
+            # If the name is in the ranks, then score is max_score - rank
+            # If the name is not in the ranks, then score is None
+            score = max_score - ranks.index(name) if name in ranks else None
+            scores[category] = score
+        score_dict[name] = scores
+
+    # Map the fake names back to the real names
+    name_map = {
+        "John": "open_book",
+        "James": "closed_book",
+        "Robert": "retrieved",
+    }
+    score_dict = {name_map[name]: scores for name, scores in score_dict.items()}
+    return score_dict
+
+
 def _test_main():
     question = "Who proposed variational inference?"
 

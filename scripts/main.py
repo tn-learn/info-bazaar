@@ -4,8 +4,7 @@ import yaml
 import argparse
 import numpy as np
 import random
-
-from coolname import generate_slug
+import datetime
 import git
 
 from bazaar.py_utils import dump_dict
@@ -28,6 +27,7 @@ def root_dir_slash(path: str) -> str:
 
 
 def main():
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
     # make argparser
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -44,7 +44,7 @@ def main():
     parser.add_argument(
         "--output_path",
         type=str,
-        default=root_dir_slash(f"runs/{generate_slug(2)}"),
+        default=root_dir_slash(f"runs/{timestamp}"),
     )
     args = parser.parse_args()
     config = SimulationConfig(
@@ -59,7 +59,7 @@ def main():
         config=config,
     )
     # FIXME: This is a temporary check
-    results["buyers"] = results["buyers"][50:51]
+    results["buyers"] = results["buyers"][59:61]
     # Make a buyer agent for each principal
     buyer_principals = results["buyers"]
     vendor_principals = results["institutions"] + results["authors"]
