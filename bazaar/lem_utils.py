@@ -1,9 +1,121 @@
-from typing import List, Optional, SupportsFloat, Dict
+import os
+from collections import defaultdict
+from typing import List, Optional, SupportsFloat, Dict, Any
+import types
+
 import re
 import guidance
 import openai
 
 from bazaar.schema import Quote
+
+
+class LLaMa2(guidance.llms.Transformers):
+    llm_name: str = None
+    default_system_prompt = (
+        """A chat between a curious user and an artificial intelligence assistant. """
+        """The assistant gives helpful, detailed, and polite answers to the user's questions."""
+    )
+
+    def __init__(
+        self,
+        hf_auth_token: Optional[str] = None,
+        cache_directory: Optional[str] = None,
+        size: str = "70b",
+        monitor_model: bool = False,
+    ):
+        import transformers
+        import torch
+
+        # Get the huggingface auth token if not provided
+        if hf_auth_token is None:
+            hf_auth_token = os.getenv("HF_AUTH_TOKEN")
+        if hf_auth_token is None:
+            raise ValueError(
+                "HuggingFace auth token not provided (set with export HF_AUTH_TOKEN=...)"
+            )
+        # Get the cache directory
+        if cache_directory is None:
+            cache_directory = os.getenv("HF_CACHE_DIRECTORY")
+        if cache_directory is None:
+            raise ValueError(
+                "HuggingFace cache directory not provided (set with export HF_CACHE_DIRECTORY=...)"
+            )
+        # Build the model
+        bnb_config = transformers.BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_compute_dtype=torch.bfloat16,
+        )
+        assert size in ["7b", "13b", "70b"]
+        model_id = f"meta-llama/Llama-2-{size}-chat-hf"
+        model_config = transformers.AutoConfig.from_pretrained(
+            model_id, use_auth_token=hf_auth_token, cache_dir=cache_directory
+        )
+        model = transformers.AutoModelForCausalLM.from_pretrained(
+            model_id,
+            config=model_config,
+            trust_remote_code=True,
+            quantization_config=bnb_config,
+            device_map="auto",
+            use_auth_token=hf_auth_token,
+            cache_dir=cache_directory,
+        )
+        tokenizer = transformers.AutoTokenizer.from_pretrained(
+            model_id, use_auth_token=hf_auth_token, cache_dir=cache_directory
+        )
+        # Patch monitor if required
+        if monitor_model:
+            self.model_monitor = self.patch_generate_with_input_monitor_(model)
+        super().__init__(model=model, tokenizer=tokenizer)
+        self.chat_mode = True
+
+    @staticmethod
+    def role_start(role):
+        if role == "system":
+            return " [INST] <<SYS>>\n"
+        elif role == "user":
+            return ""
+        elif role == "assistant":
+            return ""
+        else:
+            raise ValueError(f"Unknown role {role}")
+
+    @staticmethod
+    def role_end(role):
+        if role == "system":
+            return "\n</SYS>>\n\n"
+        elif role == "user":
+            return " [/INST] "
+        elif role == "assistant":
+            return "</s><s>[INST] "
+
+    def encode(self, string, **kwargs):
+        encoded = super().encode(string, **kwargs)
+        if self.tokenizer.bos_token_id == encoded[0]:
+            # Remove the bos token
+            encoded = encoded[1:]
+        return encoded
+
+    @staticmethod
+    def patch_generate_with_input_monitor_(model: Any):
+        monitor = defaultdict(list)
+
+        # Define the new generate method
+        def generate(*args, **kwargs):
+            # Call the original generate method
+            output = model.generate(*args, **kwargs)
+            # Update the monitor
+            monitor["args"].append(args)
+            monitor["kwargs"].append(kwargs)
+            monitor["output"].append(output)
+            return output
+
+        # Patch the generate method
+        model._old_generate = model.generate
+        model.generate = types.MethodType(generate, model)
+        return monitor
 
 
 def clean_program_string(program_string: str, indent: Optional[int] = None) -> str:
