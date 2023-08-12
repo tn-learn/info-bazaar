@@ -6,8 +6,33 @@ import types
 import re
 import guidance
 import openai
+import diskcache
+from guidance.llms.caches import Cache
 
 from bazaar.schema import Quote
+
+
+class DiskCache(Cache):
+    """DiskCache is a cache that uses diskcache lib."""
+
+    def __init__(self, cache_directory: str, llm_name: str):
+        self._diskcache = diskcache.Cache(
+            os.path.join(
+                cache_directory, f"_{llm_name}.diskcache"
+            )
+        )
+
+    def __getitem__(self, key: str) -> str:
+        return self._diskcache[key]
+
+    def __setitem__(self, key: str, value: str) -> None:
+        self._diskcache[key] = value
+
+    def __contains__(self, key: str) -> bool:
+        return key in self._diskcache
+
+    def clear(self):
+        self._diskcache.clear()
 
 
 class LLaMa2(guidance.llms.Transformers):
@@ -20,7 +45,8 @@ class LLaMa2(guidance.llms.Transformers):
     def __init__(
         self,
         hf_auth_token: Optional[str] = None,
-        cache_directory: Optional[str] = None,
+        hf_cache_directory: Optional[str] = None,
+        guidance_cache_directory: Optional[str] = None,
         size: str = "70b",
         monitor_model: bool = False,
     ):
@@ -35,9 +61,9 @@ class LLaMa2(guidance.llms.Transformers):
                 "HuggingFace auth token not provided (set with export HF_AUTH_TOKEN=...)"
             )
         # Get the cache directory
-        if cache_directory is None:
-            cache_directory = os.getenv("HF_CACHE_DIRECTORY")
-        if cache_directory is None:
+        if hf_cache_directory is None:
+            hf_cache_directory = os.getenv("HF_CACHE_DIRECTORY")
+        if hf_cache_directory is None:
             raise ValueError(
                 "HuggingFace cache directory not provided (set with export HF_CACHE_DIRECTORY=...)"
             )
@@ -51,7 +77,7 @@ class LLaMa2(guidance.llms.Transformers):
         assert size in ["7b", "13b", "70b"]
         model_id = f"meta-llama/Llama-2-{size}-chat-hf"
         model_config = transformers.AutoConfig.from_pretrained(
-            model_id, use_auth_token=hf_auth_token, cache_dir=cache_directory
+            model_id, use_auth_token=hf_auth_token, cache_dir=hf_cache_directory
         )
         model = transformers.AutoModelForCausalLM.from_pretrained(
             model_id,
@@ -60,16 +86,24 @@ class LLaMa2(guidance.llms.Transformers):
             quantization_config=bnb_config,
             device_map="auto",
             use_auth_token=hf_auth_token,
-            cache_dir=cache_directory,
+            cache_dir=hf_cache_directory,
         )
         tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model_id, use_auth_token=hf_auth_token, cache_dir=cache_directory
+            model_id, use_auth_token=hf_auth_token, cache_dir=hf_cache_directory
         )
         # Patch monitor if required
         if monitor_model:
             self.model_monitor = self.patch_generate_with_input_monitor_(model)
+        else:
+            self.model_monitor = None
+        # Init the super
         super().__init__(model=model, tokenizer=tokenizer)
+        # Configure the base class
         self.chat_mode = True
+        if guidance_cache_directory is not None:
+            # Set a custom cache directory. This is needed for MPI cluster because
+            # sqlite is borked on ~/
+            self.cache = DiskCache(guidance_cache_directory, self.llm_name)
 
     @staticmethod
     def role_start(role):
