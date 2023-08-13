@@ -135,11 +135,12 @@ class LLaMa2(guidance.llms.Transformers):
     @staticmethod
     def patch_generate_with_input_monitor_(model: Any):
         monitor = defaultdict(list)
+        old_generate = model.generate
 
         # Define the new generate method
         def generate(*args, **kwargs):
             # Call the original generate method
-            output = model.generate(*args, **kwargs)
+            output = old_generate(*args, **kwargs)
             # Update the monitor
             monitor["args"].append(args)
             monitor["kwargs"].append(kwargs)
@@ -147,7 +148,7 @@ class LLaMa2(guidance.llms.Transformers):
             return output
 
         # Patch the generate method
-        model._old_generate = model.generate
+        model._old_generate = old_generate
         model.generate = types.MethodType(generate, model)
         return monitor
 
