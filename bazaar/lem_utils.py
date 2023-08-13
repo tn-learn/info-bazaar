@@ -109,7 +109,7 @@ class LLaMa2(guidance.llms.Transformers):
     @staticmethod
     def role_start(role):
         if role == "system":
-            return " [INST] <<SYS>>\n"
+            return "<s>[INST] <<SYS>>\n"
         elif role == "user":
             return ""
         elif role == "assistant":
