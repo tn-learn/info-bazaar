@@ -104,6 +104,7 @@ class LLaMa2(guidance.llms.Transformers):
             # Set a custom cache directory. This is needed for MPI cluster because
             # sqlite is borked on ~/
             self.cache = DiskCache(guidance_cache_directory, self.llm_name)
+        self.llm_name = model_id.split("/")[-1]
 
     @staticmethod
     def role_start(role):
@@ -138,7 +139,7 @@ class LLaMa2(guidance.llms.Transformers):
         old_generate = model.generate
 
         # Define the new generate method
-        def generate(*args, **kwargs):
+        def generate(self, *args, **kwargs):
             # Call the original generate method
             output = old_generate(*args, **kwargs)
             # Update the monitor
