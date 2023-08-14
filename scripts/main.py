@@ -6,10 +6,24 @@ import numpy as np
 import random
 import datetime
 import git
+import json
 
-from bazaar.py_utils import dump_dict
 from bazaar.sim_builder import load, SimulationConfig
 from bazaar.simulator import BazaarSimulator
+
+def dump_dict(data_dict: dict, file_path: str) -> None:
+    """
+    Dumps the given dictionary into a JSON file at the specified path.
+
+    Args:
+    - data_dict (dict): The dictionary to be saved.
+    - file_path (str): The path to the file where the dictionary should be saved.
+
+    Returns:
+    - None
+    """
+    with open(file_path, 'w') as file:
+        json.dump(data_dict, file, indent=4)
 
 
 def set_seed(seed: int):
@@ -59,7 +73,7 @@ def main():
         config=config,
     )
     # FIXME: This is a temporary check
-    results["buyers"] = results["buyers"][59:61]
+    results["buyers"] = results["buyers"][51:61]
     # Make a buyer agent for each principal
     buyer_principals = results["buyers"]
     vendor_principals = results["institutions"] + results["authors"]
