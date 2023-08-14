@@ -358,6 +358,77 @@ def select_quotes_with_heuristic(
     return selected_quotes
 
 
+def filter_nuggets(nuggets: List[str], model_name="gpt-3.5-turbo") -> List[str]:
+    program_string = """
+        {{#system~}}You are an exam auditor. Your job is to reject bad questions. A question is good when it is factual and could have universal agreement. A question is not good when  it is ambiguous or makes highly specific references (e.g., to figures). 
+
+You will be presented with an enumerated list of questions. You will respond in the following format, indicating True for questions that are fair and False for questions that are not fair:
+
+<Option Number>. <True / False>
+... 
+{{~/system}}
+    
+{{#user~}}
+{{nugget_strs}}
+{{~/user}}
+
+{{#assistant~}}
+{{gen "answer" temperature=0.0 max_tokens=512}}
+{{~/assistant}}
+"""
+    program_string = clean_program_string(program_string)
+    # Run the program
+    program = guidance(program_string, llm=guidance.llms.OpenAI(model_name))  # noqa
+    nugget_strs = []
+    for i in range(len(nuggets)):
+        nugget_strs.append(f"{i}. {nuggets[i]['question']}")
+    program_output = program(nugget_strs=nugget_strs)
+    breakpoint()
+    answer = program_output["answer"]
+    return answer
+
+def extract_nuggets(block):
+    program_string = """{{#system~}}Socrates and Plato sit under a tree, discussing the nature of truth and knowledge. They have a scroll in front of them containing scientific texts. Socrates believes in extracting questions and answers that are factual and based on the content of the text. Plato, on the other hand, emphasizes that these answers must be objective assertions that describe reality and are supported by evidence.
+    
+Socrates: "Knowledge, my dear Plato, must be empirical and verifiable. Our task is to extract questions and answers from this scroll that adhere to this principle."
+    
+Plato: "Agreed, Socrates. But each answer must be comprehensive, providing context and depth. They should be reminiscent of the great archives, like an excerpt from our Athenian repositories."
+        
+Now, my dear philosophers, you must propose questions and factual statements based on content provided by the user. You will simulate a long argument with each other about which is the best question and answer for this passage. At the end of the argument, arrive at a list of verdicts. Each verdict must be printed as: 
+
+---
+
+VERDICT:
+    
+question: <question>
+answer: <answer>
+{{~/system}}
+    
+{{#user~}}
+{{content}}
+{{~/user}}
+
+{{#assistant~}}
+{{gen "answer" temperature=0.2 max_tokens=1536}}
+{{~/assistant}}
+"""
+    program_string = clean_program_string(program_string)
+    program = guidance(program_string, llm=guidance.llms.OpenAI(model_name))  # noqa
+    program_output = program(content=f"The scientific text is as follows: {block['content']}")
+    contnt = program_output["answer"]
+    question_pattern = r'question: \"(.*?)\"'
+    answer_pattern = r'answer: \"(.*?)\"'
+    breakpoint()
+    question_match = re.search(question_pattern, content)
+    answer_match = re.search(answer_pattern, content)
+    
+    question = question_match.group(1) if question_match else None
+    answer = answer_match.group(1) if answer_match else None
+    return question, answer
+
+    return answer
+
+
 def select_quotes_with_debate(
     quotes: List[Quote],
     budget: Optional[SupportsFloat] = None,
@@ -475,6 +546,27 @@ def select_quotes_with_debate(
     selected_quotes = [quote for quote, verdict in zip(quotes, verdicts) if verdict]
     return selected_quotes
 
+def clean_block_content(passage: str, model_name: str = "gpt-3.5-turbo"):
+    program_string = """{{#system~}}You are a text passage cleaner bot. You will be provided a text passage and you will reply with an exact copy of the input text passage, but with the following (and only the following) modifications:
+
+1. Improve use of white space, tabs, and new-lines. This should shorten the passage.
+2. Remove citations (e.g., Huges et al. [hugesGenerativeAdversarialLearning]).
+3. Reformat any tabular data into markdown{{~/system}}
+
+{{#user~}}
+The text passage is: {{passage}}
+{{~/user}}
+
+{{#assistant~}}
+{{gen "cleaned_passage" temperature=0.0}}
+{{~/assistant}}    
+"""
+    program_string = clean_program_string(program_string)
+    # Run the program
+    program = guidance(program_string, llm=guidance.llms.OpenAI(model_name))  # noqa
+    program_output = program(passage=passage)
+    cleaned_passage = program_output["cleaned_passage"]
+    return cleaned_passage
 
 def synthesize_answer(quotes: List[Quote], model_name="gpt-3.5-turbo") -> str:
     question = quotes[0].query.text

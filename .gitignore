@@ -1,4 +1,8 @@
+runs/
 .ipynb_checkpoints
 __pycache__
+*.zip
+*.egg-info
+*.db
 .DS_Store
 data/

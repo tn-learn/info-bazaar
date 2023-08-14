@@ -15,6 +15,7 @@ from pylatexenc.latex2text import LatexNodes2Text
 import openai
 import tiktoken
 from tqdm import tqdm
+from bazaar.lem_utils import clean_block_content, extract_nuggets
 
 EMBEDDING_MODEL = "text-embedding-ada-002"
 
@@ -124,6 +125,11 @@ def parse_latex(latex_string, model_name="gpt-3.5-turbo"):
             )
     return all_blocks
 
+def improve_block_formatting(block_contents):
+    cleaned_blocks = []
+    for block_content in tqdm(block_contents):
+        cleaned_blocks.append(clean_block_content(block_content))
+    return cleaned_blocks
 
 def remove_invalid_escapes(input_string):
     # Define a regular expression pattern to match invalid escape sequences
@@ -134,52 +140,6 @@ def remove_invalid_escapes(input_string):
 
     return cleaned_string
 
-def extract_nuggets(block):
-    system = """
-Socrates and Plato sit under a tree, discussing the nature of truth and knowledge. They have a scroll in front of them containing scientific texts. Socrates believes in extracting questions and answers that are factual and based on the content of the text. Plato, on the other hand, emphasizes that these answers must be objective assertions that describe reality and are supported by evidence.
-    
-Socrates: "Knowledge, my dear Plato, must be empirical and verifiable. Our task is to extract questions and answers from this scroll that adhere to this principle."
-    
-Plato: "Agreed, Socrates. But each answer must be comprehensive, providing context and depth. They should be reminiscent of the great archives, like an excerpt from our Athenian repositories."
-        
-Now, my dear philosophers, you must propose questions and factual statements based on content provided by the user. You will simulate a long argument with each other about which is the best question and answer for this passage. At the end of the argument, arrive at a single verdict. This verdict must be printed as: 
-
----
-
-VERDICT:
-    
-question: <answer>
-answer: <answer>
-"""
-
-    content = f"""The scientific text is as follows: {block['content']}"""
-
-    messages = [
-        {"role": "system", "content": system},
-        {"role": "user", "content": content},
-    ]
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=messages,
-            temperature=0.2,
-            max_tokens=1536,
-        )
-        content = remove_invalid_escapes(response.choices[0]["message"]["content"])
-        question_pattern = r'question: \"(.*?)\"'
-        answer_pattern = r'answer: \"(.*?)\"'
-        
-        question_match = re.search(question_pattern, content)
-        answer_match = re.search(answer_pattern, content)
-        
-        question = question_match.group(1) if question_match else None
-        answer = answer_match.group(1) if answer_match else None
-
-    except Exception as e:
-        print(e)
-        question = None
-        answer = None
-    return question, answer
 
 def embed_nuggets(nuggets):
     BATCH_SIZE = 1000  # you can submit up to 2048 embedding inputs per request
@@ -376,6 +336,7 @@ if os.path.exists(f"data/{category}/dataset_step_0.pkl"):
         dataset_step_0 = pickle.load(f)
 else:
     print("Embedding blocks.")
+    breakpoint()
 
     for arxiv_id in tqdm(paper_samples):
         if arxiv_id not in oa_works_w_arxiv:
@@ -384,7 +345,8 @@ else:
             data = oa_works_w_arxiv[arxiv_id]
             blocks = parse_latex(data["paper"])
             block_contents = [block['content'] for block in blocks]
-            response = openai.Embedding.create(model=EMBEDDING_MODEL, input=block_contents)
+            cleaned_block_contents = improve_block_formatting(block_contents)
+            response = openai.Embedding.create(model=EMBEDDING_MODEL, input=cleaned_block_contents)
             batch_embeddings = [e["embedding"] for e in response["data"]]
             for idx, block in enumerate(blocks):
                 block['embedding'] = batch_embeddings[idx]
@@ -410,7 +372,8 @@ else:
             try:
                 question, answer = extract_nuggets(block)
                 nuggets = [{"question": question, "answer": answer}]
-                embedding_dict = embed_nuggets(nuggets)
+                filtered_nuggets = filter_nuggets(nuggets)
+                embedding_dict = embed_nuggets(filtered_nuggets)
                 block['nuggets'] = embedding_dict
             except Exception as e:
                 print(e)
