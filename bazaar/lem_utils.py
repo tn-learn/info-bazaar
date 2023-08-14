@@ -540,22 +540,23 @@ def select_quotes_with_heuristic(
 
 def filter_nuggets(nuggets: List[str], model_name="gpt-3.5-turbo") -> List[str]:
     program_string = """
-        {{#system~}}You are an exam auditor. Your job is to reject bad questions. A question is good when it is factual and could have universal agreement. A question is not good when  it is ambiguous or makes highly specific references (e.g., to figures). 
+    {{#system~}}
+    You are an exam auditor. Your job is to reject bad questions. A question is good when it is factual and could have universal agreement. A question is not good when  it is ambiguous or makes highly specific references (e.g., to figures). 
 
-You will be presented with an enumerated list of questions. You will respond in the following format, indicating True for questions that are fair and False for questions that are not fair:
-
-<Option Number>. <True / False>
-... 
-{{~/system}}
+    You will be presented with an enumerated list of questions. You will respond in the following format, indicating True for questions that are fair and False for questions that are not fair:
     
-{{#user~}}
-{{nugget_strs}}
-{{~/user}}
-
-{{#assistant~}}
-{{gen "answer" temperature=0.0 max_tokens=512}}
-{{~/assistant}}
-"""
+    <Option Number>. <True / False>
+    ... 
+    {{~/system}}
+        
+    {{#user~}}
+    {{nugget_strs}}
+    {{~/user}}
+    
+    {{#assistant~}}
+    {{gen "answer" temperature=0.0 max_tokens=512}}
+    {{~/assistant}}
+    """
     program_string = clean_program_string(program_string)
     # Run the program
     program = guidance(program_string, llm=guidance.llms.OpenAI(model_name), silent=True)  # noqa
