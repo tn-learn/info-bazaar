@@ -175,7 +175,12 @@ def get_llm(model_name: str = "gpt-3.5-turbo", **kwargs):
     oai_models = ["gpt-3.5-turbo", "gpt-3.5-turbo-16k", "gpt-4", "gpt-4-32k"]
     local_models = ["Llama-2-70b-chat-hf"]
     if model_name in oai_models:
-        return guidance.llms.OpenAI(model_name, **kwargs)
+        llm = guidance.llms.OpenAI(model_name, **kwargs)
+        if os.getenv("GUIDANCE_CACHE_DIRECTORY") is not None:
+            llm.cache = DiskCache(
+                os.getenv("GUIDANCE_CACHE_DIRECTORY"), llm.llm_name
+            )
+        return llm
     elif model_name in local_models:
         global MODEL_CACHE
         if model_name not in MODEL_CACHE:
@@ -364,7 +369,7 @@ def break_down_question(question: str, model: str = "gpt-3.5-turbo") -> List[str
     """  # noqa
     program_string = clean_program_string(program_string)
 
-    program = guidance(program_string, llm=get_llm(model))(  # noqa
+    program = guidance(program_string, llm=get_llm(model), silent=True)(  # noqa
         question=question, extract_questions=_extract_questions
     )  # noqa
     return program["sub_questions"]
@@ -391,7 +396,7 @@ def generate_hyde_passage(question: str, model: str = "gpt-3.5-turbo") -> str:
     {{~/assistant}}
     """  # noqa
     program_string = clean_program_string(program_string)
-    program = guidance(program_string, llm=get_llm(model))(  # noqa
+    program = guidance(program_string, llm=get_llm(model), silent=True)(  # noqa
         question=question, parse_answer=_parse_answer
     )  # noqa
     return program["hyde_answer"]
@@ -474,7 +479,7 @@ def select_quotes_with_heuristic(
     """
     program_string = clean_program_string(program_string)
     # Run the program
-    program = guidance(program_string, llm=get_llm(model_name))  # noqa
+    program = guidance(program_string, llm=get_llm(model_name), silent=True)  # noqa
     program_output = program(
         question=question,
         options=options,
@@ -553,7 +558,7 @@ You will be presented with an enumerated list of questions. You will respond in 
 """
     program_string = clean_program_string(program_string)
     # Run the program
-    program = guidance(program_string, llm=guidance.llms.OpenAI(model_name))  # noqa
+    program = guidance(program_string, llm=guidance.llms.OpenAI(model_name), silent=True)  # noqa
     nugget_strs = []
     for i in range(len(nuggets)):
         nugget_strs.append(f"{i}. {nuggets[i]['question']}")
@@ -564,30 +569,32 @@ You will be presented with an enumerated list of questions. You will respond in 
 
 
 def extract_nuggets(block):
-    program_string = """{{#system~}}Socrates and Plato sit under a tree, discussing the nature of truth and knowledge. They have a scroll in front of them containing scientific texts. Socrates believes in extracting questions and answers that are factual and based on the content of the text. Plato, on the other hand, emphasizes that these answers must be objective assertions that describe reality and are supported by evidence.
-    
-Socrates: "Knowledge, my dear Plato, must be empirical and verifiable. Our task is to extract questions and answers from this scroll that adhere to this principle."
-    
-Plato: "Agreed, Socrates. But each answer must be comprehensive, providing context and depth. They should be reminiscent of the great archives, like an excerpt from our Athenian repositories."
+    program_string = """
+    {{#system~}}
+    Socrates and Plato sit under a tree, discussing the nature of truth and knowledge. They have a scroll in front of them containing scientific texts. Socrates believes in extracting questions and answers that are factual and based on the content of the text. Plato, on the other hand, emphasizes that these answers must be objective assertions that describe reality and are supported by evidence.
         
-Now, my dear philosophers, you must propose questions and factual statements based on content provided by the user. You will simulate a long argument with each other about which is the best question and answer for this passage. At the end of the argument, arrive at a list of verdicts. Each verdict must be printed as: 
-
----
-
-VERDICT:
+    Socrates: "Knowledge, my dear Plato, must be empirical and verifiable. Our task is to extract questions and answers from this scroll that adhere to this principle."
+        
+    Plato: "Agreed, Socrates. But each answer must be comprehensive, providing context and depth. They should be reminiscent of the great archives, like an excerpt from our Athenian repositories."
+            
+    Now, my dear philosophers, you must propose questions and factual statements based on content provided by the user. You will simulate a long argument with each other about which is the best question and answer for this passage. At the end of the argument, arrive at a list of verdicts. Each verdict must be printed as: 
     
-question: <question>
-answer: <answer>
-{{~/system}}
+    ---
     
-{{#user~}}
-{{content}}
-{{~/user}}
-
-{{#assistant~}}
-{{gen "answer" temperature=0.2 max_tokens=1536}}
-{{~/assistant}}
-"""
+    VERDICT:
+        
+    question: <question>
+    answer: <answer>
+    {{~/system}}
+        
+    {{#user~}}
+    {{content}}
+    {{~/user}}
+    
+    {{#assistant~}}
+    {{gen "answer" temperature=0.2 max_tokens=1536}}
+    {{~/assistant}}
+    """
     program_string = clean_program_string(program_string)
     program = guidance(program_string, llm=guidance.llms.OpenAI(model_name))  # noqa
     program_output = program(
@@ -726,23 +733,26 @@ def select_quotes_with_debate(
 
 
 def clean_block_content(passage: str, model_name: str = "gpt-3.5-turbo"):
-    program_string = """{{#system~}}You are a text passage cleaner bot. You will be provided a text passage and you will reply with an exact copy of the input text passage, but with the following (and only the following) modifications:
+    program_string = """
+    {{#system~}}
+    You are a text passage cleaner bot. You will be provided a text passage and you will reply with an exact copy of the input text passage, but with the following (and only the following) modifications:
 
-1. Improve use of white space, tabs, and new-lines. This should shorten the passage.
-2. Remove citations (e.g., Huges et al. [hugesGenerativeAdversarialLearning]).
-3. Reformat any tabular data into markdown{{~/system}}
-
-{{#user~}}
-The text passage is: {{passage}}
-{{~/user}}
-
-{{#assistant~}}
-{{gen "cleaned_passage" temperature=0.0}}
-{{~/assistant}}    
-"""
+    1. Improve use of white space, tabs, and new-lines. This should shorten the passage.
+    2. Remove citations (e.g., Huges et al. [hugesGenerativeAdversarialLearning]).
+    3. Reformat any tabular data into markdown
+    {{~/system}}
+    
+    {{#user~}}
+    The text passage is: {{passage}}
+    {{~/user}}
+    
+    {{#assistant~}}
+    {{gen "cleaned_passage" temperature=0.0}}
+    {{~/assistant}}    
+    """
     program_string = clean_program_string(program_string)
     # Run the program
-    program = guidance(program_string, llm=get_llm(model_name))  # noqa
+    program = guidance(program_string, llm=get_llm(model_name), silent=True)  # noqa
     program_output = program(passage=passage)
     cleaned_passage = program_output["cleaned_passage"]
     return cleaned_passage
@@ -788,7 +798,7 @@ def synthesize_answer(quotes: List[Quote], model_name="gpt-3.5-turbo") -> str:
     """
     program_string = clean_program_string(program_string)
     # Run the program
-    program = guidance(program_string, llm=get_llm(model_name))  # noqa
+    program = guidance(program_string, llm=get_llm(model_name), silent=True)  # noqa
     program_output = program(question=question, quotes=passages)
     answer = program_output["answer"]
 
@@ -838,7 +848,7 @@ def get_closed_book_answer(question: str, model_name="gpt-3.5-turbo") -> str:
     """
     program_string = clean_program_string(program_string)
     # Run the program
-    program = guidance(program_string, llm=get_llm(model_name))  # noqa
+    program = guidance(program_string, llm=get_llm(model_name), silent=True)  # noqa
     program_output = program(question=question)
     answer = program_output["answer"]
     # Done
@@ -865,7 +875,7 @@ def get_open_book_answer(
     """
     program_string = clean_program_string(program_string)
     # Run the program
-    program = guidance(program_string, llm=get_llm(model_name))  # noqa
+    program = guidance(program_string, llm=get_llm(model_name), silent=True)  # noqa
     program_output = program(question=question, gold_passage=gold_passage)
     answer = program_output["answer"]
     # Done
@@ -931,7 +941,7 @@ def evaluate_answer_with_debate(
     """
     program_string = clean_program_string(program_string)
     # Run the program
-    program = guidance(program_string, llm=get_llm(model_name))  # noqa
+    program = guidance(program_string, llm=get_llm(model_name), silent=True)  # noqa
     excuse_answer = "I'm sorry, I cannot not answer this question. I pass."
     program_output = program(
         question=question,
