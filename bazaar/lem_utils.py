@@ -241,6 +241,7 @@ class TransformersEmbedding:
 
     def run_model(self, encoded_input) -> "torch.Tensor":
         import torch
+
         # This is true for BAAI/bge-*-* models which currently own the leaderboard
         with torch.no_grad():
             model_output = self.model(**encoded_input)
@@ -561,6 +562,7 @@ You will be presented with an enumerated list of questions. You will respond in 
     answer = program_output["answer"]
     return answer
 
+
 def extract_nuggets(block):
     program_string = """{{#system~}}Socrates and Plato sit under a tree, discussing the nature of truth and knowledge. They have a scroll in front of them containing scientific texts. Socrates believes in extracting questions and answers that are factual and based on the content of the text. Plato, on the other hand, emphasizes that these answers must be objective assertions that describe reality and are supported by evidence.
     
@@ -588,14 +590,16 @@ answer: <answer>
 """
     program_string = clean_program_string(program_string)
     program = guidance(program_string, llm=guidance.llms.OpenAI(model_name))  # noqa
-    program_output = program(content=f"The scientific text is as follows: {block['content']}")
+    program_output = program(
+        content=f"The scientific text is as follows: {block['content']}"
+    )
     contnt = program_output["answer"]
-    question_pattern = r'question: \"(.*?)\"'
-    answer_pattern = r'answer: \"(.*?)\"'
+    question_pattern = r"question: \"(.*?)\""
+    answer_pattern = r"answer: \"(.*?)\""
     breakpoint()
     question_match = re.search(question_pattern, content)
     answer_match = re.search(answer_pattern, content)
-    
+
     question = question_match.group(1) if question_match else None
     answer = answer_match.group(1) if answer_match else None
     return question, answer
@@ -720,6 +724,7 @@ def select_quotes_with_debate(
     selected_quotes = [quote for quote, verdict in zip(quotes, verdicts) if verdict]
     return selected_quotes
 
+
 def clean_block_content(passage: str, model_name: str = "gpt-3.5-turbo"):
     program_string = """{{#system~}}You are a text passage cleaner bot. You will be provided a text passage and you will reply with an exact copy of the input text passage, but with the following (and only the following) modifications:
 
@@ -737,10 +742,11 @@ The text passage is: {{passage}}
 """
     program_string = clean_program_string(program_string)
     # Run the program
-    program = guidance(program_string, llm=guidance.llms.OpenAI(model_name))  # noqa
+    program = guidance(program_string, llm=get_llm(model_name))  # noqa
     program_output = program(passage=passage)
     cleaned_passage = program_output["cleaned_passage"]
     return cleaned_passage
+
 
 def synthesize_answer(quotes: List[Quote], model_name="gpt-3.5-turbo") -> str:
     question = quotes[0].query.text
