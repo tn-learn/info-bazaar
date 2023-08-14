@@ -194,6 +194,8 @@ class BuyerAgent(BazaarAgent):
         principal: BuyerPrincipal,
         quote_review_top_k: Optional[int] = None,
         num_quote_gathering_steps: int = 0,
+        quote_selection_model_name: str = "gpt-3.5-turbo",
+        answer_synthesis_model_name: str = "gpt-3.5-turbo",
     ):
         super().__init__(principal)
         # Privates
@@ -206,6 +208,8 @@ class BuyerAgent(BazaarAgent):
         # Publics
         self.quote_review_top_k = quote_review_top_k
         self.num_quote_gathering_steps = num_quote_gathering_steps
+        self.quote_selection_model_name = quote_selection_model_name
+        self.answer_synthesis_model_name = answer_synthesis_model_name
 
     def prepare(self):
         """
@@ -240,7 +244,7 @@ class BuyerAgent(BazaarAgent):
                 relevance_score
                 for quote in self._accepted_quotes
                 for relevance_score in quote.relevance_scores
-            ]
+            ],
         )
         return self.terminate_agent()  # F
 
@@ -335,7 +339,9 @@ class BuyerAgent(BazaarAgent):
         if self.response_submission_due_now:
             # See if we can synthesize the answer given what we have
             if len(self._accepted_quotes) > 0:
-                response = synthesize_answer(self._accepted_quotes)
+                response = synthesize_answer(
+                    self._accepted_quotes, model_name=self.answer_synthesis_model_name
+                )
             else:
                 response = None
             self.submit_final_response(response)
@@ -356,7 +362,13 @@ class BuyerAgent(BazaarAgent):
             candidate_quotes = sorted(
                 candidate_quotes, key=lambda q: q.relevance_scores[0], reverse=True
             )[: self.quote_review_top_k]
-        return list(select_quotes_with_debate(candidate_quotes, budget=self.credit))
+        return list(
+            select_quotes_with_debate(
+                candidate_quotes,
+                budget=self.credit,
+                model_name=self.quote_selection_model_name,
+            )
+        )
 
     def forward(self) -> None:
         # Step 1: Check if there are quotes in the inbox that need to be processed.
@@ -370,9 +382,15 @@ class BuyerAgent(BazaarAgent):
         summary = super().evaluation_summary()
         summary.update(
             dict(
-                accepted_quotes=[quote.evaluation_summary() for quote in self._accepted_quotes],
-                rejected_quotes=[quote.evaluation_summary() for quote in self._rejected_quotes],
-                submitted_queries=[query.evaluation_summary() for query in self._submitted_queries],
+                accepted_quotes=[
+                    quote.evaluation_summary() for quote in self._accepted_quotes
+                ],
+                rejected_quotes=[
+                    quote.evaluation_summary() for quote in self._rejected_quotes
+                ],
+                submitted_queries=[
+                    query.evaluation_summary() for query in self._submitted_queries
+                ],
                 quote_inbox=[quote.evaluation_summary() for quote in self._quote_inbox],
             )
         )

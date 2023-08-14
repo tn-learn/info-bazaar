@@ -1,15 +1,32 @@
 import os
 from collections import defaultdict
-from typing import List, Optional, SupportsFloat, Dict, Any
+from typing import (
+    List,
+    Optional,
+    SupportsFloat,
+    Dict,
+    Any,
+    Union,
+    TYPE_CHECKING,
+)
+from collections.abc import Mapping, Sequence
+
 import types
 
 import re
 import guidance
 import openai
 import diskcache
+import platformdirs
 from guidance.llms.caches import Cache
 
 from bazaar.schema import Quote
+
+if TYPE_CHECKING:
+    import torch
+
+
+MODEL_CACHE = {}
 
 
 class DiskCache(Cache):
@@ -17,9 +34,7 @@ class DiskCache(Cache):
 
     def __init__(self, cache_directory: str, llm_name: str):
         self._diskcache = diskcache.Cache(
-            os.path.join(
-                cache_directory, f"_{llm_name}.diskcache"
-            )
+            os.path.join(cache_directory, f"_{llm_name}.diskcache")
         )
 
     def __getitem__(self, key: str) -> str:
@@ -49,6 +64,7 @@ class LLaMa2(guidance.llms.Transformers):
         guidance_cache_directory: Optional[str] = None,
         size: str = "70b",
         monitor_model: bool = False,
+        **super_kwargs,
     ):
         import transformers
         import torch
@@ -64,9 +80,8 @@ class LLaMa2(guidance.llms.Transformers):
         if hf_cache_directory is None:
             hf_cache_directory = os.getenv("HF_CACHE_DIRECTORY")
         if hf_cache_directory is None:
-            raise ValueError(
-                "HuggingFace cache directory not provided (set with export HF_CACHE_DIRECTORY=...)"
-            )
+            # Use the default cache directory
+            hf_cache_directory = platformdirs.user_cache_dir("huggingface")
         # Build the model
         bnb_config = transformers.BitsAndBytesConfig(
             load_in_4bit=True,
@@ -97,7 +112,7 @@ class LLaMa2(guidance.llms.Transformers):
         else:
             self.model_monitor = None
         # Init the super
-        super().__init__(model=model, tokenizer=tokenizer)
+        super().__init__(model=model, tokenizer=tokenizer, **super_kwargs)
         # Configure the base class
         self.chat_mode = True
         if guidance_cache_directory is not None:
@@ -154,6 +169,150 @@ class LLaMa2(guidance.llms.Transformers):
         return monitor
 
 
+def get_llm(model_name: str = "gpt-3.5-turbo", **kwargs):
+    oai_models = ["gpt-3.5-turbo", "gpt-3.5-turbo-16k", "gpt-4", "gpt-4-32k"]
+    local_models = ["Llama-2-70b-chat-hf"]
+    if model_name in oai_models:
+        return guidance.llms.OpenAI(model_name, **kwargs)
+    elif model_name in local_models:
+        global MODEL_CACHE
+        if model_name not in MODEL_CACHE:
+            MODEL_CACHE[model_name] = LLaMa2(**kwargs)
+        return MODEL_CACHE[model_name]
+    else:
+        raise ValueError(f"Unknown model {model_name}")
+
+
+def to_device(data: Any, device: str) -> Any:
+    import torch
+
+    # Base case: if it's a tensor, move it
+    if isinstance(data, torch.Tensor):
+        return data.to(device)
+
+    # If it's a mapping (dict-like object), process each key-value pair
+    if isinstance(data, Mapping):
+        return type(data)({k: to_device(v, device) for k, v in data.items()})
+
+    # If it's a sequence (but not a string, since strings are also sequences), process each element
+    if isinstance(data, Sequence) and not isinstance(data, (str, bytes, bytearray)):
+        return type(data)(to_device(item, device) for item in data)
+
+    # If it's none of the above, return it as is
+    return data
+
+
+class TransformersEmbedding:
+    def __init__(
+        self,
+        model_id: str,
+        hf_auth_token: Optional[str] = None,
+        hf_cache_directory: Optional[str] = None,
+        normalize_embeddings: bool = True,
+        device: str = "auto",
+    ):
+        import torch
+        import transformers
+
+        # Private
+        self.model_id = model_id
+        self.normalize_embeddings = normalize_embeddings
+        if device == "auto":
+            self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        else:
+            self.device = device
+        # Init the tokenizer and embedding
+
+        self.tokenizer = transformers.AutoTokenizer.from_pretrained(
+            model_id, cache_dir=hf_cache_directory, use_auth_token=hf_auth_token
+        )
+        self.model = transformers.AutoModel.from_pretrained(
+            model_id,
+            cache_dir=hf_cache_directory,
+            use_auth_token=hf_auth_token,
+        )
+        # Manually ship to device
+        self.model.to(self.device)
+
+    def query_prefix(self) -> Optional[str]:
+        return None
+
+    def run_model(self, encoded_input) -> "torch.Tensor":
+        import torch
+        # This is true for BAAI/bge-*-* models which currently own the leaderboard
+        with torch.no_grad():
+            model_output = self.model(**encoded_input)
+            # Apply cls pooling to get the sentence embedding
+            sentence_embeddings = model_output[0][:, 0]
+        # sentence_embeddings.shape = BC
+        return sentence_embeddings
+
+    def encode(
+        self, string: Union[str, List[str]], as_query: bool = False
+    ) -> Union[List[float], List[List[float]]]:
+        import torch
+
+        # Convert to list
+        if isinstance(string, str):
+            strings = [string]
+            input_was_a_single_string = True
+        else:
+            strings = string
+            input_was_a_single_string = False
+        # Add query prefix if required
+        query_prefix = self.query_prefix()
+        if as_query and query_prefix is not None:
+            strings = [query_prefix + string for string in strings]
+
+        # Tokenize the string
+        encoded_input = self.tokenizer(
+            strings, padding=True, truncation=True, return_tensors="pt"
+        )
+        encoded_input = to_device(encoded_input, self.device)
+        # Get the output
+        # embeddings.shape = BC
+        embeddings = self.run_model(encoded_input)
+        # Move back to cpu
+        embeddings = to_device(embeddings, "cpu")
+        # Normalize if needed
+        if self.normalize_embeddings:
+            embeddings = torch.nn.functional.normalize(embeddings, p=2, dim=1)
+        # Convert to list
+        embeddings = embeddings.tolist()
+        # Convert to a single list if required
+        if input_was_a_single_string:
+            assert len(embeddings) == 1
+            embeddings = embeddings[0]
+        return embeddings
+
+
+class BGE(TransformersEmbedding):
+    def __init__(self, size: str = "large", **super_kwargs):
+        assert size in ["large", "base", "small"], f"Unknown size: {size}"
+        model_id = f"BAAI/bge-{size}-en"
+        super().__init__(model_id, normalize_embeddings=True, **super_kwargs)
+
+    def query_prefix(self) -> Optional[str]:
+        return "Represent this sentence for searching relevant passages: "
+
+
+def get_embedder(model_name: str, **extra_kwargs) -> TransformersEmbedding:
+    name_to_cls_and_kwargs_mapping = {
+        "bge-large-en": (BGE, {"size": "large"}),
+        "bge-base-en": (BGE, {"size": "base"}),
+        "bge-small-en": (BGE, {"size": "small"}),
+    }
+    if model_name in name_to_cls_and_kwargs_mapping:
+        global MODEL_CACHE
+        if model_name not in MODEL_CACHE:
+            cls, kwargs = name_to_cls_and_kwargs_mapping[model_name]
+            embedder = cls(**kwargs, **extra_kwargs)
+            MODEL_CACHE[model_name] = embedder
+        return MODEL_CACHE[model_name]
+    else:
+        raise ValueError(f"Unknown model {model_name}")
+
+
 def clean_program_string(program_string: str, indent: Optional[int] = None) -> str:
     lines = program_string.split("\n")
     if lines[0] == "":
@@ -202,7 +361,7 @@ def break_down_question(question: str, model: str = "gpt-3.5-turbo") -> List[str
     """  # noqa
     program_string = clean_program_string(program_string)
 
-    program = guidance(program_string, llm=guidance.llms.OpenAI(model))(  # noqa
+    program = guidance(program_string, llm=get_llm(model))(  # noqa
         question=question, extract_questions=_extract_questions
     )  # noqa
     return program["sub_questions"]
@@ -229,14 +388,27 @@ def generate_hyde_passage(question: str, model: str = "gpt-3.5-turbo") -> str:
     {{~/assistant}}
     """  # noqa
     program_string = clean_program_string(program_string)
-    program = guidance(program_string, llm=guidance.llms.OpenAI(model))(  # noqa
+    program = guidance(program_string, llm=get_llm(model))(  # noqa
         question=question, parse_answer=_parse_answer
     )  # noqa
     return program["hyde_answer"]
 
 
-def generate_embedding(text: str, model="text-embedding-ada-002"):
-    return openai.Embedding.create(input=[text], model=model)["data"][0]["embedding"]
+def generate_embedding(
+    text: str, model="text-embedding-ada-002", as_query: bool = False, **embedder_kwargs
+) -> List[float]:
+    oai_embedders = [
+        "text-embedding-ada-002",
+    ]
+    if model in oai_embedders:
+        return openai.Embedding.create(input=[text], model=model, **embedder_kwargs)[
+            "data"
+        ][0]["embedding"]
+    else:
+        # Get huggingface embedder
+        embedder = get_embedder(model, **embedder_kwargs)
+        # Get the embedding
+        return embedder.encode(text, as_query=as_query)
 
 
 def select_quotes_with_heuristic(
@@ -299,7 +471,7 @@ def select_quotes_with_heuristic(
     """
     program_string = clean_program_string(program_string)
     # Run the program
-    program = guidance(program_string, llm=guidance.llms.OpenAI(model_name))  # noqa
+    program = guidance(program_string, llm=get_llm(model_name))  # noqa
     program_output = program(
         question=question,
         options=options,
@@ -500,7 +672,7 @@ def select_quotes_with_debate(
     program_string = clean_program_string(program_string)
 
     # Run the program
-    program = guidance(program_string, llm=guidance.llms.OpenAI(model_name))  # noqa
+    program = guidance(program_string, llm=get_llm(model_name))  # noqa
     program_output = program(
         question=question,
         options=options,
@@ -608,7 +780,7 @@ def synthesize_answer(quotes: List[Quote], model_name="gpt-3.5-turbo") -> str:
     """
     program_string = clean_program_string(program_string)
     # Run the program
-    program = guidance(program_string, llm=guidance.llms.OpenAI(model_name))  # noqa
+    program = guidance(program_string, llm=get_llm(model_name))  # noqa
     program_output = program(question=question, quotes=passages)
     answer = program_output["answer"]
 
@@ -658,7 +830,7 @@ def get_closed_book_answer(question: str, model_name="gpt-3.5-turbo") -> str:
     """
     program_string = clean_program_string(program_string)
     # Run the program
-    program = guidance(program_string, llm=guidance.llms.OpenAI(model_name))  # noqa
+    program = guidance(program_string, llm=get_llm(model_name))  # noqa
     program_output = program(question=question)
     answer = program_output["answer"]
     # Done
@@ -685,7 +857,7 @@ def get_open_book_answer(
     """
     program_string = clean_program_string(program_string)
     # Run the program
-    program = guidance(program_string, llm=guidance.llms.OpenAI(model_name))  # noqa
+    program = guidance(program_string, llm=get_llm(model_name))  # noqa
     program_output = program(question=question, gold_passage=gold_passage)
     answer = program_output["answer"]
     # Done
@@ -751,7 +923,7 @@ def evaluate_answer_with_debate(
     """
     program_string = clean_program_string(program_string)
     # Run the program
-    program = guidance(program_string, llm=guidance.llms.OpenAI(model_name))  # noqa
+    program = guidance(program_string, llm=get_llm(model_name))  # noqa
     excuse_answer = "I'm sorry, I cannot not answer this question. I pass."
     program_output = program(
         question=question,
