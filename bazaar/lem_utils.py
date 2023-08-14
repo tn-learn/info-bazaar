@@ -115,6 +115,8 @@ class LLaMa2(guidance.llms.Transformers):
         super().__init__(model=model, tokenizer=tokenizer, **super_kwargs)
         # Configure the base class
         self.chat_mode = True
+        if guidance_cache_directory is None:
+            guidance_cache_directory = os.getenv("GUIDANCE_CACHE_DIRECTORY")
         if guidance_cache_directory is not None:
             # Set a custom cache directory. This is needed for MPI cluster because
             # sqlite is borked on ~/
