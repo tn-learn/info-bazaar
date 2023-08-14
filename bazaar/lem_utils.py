@@ -287,10 +287,10 @@ class TransformersEmbedding:
 
 
 class BGE(TransformersEmbedding):
-    def __init__(self, size: str = "large"):
+    def __init__(self, size: str = "large", **super_kwargs):
         assert size in ["large", "base", "small"], f"Unknown size: {size}"
         model_id = f"BAAI/bge-{size}-en"
-        super().__init__(model_id, normalize_embeddings=True)
+        super().__init__(model_id, normalize_embeddings=True, **super_kwargs)
 
     def query_prefix(self) -> Optional[str]:
         return "Represent this sentence for searching relevant passages: "
