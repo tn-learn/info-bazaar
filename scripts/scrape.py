@@ -111,9 +111,10 @@ def parse_latex(latex_string, model_name="gpt-3.5-turbo"):
         blocks = [
             LatexNodes2Text().latex_to_text(paragraph).strip() for paragraph in blocks
         ]
-        blocks = [block for block in blocks if len(block) > 10]
         for idx, block in enumerate(blocks):
             num_tokens = len(tiktoken.encoding_for_model(model_name).encode(block))
+            if num_tokens < 50 or num_tokens > 300:
+                continue
             all_blocks.append(
                 {
                     "block_id": f"{arxiv_id}/{section_title}/{idx}",
@@ -133,77 +134,52 @@ def remove_invalid_escapes(input_string):
 
     return cleaned_string
 
-
 def extract_nuggets(block):
-    functions = [
-        {
-            "name": "return_qa_pairs",
-            "description": "Returns a list of question and answer pairs.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "qa_pairs": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "question": {
-                                    "type": "string",
-                                    "description": "A plain-text question (no latex or markdown)",
-                                },
-                                "answer": {
-                                    "type": "string",
-                                    "description": "A plain-text answer (no latex or markdown)",
-                                },
-                            },
-                            "required": ["question", "answer"],
-                        },
-                    },
-                },
-                "required": ["qa_pairs"],
-            },
-        }
-    ]
-    nugget_prompt = """
-    You are Question-Answer-GPT, and you read scientific texts to extract questions and answers. Each answer must be a factual and based on the text's content. Each question should be answered by its corresponding factual statement. Factual statements about the world are objective assertions that describe reality and can be empirically verified or supported by evidence. They can and often should be multiple sentences long to provide sufficient context.  Answers should read like an excerpt from wikipedia.
+    system = """
+Socrates and Plato sit under a tree, discussing the nature of truth and knowledge. They have a scroll in front of them containing scientific texts. Socrates believes in extracting questions and answers that are factual and based on the content of the text. Plato, on the other hand, emphasizes that these answers must be objective assertions that describe reality and are supported by evidence.
+    
+Socrates: "Knowledge, my dear Plato, must be empirical and verifiable. Our task is to extract questions and answers from this scroll that adhere to this principle."
+    
+Plato: "Agreed, Socrates. But each answer must be comprehensive, providing context and depth. They should be reminiscent of the great archives, like an excerpt from our Athenian repositories."
+        
+Now, my dear philosophers, you must propose questions and factual statements based on content provided by the user. You will simulate a long argument with each other about which is the best question and answer for this passage. At the end of the argument, arrive at a single verdict. This verdict must be printed as: 
 
-    Your function call must follow these rules:
-    1. Only write about factual statements.
-    2. Do not refer to the provided text - your questions and answers should contain no phrases like "in this paper", or "findings are studied". Your questions and answers should be answerable in a world where this paper or study was never published.
-    3. Do not write any citations.
-    4. Do not refer to any published works.
-    5. Do not include LaTeX - only plain text.    
-    """
-    content = block['content']
-    encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
-    num_tokens = len(encoding.encode(content))
-    while num_tokens > 1500:
-        content = content[: int(len(content) * 0.8)]
-        num_tokens = len(encoding.encode(content))
+---
+
+VERDICT:
+    
+question: <answer>
+answer: <answer>
+"""
+
+    content = f"""The scientific text is as follows: {block['content']}"""
 
     messages = [
-        {"role": "system", "content": nugget_prompt},
+        {"role": "system", "content": system},
         {"role": "user", "content": content},
     ]
     try:
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=messages,
-            temperature=0.0,
-            max_tokens=2048,
-            functions=functions,
-            function_call={"name": "return_qa_pairs"},
+            temperature=0.2,
+            max_tokens=1536,
         )
-        # content = response.choices[0]["message"]["content"]
-        content = remove_invalid_escapes(
-            response["choices"][0]["message"]["function_call"]["arguments"]
-        )
-        nuggets = json.loads(content)["qa_pairs"]
+        content = remove_invalid_escapes(response.choices[0]["message"]["content"])
+        question_pattern = r'question: \"(.*?)\"'
+        answer_pattern = r'answer: \"(.*?)\"'
+        
+        question_match = re.search(question_pattern, content)
+        answer_match = re.search(answer_pattern, content)
+        
+        question = question_match.group(1) if question_match else None
+        answer = answer_match.group(1) if answer_match else None
+
     except Exception as e:
         print(e)
-        nuggets = []
-    return nuggets
-
+        question = None
+        answer = None
+    return question, answer
 
 def embed_nuggets(nuggets):
     BATCH_SIZE = 1000  # you can submit up to 2048 embedding inputs per request
@@ -423,7 +399,6 @@ else:
 # EXTRACT NUGGETS
 # -----------------------------------------------------------
 dataset_step_1 = {}
-breakpoint()
 
 if os.path.exists(f"data/{category}/dataset_step_1.json"):
     with open(f"data/{category}/dataset_step_1.json", "r") as f:
@@ -433,7 +408,8 @@ else:
     for arxiv_id, data in tqdm(dataset_step_0.items()):
         for block_id, block in tqdm(enumerate(data['blocks'])):
             try:
-                nuggets = extract_nuggets(block)
+                question, answer = extract_nuggets(block)
+                nuggets = [{"question": question, "answer": answer}]
                 embedding_dict = embed_nuggets(nuggets)
                 block['nuggets'] = embedding_dict
             except Exception as e:
