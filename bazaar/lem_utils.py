@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 
 
 MODEL_CACHE = {}
+OAI_MODELS = ["gpt-3.5-turbo", "gpt-3.5-turbo-16k", "gpt-4", "gpt-4-32k"]
 
 
 class DiskCache(Cache):
@@ -50,6 +51,40 @@ class DiskCache(Cache):
         self._diskcache.clear()
 
 
+def get_hf_auth_token(
+    hf_auth_token: Optional[str], raise_if_not_found: bool = False
+) -> str:
+    if hf_auth_token is None:
+        hf_auth_token = os.getenv("HF_AUTH_TOKEN")
+    if hf_auth_token is None and raise_if_not_found:
+        raise ValueError(
+            "HuggingFace auth token not provided (set with export HF_AUTH_TOKEN=...)"
+        )
+    return hf_auth_token
+
+
+def get_hf_cache_directory(
+    hf_cache_directory: Optional[str], raise_if_not_found: bool = False
+) -> str:
+    if hf_cache_directory is None:
+        hf_cache_directory = os.getenv("HF_CACHE_DIRECTORY")
+    if hf_cache_directory is None and raise_if_not_found:
+        raise ValueError(
+            "HuggingFace cache directory not provided (set with export HF_CACHE_DIRECTORY=...)"
+        )
+    if hf_cache_directory is None:
+        # Use the default cache directory
+        hf_cache_directory = platformdirs.user_cache_dir("huggingface")
+    return hf_cache_directory
+
+
+def get_sent_tokenizer():
+    import nltk
+
+    nltk.download("punkt")
+    return nltk.sent_tokenize
+
+
 class LLaMa2(guidance.llms.Transformers):
     llm_name: str = None
     default_system_prompt = (
@@ -70,18 +105,11 @@ class LLaMa2(guidance.llms.Transformers):
         import torch
 
         # Get the huggingface auth token if not provided
-        if hf_auth_token is None:
-            hf_auth_token = os.getenv("HF_AUTH_TOKEN")
-        if hf_auth_token is None:
-            raise ValueError(
-                "HuggingFace auth token not provided (set with export HF_AUTH_TOKEN=...)"
-            )
+        hf_auth_token = get_hf_auth_token(hf_auth_token, raise_if_not_found=True)
         # Get the cache directory
-        if hf_cache_directory is None:
-            hf_cache_directory = os.getenv("HF_CACHE_DIRECTORY")
-        if hf_cache_directory is None:
-            # Use the default cache directory
-            hf_cache_directory = platformdirs.user_cache_dir("huggingface")
+        hf_cache_directory = get_hf_cache_directory(
+            hf_cache_directory, raise_if_not_found=False
+        )
         # Build the model
         bnb_config = transformers.BitsAndBytesConfig(
             load_in_4bit=True,
@@ -177,9 +205,7 @@ def get_llm(model_name: str = "gpt-3.5-turbo", **kwargs):
     if model_name in oai_models:
         llm = guidance.llms.OpenAI(model_name, **kwargs)
         if os.getenv("GUIDANCE_CACHE_DIRECTORY") is not None:
-            llm.cache = DiskCache(
-                os.getenv("GUIDANCE_CACHE_DIRECTORY"), llm.llm_name
-            )
+            llm.cache = DiskCache(os.getenv("GUIDANCE_CACHE_DIRECTORY"), llm.llm_name)
         return llm
     elif model_name in local_models:
         global MODEL_CACHE
@@ -228,10 +254,14 @@ class TransformersEmbedding:
             self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
         else:
             self.device = device
+        # Get tokens and cachedirs
+        hf_cache_directory = get_hf_cache_directory(hf_cache_directory)
+        hf_auth_token = get_hf_auth_token(hf_auth_token)
         # Init the tokenizer and embedding
-
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model_id, cache_dir=hf_cache_directory, use_auth_token=hf_auth_token
+            model_id,
+            cache_dir=hf_cache_directory,
+            use_auth_token=hf_auth_token,
         )
         self.model = transformers.AutoModel.from_pretrained(
             model_id,
@@ -419,6 +449,77 @@ def generate_embedding(
         return embedder.encode(text, as_query=as_query)
 
 
+def split_to_paragraphs(
+    text: str, target_num_paragraphs: int, model_name="gpt-3.5-turbo"
+) -> List[str]:
+    if model_name in OAI_MODELS:
+        raise NotImplementedError("Deep guidance not implemented for OpenAI models.")
+    # Split text by sentences
+    sentences = get_sent_tokenizer()(text)
+    # This one's for the llamas
+    program_string = """
+    {{#system~}}
+    You are a text formatting bot. You will be provided with an ordered list of sentences. Your task is to group these sentences in to paragraphs. Each paragraph should be as self-contained as possible, meaning they should be understandable independently of the other paragraphs. 
+
+    You will first reflect about the provided sentences by writing a few sentences about how you plan to proceed. Once you are done, you will print a list: 
+
+    Sentence 1: Paragraph <paragraph index>
+    Sentence 2: Paragraph <paragraph index>
+    ... and so on. 
+
+    For example, let's say you are given 5 sentences and you have to split them in to 2 paragraphs. You might want to put the first three sentences in the first paragraph and the last two in the second paragraph. In this case, you would output: 
+
+    <few sentences about how you want to put the first three sentences in the first paragraph and the last two in the second paragraph>
+
+    Sentence 1: Paragraph 1
+    Sentence 2: Paragraph 1
+    Sentence 3: Paragraph 1
+    Sentence 4: Paragraph 2
+    Sentence 5: Paragraph 2
+    {{~/system}}
+
+    {{#user~}}
+    Here are the sentences that you are given. 
+    {{#each sentences}}
+    Sentence {{add @index 1}}: {{this}}{{/each}}
+
+    You must split these sentences to {{num_para}} paragraphs. You're up. 
+    {{~/user}}
+
+    {{#assistant~}}
+    Understood, let us reflect about these sentences in a paragraph. 
+
+    {{gen 'thinks' temperature=0.1 stop="\n\n"}}
+
+    Here is the list of sentences with their corresponding paragraph numbers.
+    {{#each sentences}}
+    Sentence {{add @index 1}}: Paragraph {{gen 'parasplits' list_append=True stop='\n'}}{{/each}}
+    {{~/assistant}}
+    """
+    program_string = clean_program_string(program_string)
+    program = guidance(  # noqa
+        program_string, llm=get_llm(model_name=model_name), silent=True
+    )
+    program_output = program(
+        sentences=sentences,
+        num_para=target_num_paragraphs,
+    )
+    paragraph_indices = [int(x) - 1 for x in program_output["parasplits"]]
+    num_paragraphs = len(set(paragraph_indices))
+    # Split the sentences into paragraphs as given by the paragraph indices
+    paragraphs = [
+        [
+            sentences[para_idx]
+            for para_idx in paragraph_indices
+            if para_idx == current_para_idx
+        ]
+        for current_para_idx in range(num_paragraphs)
+    ]
+    # Join the sentences in each paragraph
+    paragraphs = [" ".join(paragraph) for paragraph in paragraphs]
+    return paragraphs
+
+
 def select_quotes_with_heuristic(
     quotes: List[Quote],
     budget: Optional[SupportsFloat] = None,
@@ -559,7 +660,9 @@ def filter_nuggets(nuggets: List[str], model_name="gpt-3.5-turbo") -> List[str]:
     """
     program_string = clean_program_string(program_string)
     # Run the program
-    program = guidance(program_string, llm=guidance.llms.OpenAI(model_name), silent=True)  # noqa
+    program = guidance(
+        program_string, llm=guidance.llms.OpenAI(model_name), silent=True
+    )  # noqa
     nugget_strs = []
     for i in range(len(nuggets)):
         nugget_strs.append(f"{i}. {nuggets[i]['question']}")
