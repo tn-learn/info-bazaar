@@ -85,6 +85,25 @@ def get_sent_tokenizer():
     return nltk.sent_tokenize
 
 
+def to_device(data: Any, device: str) -> Any:
+    import torch
+
+    # Base case: if it's a tensor, move it
+    if isinstance(data, torch.Tensor):
+        return data.to(device)
+
+    # If it's a mapping (dict-like object), process each key-value pair
+    if isinstance(data, Mapping):
+        return type(data)({k: to_device(v, device) for k, v in data.items()})
+
+    # If it's a sequence (but not a string, since strings are also sequences), process each element
+    if isinstance(data, Sequence) and not isinstance(data, (str, bytes, bytearray)):
+        return type(data)(to_device(item, device) for item in data)
+
+    # If it's none of the above, return it as is
+    return data
+
+
 class LLaMa2(guidance.llms.Transformers):
     llm_name: str = None
     default_system_prompt = (
@@ -199,40 +218,24 @@ class LLaMa2(guidance.llms.Transformers):
         return monitor
 
 
-def get_llm(model_name: str = "gpt-3.5-turbo", **kwargs):
+def get_llm(model_name: str = "gpt-3.5-turbo", **extra_kwargs):
     oai_models = ["gpt-3.5-turbo", "gpt-3.5-turbo-16k", "gpt-4", "gpt-4-32k"]
-    local_models = ["Llama-2-70b-chat-hf"]
+    name_to_cls_kwargs_mapping = {
+        "Llama-2-70b-chat-hf": (LLaMa2, {"size": "70b"}),
+    }
     if model_name in oai_models:
-        llm = guidance.llms.OpenAI(model_name, **kwargs)
+        llm = guidance.llms.OpenAI(model_name, **extra_kwargs)
         if os.getenv("GUIDANCE_CACHE_DIRECTORY") is not None:
             llm.cache = DiskCache(os.getenv("GUIDANCE_CACHE_DIRECTORY"), llm.llm_name)
         return llm
-    elif model_name in local_models:
+    elif model_name in name_to_cls_kwargs_mapping:
         global MODEL_CACHE
         if model_name not in MODEL_CACHE:
-            MODEL_CACHE[model_name] = LLaMa2(**kwargs)
+            cls, kwargs = name_to_cls_kwargs_mapping[model_name]
+            MODEL_CACHE[model_name] = cls(**kwargs, **extra_kwargs)
         return MODEL_CACHE[model_name]
     else:
         raise ValueError(f"Unknown model {model_name}")
-
-
-def to_device(data: Any, device: str) -> Any:
-    import torch
-
-    # Base case: if it's a tensor, move it
-    if isinstance(data, torch.Tensor):
-        return data.to(device)
-
-    # If it's a mapping (dict-like object), process each key-value pair
-    if isinstance(data, Mapping):
-        return type(data)({k: to_device(v, device) for k, v in data.items()})
-
-    # If it's a sequence (but not a string, since strings are also sequences), process each element
-    if isinstance(data, Sequence) and not isinstance(data, (str, bytes, bytearray)):
-        return type(data)(to_device(item, device) for item in data)
-
-    # If it's none of the above, return it as is
-    return data
 
 
 class TransformersEmbedding:
@@ -346,6 +349,121 @@ def get_embedder(model_name: str, **extra_kwargs) -> TransformersEmbedding:
             cls, kwargs = name_to_cls_and_kwargs_mapping[model_name]
             embedder = cls(**kwargs, **extra_kwargs)
             MODEL_CACHE[model_name] = embedder
+        return MODEL_CACHE[model_name]
+    else:
+        raise ValueError(f"Unknown model {model_name}")
+
+
+class Reranker:
+    def __init__(
+        self,
+        model_id: str,
+        hf_auth_token: Optional[str] = None,
+        hf_cache_directory: Optional[str] = None,
+        device: str = "auto",
+        max_batch_size: int = 32,
+    ):
+        import torch
+        import transformers
+
+        # Privates
+        if device == "auto":
+            self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        else:
+            self.device = device
+        self.model_id = model_id
+        self.max_batch_size = max_batch_size
+        # Get tokens and cachedirs
+        hf_auth_token = get_hf_auth_token(hf_auth_token)
+        hf_cache_directory = get_hf_cache_directory(hf_cache_directory)
+        # Init the tokenizer and model
+        self.tokenizer = transformers.AutoTokenizer.from_pretrained(
+            model_id,
+            cache_dir=hf_cache_directory,
+            use_auth_token=hf_auth_token,
+        )
+        self.model = transformers.AutoModelForSequenceClassification.from_pretrained(
+            model_id,
+            cache_dir=hf_cache_directory,
+            use_auth_token=hf_auth_token,
+        )
+        self.model.to(self.device)
+        self.model.eval()
+
+    def encode_batch(
+        self, paired_queries: List[str], paired_passages: List[str]
+    ) -> List[float]:
+        import torch
+
+        # Tokenize
+        encoded_input = self.tokenizer(
+            paired_queries,
+            paired_passages,
+            padding=True,
+            truncation=True,
+            return_tensors="pt",
+        )
+        encoded_input = to_device(encoded_input, self.device)
+        with torch.no_grad():
+            scores = self.model(**encoded_input).logits
+        # Move back to cpu
+        scores = to_device(scores, "cpu")
+        # Convert to list
+        if scores.dim() == 2:
+            # Remove singleton dimension
+            assert scores.shape[-1] == 1, f"Unexpected shape: {scores.shape}"
+            scores = scores[:, 0]
+        # Convert to list and return
+        return scores.tolist()
+
+    def encode(self, query: List[str], passages: List[str]) -> List[List[float]]:
+        # Build all pairs
+        pairs = []
+        for q in query:
+            for p in passages:
+                pairs.append((q, p))
+        paired_queries, paired_passages = zip(*pairs)
+        # Split to batches
+        paired_query_batches = [
+            paired_queries[i : i + self.max_batch_size]
+            for i in range(0, len(paired_queries), self.max_batch_size)
+        ]
+        paired_passage_batches = [
+            paired_passages[i : i + self.max_batch_size]
+            for i in range(0, len(paired_passages), self.max_batch_size)
+        ]
+        # Run it in a loop
+        scores = []
+        for q, p in zip(paired_query_batches, paired_passage_batches):
+            scores.extend(self.encode_batch(q, p))
+        assert len(scores) == len(pairs)
+        # Reshape to a matrix
+        scores = [
+            scores[i : i + len(passages)] for i in range(0, len(scores), len(passages))
+        ]
+        assert len(scores) == len(query)
+        return scores
+
+
+class CrossEncoderMiniLMReranker(Reranker):
+    def __init__(self, num_layers: int, **super_kwargs):
+        assert num_layers in [2, 4, 6, 12]
+        model_id = f"cross-encoder/ms-marco-MiniLM-L-{num_layers}-v2"
+        super().__init__(model_id, **super_kwargs)
+
+
+def get_reranker(model_name: str, **extra_kwargs):
+    name_to_cls_and_kwargs_mapping = {
+        "ms-marco-MiniLM-L-2-v2": (CrossEncoderMiniLMReranker, {"num_layers": 2}),
+        "ms-marco-MiniLM-L-4-v2": (CrossEncoderMiniLMReranker, {"num_layers": 4}),
+        "ms-marco-MiniLM-L-6-v2": (CrossEncoderMiniLMReranker, {"num_layers": 6}),
+        "ms-marco-MiniLM-L-12-v2": (CrossEncoderMiniLMReranker, {"num_layers": 12}),
+    }
+    if model_name in name_to_cls_and_kwargs_mapping:
+        global MODEL_CACHE
+        if model_name not in MODEL_CACHE:
+            cls, kwargs = name_to_cls_and_kwargs_mapping[model_name]
+            MODEL_CACHE[model_name] = cls(**kwargs, **extra_kwargs)
         return MODEL_CACHE[model_name]
     else:
         raise ValueError(f"Unknown model {model_name}")
@@ -693,10 +811,10 @@ def extract_nuggets(block):
     {{#assistant~}}
     {{gen "deliberation" temperature=0.1 max_tokens=2048}}
     {{~/assistant}}
-    """    
+    """
     program_string = clean_program_string(program_string)
     program = guidance(program_string, llm=llm, silent=True)  # noqa
-    program_output = program(passage=block['content'])
+    program_output = program(passage=block["content"])
     return answer
     # print(program_output["verdict"])
     # program_string = clean_program_string(program_string)
@@ -714,7 +832,6 @@ def extract_nuggets(block):
     # question = question_match.group(1) if question_match else None
     # answer = answer_match.group(1) if answer_match else None
     # return question, answer
-
 
 
 def select_quotes_with_debate(
@@ -855,9 +972,9 @@ def clean_block_content(block: dict, model_name: str = "gpt-3.5-turbo"):
     """
     program_string = clean_program_string(program_string)
     program = guidance(program_string, llm=get_llm(model_name), silent=True)  # noqa
-    program_output = program(passage=block['content'])
+    program_output = program(passage=block["content"])
     cleaned_passage = program_output["cleaned_passage"]
-    block['content'] = cleaned_passage
+    block["content"] = cleaned_passage
     return block
 
 
