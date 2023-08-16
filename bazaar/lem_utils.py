@@ -19,6 +19,7 @@ import openai
 import diskcache
 import platformdirs
 from guidance.llms.caches import Cache
+import backoff
 
 from bazaar.schema import Quote
 
@@ -28,6 +29,12 @@ if TYPE_CHECKING:
 
 MODEL_CACHE = {}
 OAI_MODELS = ["gpt-3.5-turbo", "gpt-3.5-turbo-16k", "gpt-4", "gpt-4-32k"]
+OAI_EXCEPTIONS = (
+    openai.error.APIError,
+    openai.error.RateLimitError,
+    openai.error.ServiceUnavailableError,
+    openai.error.TryAgain,
+)
 
 
 class DiskCache(Cache):
@@ -362,6 +369,7 @@ class Reranker:
         hf_cache_directory: Optional[str] = None,
         device: str = "auto",
         max_batch_size: int = 32,
+        max_num_tokens: int = 512,
     ):
         import torch
         import transformers
@@ -373,6 +381,7 @@ class Reranker:
             self.device = device
         self.model_id = model_id
         self.max_batch_size = max_batch_size
+        self.max_num_tokens = max_num_tokens
         # Get tokens and cachedirs
         hf_auth_token = get_hf_auth_token(hf_auth_token)
         hf_cache_directory = get_hf_cache_directory(hf_cache_directory)
@@ -402,6 +411,7 @@ class Reranker:
             padding=True,
             truncation=True,
             return_tensors="pt",
+            max_length=self.max_num_tokens,
         )
         encoded_input = to_device(encoded_input, self.device)
         with torch.no_grad():
@@ -416,7 +426,14 @@ class Reranker:
         # Convert to list and return
         return scores.tolist()
 
-    def encode(self, query: List[str], passages: List[str]) -> List[List[float]]:
+    def encode(
+        self, query: Union[str, List[str]], passages: Union[str, List[str]]
+    ) -> List[List[float]]:
+        # Convert to lists
+        if isinstance(query, str):
+            query = [query]
+        if isinstance(passages, str):
+            passages = [passages]
         # Build all pairs
         pairs = []
         for q in query:
@@ -488,6 +505,7 @@ def clean_program_string(program_string: str, indent: Optional[int] = None) -> s
     return "\n".join(lines)
 
 
+@backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def break_down_question(question: str, model: str = "gpt-3.5-turbo") -> List[str]:
     def _extract_questions(input_string: str) -> List[str]:
         if not input_string.startswith("SUBQUESTIONS"):
@@ -523,6 +541,7 @@ def break_down_question(question: str, model: str = "gpt-3.5-turbo") -> List[str
     return program["sub_questions"]
 
 
+@backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def generate_hyde_passage(question: str, model: str = "gpt-3.5-turbo") -> str:
     def _parse_answer(answer: str) -> str:
         return answer.replace("ANSWER:", "").strip()
@@ -550,6 +569,7 @@ def generate_hyde_passage(question: str, model: str = "gpt-3.5-turbo") -> str:
     return program["hyde_answer"]
 
 
+@backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def generate_embedding(
     text: str, model="text-embedding-ada-002", as_query: bool = False, **embedder_kwargs
 ) -> List[float]:
@@ -567,6 +587,7 @@ def generate_embedding(
         return embedder.encode(text, as_query=as_query)
 
 
+@backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def split_to_paragraphs(
     text: str, target_num_paragraphs: int, model_name="gpt-3.5-turbo"
 ) -> List[str]:
@@ -638,6 +659,7 @@ def split_to_paragraphs(
     return paragraphs
 
 
+@backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def select_quotes_with_heuristic(
     quotes: List[Quote],
     budget: Optional[SupportsFloat] = None,
@@ -757,6 +779,7 @@ def select_quotes_with_heuristic(
     return selected_quotes
 
 
+@backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def filter_nuggets(nuggets: List[str], model_name="gpt-3.5-turbo") -> List[str]:
     program_string = """
     {{#system~}}
@@ -790,6 +813,7 @@ def filter_nuggets(nuggets: List[str], model_name="gpt-3.5-turbo") -> List[str]:
     return answer
 
 
+@backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def extract_nuggets(block):
     program_string = """
     {{#system~}}
@@ -834,6 +858,7 @@ def extract_nuggets(block):
     # return question, answer
 
 
+@backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def select_quotes_with_debate(
     quotes: List[Quote],
     budget: Optional[SupportsFloat] = None,
@@ -952,6 +977,7 @@ def select_quotes_with_debate(
     return selected_quotes
 
 
+@backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def clean_block_content(block: dict, model_name: str = "gpt-3.5-turbo"):
     program_string = """
     {{#system~}}
@@ -978,6 +1004,21 @@ def clean_block_content(block: dict, model_name: str = "gpt-3.5-turbo"):
     return block
 
 
+def rerank_quotes(
+    quotes: List[Quote], model_name: str = "ms-marco-MiniLM-L-2-v2"
+) -> List[float]:
+    question = quotes[0].query.text
+    passages = [
+        " [...] ".join([block.content for block in quote.answer_blocks])
+        for quote in quotes
+    ]
+    reranker = get_reranker(model_name)
+    # Get the scores for the first query, which is the question
+    scores = reranker.encode(question, passages)[0]
+    return scores
+
+
+@backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def synthesize_answer(quotes: List[Quote], model_name="gpt-3.5-turbo") -> str:
     question = quotes[0].query.text
     passages = [
@@ -1052,6 +1093,7 @@ def synthesize_answer(quotes: List[Quote], model_name="gpt-3.5-turbo") -> str:
     return answer
 
 
+@backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def get_closed_book_answer(question: str, model_name="gpt-3.5-turbo") -> str:
     program_string = """
     {{#system~}}
@@ -1075,6 +1117,7 @@ def get_closed_book_answer(question: str, model_name="gpt-3.5-turbo") -> str:
     return answer
 
 
+@backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def get_open_book_answer(
     question: str, gold_passage: str, model_name="gpt-3.5-turbo"
 ) -> str:
@@ -1102,6 +1145,7 @@ def get_open_book_answer(
     return answer
 
 
+@backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def evaluate_answer_with_debate(
     question: str,
     gold_passage: str,
