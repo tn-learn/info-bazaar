@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 from pylatexenc.latex2text import LatexNodes2Text
 import openai
+from typing import List
 import tiktoken
 from tqdm import tqdm
 from bazaar.lem_utils import clean_block_content, extract_nuggets
@@ -114,8 +115,6 @@ def parse_latex(latex_string, model_name="gpt-3.5-turbo"):
         ]
         for idx, block in enumerate(blocks):
             num_tokens = len(tiktoken.encoding_for_model(model_name).encode(block))
-            if num_tokens < 50 or num_tokens > 300:
-                continue
             all_blocks.append(
                 {
                     "block_id": f"{arxiv_id}/{section_title}/{idx}",
@@ -124,12 +123,6 @@ def parse_latex(latex_string, model_name="gpt-3.5-turbo"):
                 }
             )
     return all_blocks
-
-def improve_block_formatting(block_contents):
-    cleaned_blocks = []
-    for block_content in tqdm(block_contents):
-        cleaned_blocks.append(clean_block_content(block_content))
-    return cleaned_blocks
 
 def remove_invalid_escapes(input_string):
     # Define a regular expression pattern to match invalid escape sequences
@@ -159,6 +152,30 @@ def embed_nuggets(nuggets):
         nuggets[idx]['embedding'] = embedding
     return nuggets
 
+def merge_small_blocks(blocks: List[dict], tiktoken_enc, min_block_size: int = 50):
+    smol_blocks = [block for block in blocks if len(tiktoken_enc.encode(block['content'])) < min_block_size]
+    while smol_blocks:
+        for idx in range(len(smol_blocks)):
+            block_idx = blocks.index(smol_blocks[idx])
+            if block_idx > 0:  # Merge with previous block if not the first block
+                blocks[block_idx - 1]['content'] += smol_blocks[idx]['content']
+                blocks[block_idx - 1]['num_tokens'] +=  smol_blocks[idx]['num_tokens']
+            elif block_idx < len(blocks) - 1:  # Merge with next block if not the last block
+                blocks[block_idx + 1]['content'] += smol_blocks[idx]['content']
+                blocks[block_idx + 1]['num_tokens'] +=  smol_blocks[idx]['num_tokens']
+            blocks.pop(block_idx)  # Remove the current small block
+    
+        # Update the list of small blocks after merging
+        smol_blocks = [block for block in blocks if len(tiktoken_enc.encode(block['content'])) < min_block_size]
+    return blocks
+    
+def improve_block_formatting(blocks):
+    cleaned_blocks = []
+    for block in tqdm(blocks):
+        cleaned_blocks.append(clean_block_content(block, model_name="Llama-2-70b-chat-hf"))
+    return cleaned_blocks
+
+    
 # PARSE ARXIV METADATA SNAPSHOT FOR CATEGORY
 # -----------------------------------------------------------
 category = "machine-learning" # astrophysics
@@ -336,16 +353,16 @@ if os.path.exists(f"data/{category}/dataset_step_0.pkl"):
         dataset_step_0 = pickle.load(f)
 else:
     print("Embedding blocks.")
-    breakpoint()
-
+    enc = tiktoken.encoding_for_model("gpt-3.5-turbo")
     for arxiv_id in tqdm(paper_samples):
         if arxiv_id not in oa_works_w_arxiv:
             continue
         try:
             data = oa_works_w_arxiv[arxiv_id]
             blocks = parse_latex(data["paper"])
-            block_contents = [block['content'] for block in blocks]
-            cleaned_block_contents = improve_block_formatting(block_contents)
+            breakpoint()
+            cleaned_blocks = improve_block_formatting(blocks)
+            merged_blocks = merge_small_blocks(cleaned_blocks, enc)
             response = openai.Embedding.create(model=EMBEDDING_MODEL, input=cleaned_block_contents)
             batch_embeddings = [e["embedding"] for e in response["data"]]
             for idx, block in enumerate(blocks):

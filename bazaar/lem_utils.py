@@ -675,47 +675,46 @@ def filter_nuggets(nuggets: List[str], model_name="gpt-3.5-turbo") -> List[str]:
 def extract_nuggets(block):
     program_string = """
     {{#system~}}
-    Socrates and Plato sit under a tree, discussing the nature of truth and knowledge. They have a scroll in front of them containing scientific texts. Socrates believes in extracting questions and answers that are factual and based on the content of the text. Plato, on the other hand, emphasizes that these answers must be objective assertions that describe reality and are supported by evidence.
-        
-    Socrates: "Knowledge, my dear Plato, must be empirical and verifiable. Our task is to extract questions and answers from this scroll that adhere to this principle."
-        
-    Plato: "Agreed, Socrates. But each answer must be comprehensive, providing context and depth. They should be reminiscent of the great archives, like an excerpt from our Athenian repositories."
-            
-    Now, my dear philosophers, you must propose questions and factual statements based on content provided by the user. You will simulate a long argument with each other about which is the best question and answer for this passage. At the end of the argument, arrive at a list of verdicts. Each verdict must be printed as: 
+    Bobby is an exam creator and Michael is an exam auditor. Bobby's job is to read a passage and propose some questions that could be answered by someone who has not seen that passage. Michael's job is determine whether a question is good or bad. Good questions are factual and have an objective answer. Bad questions are ambiguous, make specific references, or reference the passage in any way.
     
-    ---
-    
-    VERDICT:
-        
-    question: <question>
-    answer: <answer>
+    Your task is to simulate a constructive argument between Bobby and Michael, where Bobby proposes some questions and Michael filters those questions. At the end of the argument, they must arrive at a list of good questions, indicated:
+    QUESTION 1. <question>
+    QUESTION 2. <question>
+    and so on.
     {{~/system}}
-        
+    
     {{#user~}}
-    {{content}}
+    The passage is: 
+    {{passage}}
+    
+    Remember that a good question does not reference the passage in any way.
     {{~/user}}
     
     {{#assistant~}}
-    {{gen "answer" temperature=0.2 max_tokens=1536}}
+    {{gen "deliberation" temperature=0.1 max_tokens=2048}}
     {{~/assistant}}
-    """
+    """    
     program_string = clean_program_string(program_string)
-    program = guidance(program_string, llm=guidance.llms.OpenAI(model_name))  # noqa
-    program_output = program(
-        content=f"The scientific text is as follows: {block['content']}"
-    )
-    contnt = program_output["answer"]
-    question_pattern = r"question: \"(.*?)\""
-    answer_pattern = r"answer: \"(.*?)\""
-    breakpoint()
-    question_match = re.search(question_pattern, content)
-    answer_match = re.search(answer_pattern, content)
-
-    question = question_match.group(1) if question_match else None
-    answer = answer_match.group(1) if answer_match else None
-    return question, answer
-
+    program = guidance(program_string, llm=llm, silent=True)  # noqa
+    program_output = program(passage=block['content'])
     return answer
+    # print(program_output["verdict"])
+    # program_string = clean_program_string(program_string)
+    # program = guidance(program_string, llm=guidance.llms.OpenAI(model_name))  # noqa
+    # program_output = program(
+    #     content=f"The scientific text is as follows: {block['content']}"
+    # )
+    # contnt = program_output["answer"]
+    # question_pattern = r"question: \"(.*?)\""
+    # answer_pattern = r"answer: \"(.*?)\""
+    # breakpoint()
+    # question_match = re.search(question_pattern, content)
+    # answer_match = re.search(answer_pattern, content)
+
+    # question = question_match.group(1) if question_match else None
+    # answer = answer_match.group(1) if answer_match else None
+    # return question, answer
+
 
 
 def select_quotes_with_debate(
@@ -836,7 +835,7 @@ def select_quotes_with_debate(
     return selected_quotes
 
 
-def clean_block_content(passage: str, model_name: str = "gpt-3.5-turbo"):
+def clean_block_content(block: dict, model_name: str = "gpt-3.5-turbo"):
     program_string = """
     {{#system~}}
     You are a text passage cleaner bot. You will be provided a text passage and you will reply with an exact copy of the input text passage, but with the following (and only the following) modifications:
@@ -855,11 +854,11 @@ def clean_block_content(passage: str, model_name: str = "gpt-3.5-turbo"):
     {{~/assistant}}    
     """
     program_string = clean_program_string(program_string)
-    # Run the program
     program = guidance(program_string, llm=get_llm(model_name), silent=True)  # noqa
-    program_output = program(passage=passage)
+    program_output = program(passage=block['content'])
     cleaned_passage = program_output["cleaned_passage"]
-    return cleaned_passage
+    block['content'] = cleaned_passage
+    return block
 
 
 def synthesize_answer(quotes: List[Quote], model_name="gpt-3.5-turbo") -> str:
