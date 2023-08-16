@@ -6,6 +6,7 @@ from bazaar.database import retrieve_blocks
 from bazaar.lem_utils import (
     select_quotes_with_debate,
     synthesize_answer,
+    rerank_quotes,
 )
 from bazaar.schema import (
     Principal,
@@ -122,11 +123,14 @@ class VendorAgent(BazaarAgent):
     def __init__(
         self,
         principal: Union[Institution, Author],
+        use_hyde: bool = True,
     ):
         super().__init__(principal)
         # Privates
         self._outstanding_quotes: List[Quote] = []
         self._bulletin_board_last_checked_at: int = -1
+        # Publics
+        self.use_hyde = use_hyde
 
     def check_bulletin_board_and_issue_quotes(self):
         """
@@ -158,7 +162,7 @@ class VendorAgent(BazaarAgent):
         all_retrieved_outputs = retrieve_blocks(
             queries=queries_in_bulletin_board,
             blocks=list(self.principal.public_blocks.values()),
-            use_hyde=True,
+            use_hyde=self.use_hyde,
             top_k=self.model.bulletin_board.top_k,
             score_threshold=self.model.bulletin_board.score_threshold,
         )
@@ -194,8 +198,10 @@ class BuyerAgent(BazaarAgent):
         principal: BuyerPrincipal,
         quote_review_top_k: Optional[int] = None,
         num_quote_gathering_steps: int = 0,
+        use_reranker: bool = False,
         quote_selection_model_name: str = "gpt-3.5-turbo",
         answer_synthesis_model_name: str = "gpt-3.5-turbo",
+        reranking_model_name: Optional[str] = "ms-marco-MiniLM-L-4-v2",
     ):
         super().__init__(principal)
         # Privates
@@ -208,8 +214,10 @@ class BuyerAgent(BazaarAgent):
         # Publics
         self.quote_review_top_k = quote_review_top_k
         self.num_quote_gathering_steps = num_quote_gathering_steps
+        self.use_reranker = use_reranker
         self.quote_selection_model_name = quote_selection_model_name
         self.answer_synthesis_model_name = answer_synthesis_model_name
+        self.reranking_model_name = reranking_model_name
 
     def prepare(self):
         """
@@ -357,11 +365,24 @@ class BuyerAgent(BazaarAgent):
         candidate_quotes = [
             quote for quote in candidate_quotes if quote.price <= self.credit
         ]
+        # Apply reranker if required
+        if len(candidate_quotes) > 0 and self.use_reranker:
+            scores = rerank_quotes(
+                candidate_quotes, model_name=self.reranking_model_name
+            )
+        else:
+            scores = [max(quote.relevance_scores) for quote in candidate_quotes]
         if len(candidate_quotes) > 0 and self.quote_review_top_k is not None:
-            # Keep the top_k quotes as ranked by their relevance scores
-            candidate_quotes = sorted(
-                candidate_quotes, key=lambda q: q.relevance_scores[0], reverse=True
-            )[: self.quote_review_top_k]
+            # Keep the top_k quotes as ranked by their scores
+            candidate_quotes = [
+                quote
+                for _, quote in sorted(
+                    zip(scores, candidate_quotes),
+                    key=lambda pair: pair[0],
+                    reverse=True,
+                )
+            ][: self.quote_review_top_k]
+        # Select the quotes
         return list(
             select_quotes_with_debate(
                 candidate_quotes,
