@@ -569,6 +569,35 @@ def generate_hyde_passage(question: str, model: str = "gpt-3.5-turbo") -> str:
     return program["hyde_answer"]
 
 
+def generate_keywords(text: str, model_name: str = "gpt-3.5-turbo") -> List[str]:
+    program_string = """
+    {{#system~}}
+    You will be given some text, which may be a passage or a question. Your task is to extract keywords that can be useful for search. 
+
+    The output must be comma separated keywords, as in: "first keyword, second keyword, ..."
+    {{~/system}}
+    
+    {{#user~}}
+    Text: {{text_to_keywordify}}
+    {{~/user}}
+    
+    {{#assistant~}}
+    {{gen 'keywords' stop="\n" temperature=0.0}}
+    {{~/assistant}}
+    """
+    program_string = clean_program_string(program_string)
+    program = guidance(program_string, llm=get_llm(model_name), silent=True)(  # noqa
+        text_to_keywordify=text
+    )
+    # Split keywords by comma
+    keywords = program["keywords"].split(",")
+    # Clean up
+    keywords = [keyword.strip() for keyword in keywords]
+    # Remove empty keywords
+    keywords = [keyword for keyword in keywords if keyword != ""]
+    return keywords
+
+
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def generate_embedding(
     text: str, model="text-embedding-ada-002", as_query: bool = False, **embedder_kwargs
@@ -1032,7 +1061,7 @@ def synthesize_answer(quotes: List[Quote], model_name="gpt-3.5-turbo") -> str:
 
     program_string = """
     {{#system~}}
-    You are an AnswerSynthesisBot. Your task is to synthesize an answer to a question given some passages that should contain the answer. You will combine and synthesize the information provided to you. 
+    You are an AnswerSynthesisBot. Your task is to synthesize an answer to a question given some passages that should contain the answer. You will combine and synthesize the information provided to you. Your answer should be understandable and to the point. 
 
     Your answer must include citations from the passages like you would find in a Wikipedia article. You must cite by putting the passage numbers in square brackets, e.g. "<some text> [<source passage number>] <some more text> [<more passage numbers>]".
     {{~/system}}

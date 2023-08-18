@@ -1,29 +1,15 @@
 from pathlib import Path
+from typing import Optional
 
 import yaml
 import argparse
 import numpy as np
 import random
 import datetime
-import git
-import json
 
 from bazaar.sim_builder import load, SimulationConfig
 from bazaar.simulator import BazaarSimulator
-
-def dump_dict(data_dict: dict, file_path: str) -> None:
-    """
-    Dumps the given dictionary into a JSON file at the specified path.
-
-    Args:
-    - data_dict (dict): The dictionary to be saved.
-    - file_path (str): The path to the file where the dictionary should be saved.
-
-    Returns:
-    - None
-    """
-    with open(file_path, 'w') as file:
-        json.dump(data_dict, file, indent=4)
+from bazaar.py_utils import dump_dict, root_dir_slash
 
 
 def set_seed(seed: int):
@@ -31,39 +17,44 @@ def set_seed(seed: int):
     np.random.seed(seed)
 
 
-def root_dir_slash(path: str) -> str:
-    # Get the root dir of the repo where this file lives
-    repo_root = git.Repo(__file__, search_parent_directories=True).working_tree_dir
-    path = Path(repo_root) / path
-    if not path.exists():
-        path.mkdir(exist_ok=True, parents=True)
-    return str(path)
+def parse_to_slice(s: str) -> slice:
+    if s is None:
+        return slice(0, None)
+    else:
+        start, stop = s.split(":")
+        return slice(int(start), int(stop))
 
 
-def main():
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-    # make argparser
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--config",
-        type=str,
-        default=root_dir_slash("configs/default.yml"),
-        help="path to config file",
-    )
-    parser.add_argument(
-        "--dataset_path",
-        type=str,
-        default=root_dir_slash("data/dataset_step_1.json"),
-    )
-    parser.add_argument(
-        "--output_path",
-        type=str,
-        default=root_dir_slash(f"runs/{timestamp}"),
-    )
-    args = parser.parse_args()
+def main(args: Optional[argparse.Namespace] = None):
+    if args is None:
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+        # make argparser
+        parser = argparse.ArgumentParser()
+        parser.add_argument(
+            "--config",
+            type=str,
+            default=root_dir_slash("configs/default.yml"),
+            help="path to config file",
+        )
+        parser.add_argument(
+            "--dataset_path",
+            type=str,
+            default=root_dir_slash("data/dataset_step_1.json"),
+        )
+        parser.add_argument(
+            "--output_path",
+            type=str,
+            default=root_dir_slash(f"runs/{timestamp}"),
+        )
+        parser.add_argument(
+            "--query_range",
+            type=str,
+            default=None,
+        )
+        args = parser.parse_args()
     config = SimulationConfig(
         **yaml.load(open(args.config, "r"), Loader=yaml.FullLoader)
-    )
+    ).dump(path=Path(args.output_path) / "config.json")
 
     # Set the seed
     set_seed(config.rng_seed)
@@ -72,8 +63,7 @@ def main():
         path=args.dataset_path,
         config=config,
     )
-    # FIXME: This is a temporary check
-    results["buyers"] = results["buyers"][51:61]
+    results["buyers"] = results["buyers"][parse_to_slice(args.query_range)]
     # Make a buyer agent for each principal
     buyer_principals = results["buyers"]
     vendor_principals = results["institutions"] + results["authors"]
@@ -84,6 +74,7 @@ def main():
         vendor_principals=vendor_principals,
         seed=config.rng_seed,
         buyer_agent_kwargs=config.buyer_agent_kwargs,
+        vendor_agent_kwargs=config.vendor_agent_kwargs,
     )
     # Run it for a week
     bazaar.run(168)
