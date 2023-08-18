@@ -809,6 +809,51 @@ def select_quotes_with_heuristic(
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
+def extract_reasonable_questions_from_passage(
+    passage: str, model_name: str = "gpt-3.5-turbo"
+) -> List[str]:
+    program_string = """
+    {{#system~}}
+    Bobby is an exam creator and Michael is an exam auditor. Bobby's job is to read a passage and propose some questions that could be answered by someone who has not seen that passage. Michael's job is determine whether a question is good or bad. Good questions are factual and have an objective answer. Bad questions are ambiguous, make specific references, or reference the passage in any way.
+
+    Your task is to simulate a constructive argument between Bobby and Michael, where Bobby proposes some questions and Michael filters those questions. At the end of the argument, they must arrive at a list of good questions, indicated:
+    QUESTION 1. <question>
+    QUESTION 2. <question>
+    and so on.
+    {{~/system}}
+
+    {{#user~}}
+    The passage is: 
+    {{passage}}
+
+    Remember that a good question does not reference the passage in any way.
+    {{~/user}}
+
+    {{#assistant~}}
+    {{gen "deliberation" temperature=0.1 max_tokens=2048}}
+    {{~/assistant}}
+    """
+    program_string = clean_program_string(program_string)
+    program = guidance(program_string, llm=get_llm(model_name), silent=True)  # noqa
+    program_output = program(passage=passage)
+
+    # Extract questions
+    def extract_questions(text):
+        lines = text.split("\n")
+        questions = []
+
+        for line in lines:
+            match = re.match(r"QUESTION \d+\.\s*(.*)", line)
+            if match:
+                questions.append(match.group(1).strip())
+
+        return questions
+
+    extracted_questions = extract_questions(program_output["deliberation"])
+    return extracted_questions
+
+
+@backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def filter_nuggets(nuggets: List[str], model_name="gpt-3.5-turbo") -> List[str]:
     program_string = """
     {{#system~}}
