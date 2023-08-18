@@ -9,7 +9,7 @@ from bazaar.lem_utils import (
     get_closed_book_answer,
     evaluate_answer_with_debate,
 )
-from bazaar.py_utils import load_dict, dump_dict
+from bazaar.py_utils import load_dict, dump_dict, root_dir_slash
 
 
 @dataclass
@@ -270,6 +270,6 @@ def main(args: Optional[argparse.Namespace] = None):
 if __name__ == "__main__":
     main(
         args=argparse.Namespace(
-            run_directory="/Users/nrahaman/Python/info-bazaar/runs/2023-08-10-20-09-43"
+            run_directory=root_dir_slash("runs/2023-08-18-14-43-30")
         )
     )

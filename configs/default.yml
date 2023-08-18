@@ -14,7 +14,20 @@ buyer_urgency_max: 10
 buyer_agent_kwargs:
   quote_review_top_k: 3
   num_quote_gathering_steps: 2
-vendor_agent_kwargs: {}
+  use_reranker: true
+vendor_agent_kwargs:
+  retriever_config:
+    filter_with_bm25: true
+    bm25_top_k: 30
+    bm25_score_threshold: 0.1
+    bm25_use_caching: true
+    bm25_weight: 0.0
+    filter_with_mips: true
+    mips_use_hyde: false
+    mips_top_k: 10
+    mips_score_threshold: 0.7
+    mips_half_sphere: true
+    mips_weight: 1.0
 query_creation_time_start: 0
 query_creation_time_end: 168
 bulletin_board_retrieval_top_k: 1

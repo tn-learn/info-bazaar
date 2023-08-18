@@ -2,6 +2,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, List, Union, Optional, Dict, Any
 
+from bazaar.py_utils import ensure_number
+
 if TYPE_CHECKING:
     from bazaar.simulator import BuyerAgent, VendorAgent
 
@@ -28,9 +30,14 @@ class Query:
     _text_embedding: Optional[List[float]] = None
     _hyde_text: Optional[str] = None
     _hyde_embedding: Optional[List[float]] = None
+    _keywords: Optional[List[str]] = None
     _gold_block_id: Optional[str] = None
 
     def __post_init__(self):
+        self.max_budget = ensure_number(self.max_budget)
+        self.created_at_time = ensure_number(self.created_at_time)
+        self.urgency = ensure_number(self.urgency)
+        self.required_by_time = ensure_number(self.required_by_time, allow_none=True)
         if self.urgency is not None:
             assert self.required_by_time is None
             self.required_by_time = self.created_at_time + self.urgency
@@ -77,22 +84,29 @@ class Query:
             )
         return self._text_embedding
 
-    def compare_content(self, other: "Query") -> bool:
+    @property
+    def keywords(self):
+        from bazaar.lem_utils import generate_keywords
+
+        if self._keywords is None:
+            self._keywords = generate_keywords(self.text)
+        return self._keywords
+
+    def get_content_prehash(self):
         return (
             self.text,
-            self.max_budget,
-            self.created_at_time,
-            self.issued_by.unique_id,
-            self.urgency,
-            self.required_by_time,
-        ) == (
-            other.text,
-            other.max_budget,
-            other.created_at_time,
-            other.issued_by.unique_id,
-            other.urgency,
-            other.required_by_time,
+            ensure_number(self.max_budget),
+            ensure_number(self.created_at_time),
+            ensure_number(self.issued_by.unique_id),
+            ensure_number(self.urgency),
+            ensure_number(self.required_by_time),
         )
+
+    def __hash__(self):
+        return hash(self.get_content_prehash())
+
+    def compare_content(self, other: "Query") -> bool:
+        return self.get_content_prehash() == other.get_content_prehash()
 
     def __repr__(self):
         return repr_factory(
@@ -118,7 +132,8 @@ class Query:
                 self.issued_by.unique_id if self.issued_by is not None else None
             ),
             gold_block_id=self._gold_block_id,
-            hyde_text=self.hyde_text,
+            hyde_text=self._hyde_text,
+            keywords=self._keywords,
         )
 
 
@@ -284,7 +299,7 @@ class BuyerPrincipal(Principal):
         )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, unsafe_hash=True)
 class Nugget:
     question: str
     answer: str
@@ -315,6 +330,20 @@ class Block:
 
     def evaluation_summary(self) -> Dict[str, Any]:
         return dict(block_id=self.block_id, content=self.content)
+
+    def __hash__(self):
+        return hash(
+            (
+                self.document_id,
+                self.document_title,
+                self.publication_date,
+                self.block_id,
+                self.content,
+                self.num_tokens,
+                tuple(self.embedding),
+                tuple(self.nuggets),
+            )
+        )
 
 
 @dataclass

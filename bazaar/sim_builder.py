@@ -4,6 +4,7 @@ from typing import Tuple, List
 
 import numpy as np
 
+from bazaar.py_utils import dump_dict, PathType
 from bazaar.schema import (
     Block,
     Query,
@@ -43,6 +44,10 @@ class SimulationConfig:
     # Buyer agent kwargs
     buyer_agent_kwargs: dict
     vendor_agent_kwargs: dict
+
+    def dump(self, path: PathType) -> "SimulationConfig":
+        dump_dict(self.__dict__, path)
+        return self
 
 
 def load(path: str, config: SimulationConfig):

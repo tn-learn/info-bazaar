@@ -2,7 +2,7 @@ from contextlib import contextmanager
 from typing import Optional, List, Dict, Union, Any
 import mesa
 
-from bazaar.database import retrieve_blocks
+from bazaar.database import build_retriever
 from bazaar.lem_utils import (
     select_quotes_with_debate,
     synthesize_answer,
@@ -123,14 +123,13 @@ class VendorAgent(BazaarAgent):
     def __init__(
         self,
         principal: Union[Institution, Author],
-        use_hyde: bool = True,
+        retriever_config: dict = None,
     ):
         super().__init__(principal)
         # Privates
         self._outstanding_quotes: List[Quote] = []
         self._bulletin_board_last_checked_at: int = -1
-        # Publics
-        self.use_hyde = use_hyde
+        self._retriever = build_retriever(**(retriever_config or {}))
 
     def check_bulletin_board_and_issue_quotes(self):
         """
@@ -159,13 +158,17 @@ class VendorAgent(BazaarAgent):
         if len(queries_in_bulletin_board) == 0:
             return
 
-        all_retrieved_outputs = retrieve_blocks(
+        all_retrieved_outputs = self._retriever(
             queries=queries_in_bulletin_board,
             blocks=list(self.principal.public_blocks.values()),
-            use_hyde=self.use_hyde,
-            top_k=self.model.bulletin_board.top_k,
-            score_threshold=self.model.bulletin_board.score_threshold,
         )
+        # all_retrieved_outputs = retrieve_blocks(
+        #     queries=queries_in_bulletin_board,
+        #     blocks=list(self.principal.public_blocks.values()),
+        #     use_hyde=self.use_hyde,
+        #     top_k=self.model.bulletin_board.top_k,
+        #     score_threshold=self.model.bulletin_board.score_threshold,
+        # )
         # Issue the quotes
         for retrieved in all_retrieved_outputs:
             for retrieved_block, retrieval_score in zip(
