@@ -1,12 +1,24 @@
-import vllm
-prompts = [
-    "Hello, my name is",
-    "The president of the United States is",
-    "The capital of France is",
-    "The future of AI is",
-]
-sampling_params = vllm.SamplingParams(temperature=0.8, top_p=0.95)
-llm = vllm.LLM(model="meta-llama/Llama-2-70b-chat-hf")
-output = llm.generate("Hello, my name is")
-print(output)
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 
+from bazaar.lem_utils import get_llm
+
+app = FastAPI()
+
+
+class APIQuery(BaseModel):
+    query: str
+    model_name: str
+
+class APIResponse(BaseModel):
+    response: str
+
+@app.post("/predict", status_code=200)
+def get_prediction(query: APIQuery):
+    try:
+        breakpoint()
+        llm = get_llm(query.model_name)
+        response = {"ping": "pong"}
+    except Exception as detail:
+        raise HTTPException(status_code=500, detail=detail)
+    return response
