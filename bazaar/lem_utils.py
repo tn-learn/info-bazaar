@@ -1,4 +1,6 @@
 import os
+import torch
+import requests
 from collections import defaultdict
 from typing import (
     List,
@@ -20,6 +22,7 @@ import diskcache
 import platformdirs
 from guidance.llms.caches import Cache
 import backoff
+from transformers.file_utils import ModelOutput
 
 from bazaar.schema import Quote
 
@@ -127,6 +130,25 @@ class LLaMa2(guidance.llms.Transformers):
         monitor_model: bool = False,
         **super_kwargs,
     ):
+        # Init the super
+        self.initialize_model(
+            hf_auth_token=hf_auth_token,
+            hf_cache_directory=hf_cache_directory,
+            size=size,
+            monitor_model=monitor_model,
+        )
+        super().__init__(model=self.model, tokenizer=self.tokenizer, **super_kwargs)
+        # Configure the base class
+        self.chat_mode = True
+        if guidance_cache_directory is None:
+            guidance_cache_directory = os.getenv("GUIDANCE_CACHE_DIRECTORY")
+        if guidance_cache_directory is not None:
+            # Set a custom cache directory. This is needed for MPI cluster because
+            # sqlite is borked on ~/
+            self.cache = DiskCache(guidance_cache_directory, self.llm_name)
+        self.llm_name = self.model_id.split("/")[-1]
+
+    def initialize_model(self, hf_auth_token: str, hf_cache_directory: str, size:int, monitor_model: bool):
         import transformers
         import torch
 
@@ -144,12 +166,12 @@ class LLaMa2(guidance.llms.Transformers):
             bnb_4bit_compute_dtype=torch.bfloat16,
         )
         assert size in ["7b", "13b", "70b"]
-        model_id = f"meta-llama/Llama-2-{size}-chat-hf"
+        self.model_id = f"meta-llama/Llama-2-{size}-chat-hf"
         model_config = transformers.AutoConfig.from_pretrained(
-            model_id, use_auth_token=hf_auth_token, cache_dir=hf_cache_directory
+            self.model_id, use_auth_token=hf_auth_token, cache_dir=hf_cache_directory
         )
-        model = transformers.AutoModelForCausalLM.from_pretrained(
-            model_id,
+        self.model = transformers.AutoModelForCausalLM.from_pretrained(
+            self.model_id,
             config=model_config,
             trust_remote_code=True,
             quantization_config=bnb_config,
@@ -157,25 +179,15 @@ class LLaMa2(guidance.llms.Transformers):
             use_auth_token=hf_auth_token,
             cache_dir=hf_cache_directory,
         )
-        tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model_id, use_auth_token=hf_auth_token, cache_dir=hf_cache_directory
+        self.tokenizer = transformers.AutoTokenizer.from_pretrained(
+            self.model_id, use_auth_token=hf_auth_token, cache_dir=hf_cache_directory
         )
         # Patch monitor if required
         if monitor_model:
-            self.model_monitor = self.patch_generate_with_input_monitor_(model)
+            self.model_monitor = self.patch_generate_with_input_monitor_(self.model)
         else:
             self.model_monitor = None
-        # Init the super
-        super().__init__(model=model, tokenizer=tokenizer, **super_kwargs)
-        # Configure the base class
-        self.chat_mode = True
-        if guidance_cache_directory is None:
-            guidance_cache_directory = os.getenv("GUIDANCE_CACHE_DIRECTORY")
-        if guidance_cache_directory is not None:
-            # Set a custom cache directory. This is needed for MPI cluster because
-            # sqlite is borked on ~/
-            self.cache = DiskCache(guidance_cache_directory, self.llm_name)
-        self.llm_name = model_id.split("/")[-1]
+
 
     @staticmethod
     def role_start(role):
@@ -225,10 +237,130 @@ class LLaMa2(guidance.llms.Transformers):
         return monitor
 
 
+class FakeLlama:
+    def __init__(self, model_config):
+        self.model_config = model_config
+
+    def prepare_for_json(self, kwargs):
+        prepared_data = {}
+
+        # Convert tensor to a list
+        if 'inputs' in kwargs:
+            prepared_data['inputs'] = kwargs['inputs'].tolist()
+
+        # Convert simple types directly
+        for key in ['temperature', 'max_new_tokens', 'top_p', 'pad_token_id', 'output_scores',
+                    'return_dict_in_generate']:
+            if key in kwargs:
+                prepared_data[key] = kwargs[key]
+        return prepared_data
+
+    def generate(self, *args, **kwargs) -> Dict[str, Any]:
+        """
+        Sends a request to a specific URL to generate data, and returns the response.
+        Converts specific response fields to torch tensors if present.
+
+        Returns:
+            A dictionary containing the response data.
+        """
+        url = "http://127.0.0.1:8823/generate"
+        headers = {
+            "accept": "application/json",
+            "Content-Type": "application/json",
+        }
+        data = self.prepare_for_json(kwargs)
+
+        try:
+            response = requests.post(url, json=data, headers=headers)
+            response.raise_for_status()  # Raises an HTTPError if the HTTP request returned an unsuccessful status code
+            response_data = response.json()
+        except requests.RequestException as e:
+            # Handle HTTP-related errors here, e.g., connection errors, timeouts, etc.
+            print(f"An error occurred while making the request: {e}")
+            return {}
+        except ValueError as e:
+            # Handle JSON decoding errors here
+            print(f"An error occurred while decoding the response: {e}")
+            return {}
+
+        # Convert specific fields to torch tensors if present
+        for key in ["sequences", "scores", "attentions", "hidden_states"]:
+            if response_data.get(key) is not None:
+                response_data[key] = torch.tensor(response_data[key])
+
+        return response_data
+
+    def prepare_inputs_for_generation(self, input_ids: torch.LongTensor, **kwargs) -> Dict[str, Any]:
+        return {"input_ids": input_ids}
+
+    @staticmethod
+    def _update_model_kwargs_for_generation(
+        outputs: ModelOutput, model_kwargs: Dict[str, Any], is_encoder_decoder: bool = False
+    ) -> Dict[str, Any]:
+        # update past
+        if "past_key_values" in outputs:
+            model_kwargs["past"] = outputs.past_key_values
+        elif "mems" in outputs:
+            model_kwargs["past"] = outputs.mems
+        elif "past_buckets_states" in outputs:
+            model_kwargs["past"] = outputs.past_buckets_states
+        else:
+            model_kwargs["past"] = None
+
+        # update attention mask
+        if not is_encoder_decoder:
+            if "attention_mask" in model_kwargs:
+                attention_mask = model_kwargs["attention_mask"]
+                model_kwargs["attention_mask"] = torch.cat(
+                    [attention_mask, attention_mask.new_ones((attention_mask.shape[0], 1))], dim=-1
+                )
+
+        return model_kwargs
+
+    def to(self, device):
+        return self
+
+    def eval(self):
+        return self
+
+    def __call__(self, *args, **kwargs):
+        return self
+
+    @property
+    def device(self):
+        return "cpu"
+
+    @property
+    def config(self):
+        return self.model_config
+
+
+class FakeTokenizer:
+    pass
+
+
+class RemoteLlaMa2(LLaMa2):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def initialize_model(self, hf_auth_token: str, hf_cache_directory: str, size: int, monitor_model: bool):
+        import transformers
+        self.model_id = f"meta-llama/Llama-2-{size}-chat-hf"
+        model_config = transformers.AutoConfig.from_pretrained(
+            self.model_id, use_auth_token=hf_auth_token, cache_dir=hf_cache_directory
+        )
+        self.model = FakeLlama(model_config)
+        self.tokenizer = transformers.AutoTokenizer.from_pretrained(
+            self.model_id, use_auth_token=hf_auth_token, cache_dir=hf_cache_directory
+        )
+        self.llm_name = self.model_id.split("/")[-1]
+        self.model_monitor = None
+
 def get_llm(model_name: str = "gpt-3.5-turbo", **extra_kwargs):
     oai_models = ["gpt-3.5-turbo", "gpt-3.5-turbo-16k", "gpt-4", "gpt-4-32k"]
     name_to_cls_kwargs_mapping = {
         "Llama-2-70b-chat-hf": (LLaMa2, {"size": "70b"}),
+        "RemoteLlama-2-70b-chat-hf": (RemoteLlaMa2, {"size": "70b"}),
     }
     if model_name in oai_models:
         llm = guidance.llms.OpenAI(model_name, **extra_kwargs)
@@ -269,14 +401,10 @@ class TransformersEmbedding:
         hf_auth_token = get_hf_auth_token(hf_auth_token)
         # Init the tokenizer and embedding
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model_id,
-            cache_dir=hf_cache_directory,
-            use_auth_token=hf_auth_token,
+            model_id, cache_dir=hf_cache_directory, use_auth_token=hf_auth_token,
         )
         self.model = transformers.AutoModel.from_pretrained(
-            model_id,
-            cache_dir=hf_cache_directory,
-            use_auth_token=hf_auth_token,
+            model_id, cache_dir=hf_cache_directory, use_auth_token=hf_auth_token,
         )
         # Manually ship to device
         self.model.to(self.device)
@@ -387,14 +515,10 @@ class Reranker:
         hf_cache_directory = get_hf_cache_directory(hf_cache_directory)
         # Init the tokenizer and model
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model_id,
-            cache_dir=hf_cache_directory,
-            use_auth_token=hf_auth_token,
+            model_id, cache_dir=hf_cache_directory, use_auth_token=hf_auth_token,
         )
         self.model = transformers.AutoModelForSequenceClassification.from_pretrained(
-            model_id,
-            cache_dir=hf_cache_directory,
-            use_auth_token=hf_auth_token,
+            model_id, cache_dir=hf_cache_directory, use_auth_token=hf_auth_token,
         )
         self.model.to(self.device)
         self.model.eval()
@@ -618,10 +742,12 @@ def generate_embedding(
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def split_to_paragraphs(
-    text: str, target_num_paragraphs: int, model_name="gpt-3.5-turbo"
+    block: dict, model_name: str, target_num_paragraphs: int = -1
 ) -> List[str]:
     if model_name in OAI_MODELS:
         raise NotImplementedError("Deep guidance not implemented for OpenAI models.")
+    if target_num_paragraphs == -1:
+        target_num_paragraphs = (block['num_tokens'] // 450) + 1
     # Split text by sentences
     sentences = get_sent_tokenizer()(text)
     # This one's for the llamas
@@ -668,10 +794,7 @@ def split_to_paragraphs(
     program = guidance(  # noqa
         program_string, llm=get_llm(model_name=model_name), silent=True
     )
-    program_output = program(
-        sentences=sentences,
-        num_para=target_num_paragraphs,
-    )
+    program_output = program(sentences=sentences, num_para=target_num_paragraphs)
     paragraph_indices = [int(x) - 1 for x in program_output["parasplits"]]
     num_paragraphs = len(set(paragraph_indices))
     # Split the sentences into paragraphs as given by the paragraph indices
@@ -1052,7 +1175,7 @@ def select_quotes_with_debate(
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
-def clean_block_content(block: dict, model_name: str = "gpt-3.5-turbo"):
+def clean_block_content(block: dict, model_name: str):
     program_string = """
     {{#system~}}
     You are a text passage cleaner bot. You will be provided a text passage and you will reply with an exact copy of the input text passage, but with the following (and only the following) modifications:
@@ -1064,10 +1187,12 @@ def clean_block_content(block: dict, model_name: str = "gpt-3.5-turbo"):
     
     {{#user~}}
     The text passage is: {{passage}}
+    
+    Please return exactly the cleaned passage.
     {{~/user}}
     
     {{#assistant~}}
-    {{gen "cleaned_passage" temperature=0.0}}
+    {{gen "cleaned_passage" temperature=0.1}}
     {{~/assistant}}    
     """
     program_string = clean_program_string(program_string)
