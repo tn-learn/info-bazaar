@@ -148,7 +148,13 @@ class LLaMa2(guidance.llms.Transformers):
             self.cache = DiskCache(guidance_cache_directory, self.llm_name)
         self.llm_name = self.model_id.split("/")[-1]
 
-    def initialize_model(self, hf_auth_token: str, hf_cache_directory: str, size:int, monitor_model: bool):
+    def initialize_model(
+        self,
+        hf_auth_token: str,
+        hf_cache_directory: str,
+        size: int,
+        monitor_model: bool,
+    ):
         import transformers
         import torch
 
@@ -187,7 +193,6 @@ class LLaMa2(guidance.llms.Transformers):
             self.model_monitor = self.patch_generate_with_input_monitor_(self.model)
         else:
             self.model_monitor = None
-
 
     @staticmethod
     def role_start(role):
@@ -245,12 +250,18 @@ class FakeLlama:
         prepared_data = {}
 
         # Convert tensor to a list
-        if 'inputs' in kwargs:
-            prepared_data['inputs'] = kwargs['inputs'].tolist()
+        if "inputs" in kwargs:
+            prepared_data["inputs"] = kwargs["inputs"].tolist()
 
         # Convert simple types directly
-        for key in ['temperature', 'max_new_tokens', 'top_p', 'pad_token_id', 'output_scores',
-                    'return_dict_in_generate']:
+        for key in [
+            "temperature",
+            "max_new_tokens",
+            "top_p",
+            "pad_token_id",
+            "output_scores",
+            "return_dict_in_generate",
+        ]:
             if key in kwargs:
                 prepared_data[key] = kwargs[key]
         return prepared_data
@@ -290,12 +301,16 @@ class FakeLlama:
 
         return response_data
 
-    def prepare_inputs_for_generation(self, input_ids: torch.LongTensor, **kwargs) -> Dict[str, Any]:
+    def prepare_inputs_for_generation(
+        self, input_ids: torch.LongTensor, **kwargs
+    ) -> Dict[str, Any]:
         return {"input_ids": input_ids}
 
     @staticmethod
     def _update_model_kwargs_for_generation(
-        outputs: ModelOutput, model_kwargs: Dict[str, Any], is_encoder_decoder: bool = False
+        outputs: ModelOutput,
+        model_kwargs: Dict[str, Any],
+        is_encoder_decoder: bool = False,
     ) -> Dict[str, Any]:
         # update past
         if "past_key_values" in outputs:
@@ -312,7 +327,11 @@ class FakeLlama:
             if "attention_mask" in model_kwargs:
                 attention_mask = model_kwargs["attention_mask"]
                 model_kwargs["attention_mask"] = torch.cat(
-                    [attention_mask, attention_mask.new_ones((attention_mask.shape[0], 1))], dim=-1
+                    [
+                        attention_mask,
+                        attention_mask.new_ones((attention_mask.shape[0], 1)),
+                    ],
+                    dim=-1,
                 )
 
         return model_kwargs
@@ -343,8 +362,15 @@ class RemoteLlaMa2(LLaMa2):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def initialize_model(self, hf_auth_token: str, hf_cache_directory: str, size: int, monitor_model: bool):
+    def initialize_model(
+        self,
+        hf_auth_token: str,
+        hf_cache_directory: str,
+        size: int,
+        monitor_model: bool,
+    ):
         import transformers
+
         self.model_id = f"meta-llama/Llama-2-{size}-chat-hf"
         model_config = transformers.AutoConfig.from_pretrained(
             self.model_id, use_auth_token=hf_auth_token, cache_dir=hf_cache_directory
@@ -355,6 +381,7 @@ class RemoteLlaMa2(LLaMa2):
         )
         self.llm_name = self.model_id.split("/")[-1]
         self.model_monitor = None
+
 
 def get_llm(model_name: str = "gpt-3.5-turbo", **extra_kwargs):
     oai_models = ["gpt-3.5-turbo", "gpt-3.5-turbo-16k", "gpt-4", "gpt-4-32k"]
@@ -401,10 +428,14 @@ class TransformersEmbedding:
         hf_auth_token = get_hf_auth_token(hf_auth_token)
         # Init the tokenizer and embedding
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model_id, cache_dir=hf_cache_directory, use_auth_token=hf_auth_token,
+            model_id,
+            cache_dir=hf_cache_directory,
+            use_auth_token=hf_auth_token,
         )
         self.model = transformers.AutoModel.from_pretrained(
-            model_id, cache_dir=hf_cache_directory, use_auth_token=hf_auth_token,
+            model_id,
+            cache_dir=hf_cache_directory,
+            use_auth_token=hf_auth_token,
         )
         # Manually ship to device
         self.model.to(self.device)
@@ -489,7 +520,7 @@ def get_embedder(model_name: str, **extra_kwargs) -> TransformersEmbedding:
         raise ValueError(f"Unknown model {model_name}")
 
 
-class Reranker:
+class LMReranker:
     def __init__(
         self,
         model_id: str,
@@ -515,10 +546,14 @@ class Reranker:
         hf_cache_directory = get_hf_cache_directory(hf_cache_directory)
         # Init the tokenizer and model
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model_id, cache_dir=hf_cache_directory, use_auth_token=hf_auth_token,
+            model_id,
+            cache_dir=hf_cache_directory,
+            use_auth_token=hf_auth_token,
         )
         self.model = transformers.AutoModelForSequenceClassification.from_pretrained(
-            model_id, cache_dir=hf_cache_directory, use_auth_token=hf_auth_token,
+            model_id,
+            cache_dir=hf_cache_directory,
+            use_auth_token=hf_auth_token,
         )
         self.model.to(self.device)
         self.model.eval()
@@ -586,7 +621,7 @@ class Reranker:
         return scores
 
 
-class CrossEncoderMiniLMReranker(Reranker):
+class CrossEncoderMiniLMReranker(LMReranker):
     def __init__(self, num_layers: int, **super_kwargs):
         assert num_layers in [2, 4, 6, 12]
         model_id = f"cross-encoder/ms-marco-MiniLM-L-{num_layers}-v2"
@@ -747,7 +782,7 @@ def split_to_paragraphs(
     if model_name in OAI_MODELS:
         raise NotImplementedError("Deep guidance not implemented for OpenAI models.")
     if target_num_paragraphs == -1:
-        target_num_paragraphs = (block['num_tokens'] // 450) + 1
+        target_num_paragraphs = (block["num_tokens"] // 450) + 1
     # Split text by sentences
     sentences = get_sent_tokenizer()(text)
     # This one's for the llamas
