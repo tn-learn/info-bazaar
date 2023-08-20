@@ -16,7 +16,7 @@ import openai
 from typing import List
 import tiktoken
 from tqdm import tqdm
-from bazaar.lem_utils import clean_block_content, extract_nuggets
+from bazaar.lem_utils import clean_block_content, extract_nuggets, split_to_paragraphs
 
 EMBEDDING_MODEL = "text-embedding-ada-002"
 
@@ -24,7 +24,8 @@ if Path("~").expanduser().name == "nrahaman":
     data_root = "/Users/nrahaman/Python/info-bazaar/data"
 else:
     # data_root = "/Users/martinweiss/PycharmProjects/tn-learn/info-bazaar/data"
-    data_root = "/home/mila/w/weissmar/scratch/tn/info-bazaar/data"
+    # data_root = "/home/mila/w/weissmar/scratch/tn/info-bazaar/data"
+    data_root = "/Users/martinweiss/PycharmProjects/tn-learn/info-bazaar/data"
     openai.api_key = os.environ.get("OPENAI_API_KEY")
 
 
@@ -152,7 +153,9 @@ def embed_nuggets(nuggets):
         nuggets[idx]['embedding'] = embedding
     return nuggets
 
-def merge_small_blocks(blocks: List[dict], tiktoken_enc, min_block_size: int = 50):
+def merge_small_blocks(blocks: List[dict], min_block_size: int = 50):
+    tiktoken_enc = tiktoken.encoding_for_model("gpt-3.5-turbo")
+
     smol_blocks = [block for block in blocks if len(tiktoken_enc.encode(block['content'])) < min_block_size]
     while smol_blocks:
         for idx in range(len(smol_blocks)):
@@ -169,10 +172,10 @@ def merge_small_blocks(blocks: List[dict], tiktoken_enc, min_block_size: int = 5
         smol_blocks = [block for block in blocks if len(tiktoken_enc.encode(block['content'])) < min_block_size]
     return blocks
     
-def improve_block_formatting(blocks):
+def improve_block_formatting(blocks: List[dict], model_name: str):
     cleaned_blocks = []
     for block in tqdm(blocks):
-        cleaned_blocks.append(clean_block_content(block, model_name="Llama-2-70b-chat-hf"))
+        cleaned_blocks.append(clean_block_content(block, model_name=model_name))
     return cleaned_blocks
 
     
@@ -353,17 +356,26 @@ if os.path.exists(f"data/{category}/dataset_step_0.pkl"):
         dataset_step_0 = pickle.load(f)
 else:
     print("Embedding blocks.")
-    enc = tiktoken.encoding_for_model("gpt-3.5-turbo")
     for arxiv_id in tqdm(paper_samples):
         if arxiv_id not in oa_works_w_arxiv:
             continue
         try:
             data = oa_works_w_arxiv[arxiv_id]
             blocks = parse_latex(data["paper"])
-            breakpoint()
-            cleaned_blocks = improve_block_formatting(blocks)
-            merged_blocks = merge_small_blocks(cleaned_blocks, enc)
-            response = openai.Embedding.create(model=EMBEDDING_MODEL, input=cleaned_block_contents)
+            model_name = "RemoteLlama-2-70b-chat-hf"
+            cleaned_blocks = improve_block_formatting(blocks[:3], model_name=model_name)
+            merged_blocks = merge_small_blocks(cleaned_blocks)
+            final_blocks = []
+            for block in merged_blocks:
+                if block['num_tokens'] > 450:
+                    breakpoint()
+
+                    new_blocks = split_to_paragraphs(block, model_name=model_name)
+                    final_blocks.extend(new_blocks)
+                else:
+                    final_blocks.append(block)
+
+            response = openai.Embedding.create(model=EMBEDDING_MODEL, input=final_blocks)
             batch_embeddings = [e["embedding"] for e in response["data"]]
             for idx, block in enumerate(blocks):
                 block['embedding'] = batch_embeddings[idx]
