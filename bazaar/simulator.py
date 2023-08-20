@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from typing import Optional, List, Dict, Union, Any
+from typing import Optional, List, Dict, Union, Any, Callable
 import mesa
 
 from bazaar.database import build_retriever
@@ -7,6 +7,8 @@ from bazaar.lem_utils import (
     select_quotes_with_debate,
     synthesize_answer,
     rerank_quotes,
+    default_llm_name,
+    default_reranker_name,
 )
 from bazaar.schema import (
     Principal,
@@ -62,6 +64,14 @@ class BazaarAgent(mesa.Agent):
         self.principal = principal
         self.agent_status = AgentStatus.ACTIVE
         self.called_count = 0
+
+    @staticmethod
+    def get_llm_name(model_name: Optional[str]) -> str:
+        return model_name or default_llm_name()
+
+    @staticmethod
+    def get_reranker_name(model_name: Optional[str]) -> str:
+        return model_name or default_reranker_name()
 
     @property
     def now(self):
@@ -162,13 +172,6 @@ class VendorAgent(BazaarAgent):
             queries=queries_in_bulletin_board,
             blocks=list(self.principal.public_blocks.values()),
         )
-        # all_retrieved_outputs = retrieve_blocks(
-        #     queries=queries_in_bulletin_board,
-        #     blocks=list(self.principal.public_blocks.values()),
-        #     use_hyde=self.use_hyde,
-        #     top_k=self.model.bulletin_board.top_k,
-        #     score_threshold=self.model.bulletin_board.score_threshold,
-        # )
         # Issue the quotes
         for retrieved in all_retrieved_outputs:
             for retrieved_block, retrieval_score in zip(
@@ -202,9 +205,9 @@ class BuyerAgent(BazaarAgent):
         quote_review_top_k: Optional[int] = None,
         num_quote_gathering_steps: int = 0,
         use_reranker: bool = False,
-        quote_selection_model_name: str = "gpt-3.5-turbo",
-        answer_synthesis_model_name: str = "gpt-3.5-turbo",
-        reranking_model_name: Optional[str] = "ms-marco-MiniLM-L-4-v2",
+        quote_selection_model_name: Optional[str] = None,
+        answer_synthesis_model_name: Optional[str] = None,
+        reranking_model_name: Optional[str] = None,
     ):
         super().__init__(principal)
         # Privates
@@ -218,9 +221,11 @@ class BuyerAgent(BazaarAgent):
         self.quote_review_top_k = quote_review_top_k
         self.num_quote_gathering_steps = num_quote_gathering_steps
         self.use_reranker = use_reranker
-        self.quote_selection_model_name = quote_selection_model_name
-        self.answer_synthesis_model_name = answer_synthesis_model_name
-        self.reranking_model_name = reranking_model_name
+        self.quote_selection_model_name = self.get_llm_name(quote_selection_model_name)
+        self.answer_synthesis_model_name = self.get_llm_name(
+            answer_synthesis_model_name
+        )
+        self.reranking_model_name = self.get_reranker_name(reranking_model_name)
 
     def prepare(self):
         """
@@ -466,15 +471,25 @@ class BazaarSimulator(mesa.Model):
         self.schedule.step()
         self.bulletin_board.maintain(self.now)
 
-    def run(self, max_num_steps: Optional[int] = None):
+    def run(
+        self,
+        max_num_steps: Optional[int] = None,
+        print_callback: Optional[Callable[[str], Any]] = None,
+    ):
+        if print_callback is None:
+            print_callback = lambda x: None
+
         if max_num_steps is None:
             while not self.all_buyer_agents_terminated:
+                print_callback(f"Simulating t = {self.now}.")
                 self.step()
         else:
             for _ in range(max_num_steps):
                 if self.all_buyer_agents_terminated:
                     break
+                print_callback(f"Simulating t = {self.now}.")
                 self.step()
+        print_callback(f"Simulation complete at t = {self.now}.")
 
     def evaluation_summary(self) -> Dict[str, Any]:
         self.buyer_agents: List[BuyerAgent]

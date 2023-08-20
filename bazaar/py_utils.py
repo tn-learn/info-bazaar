@@ -1,4 +1,7 @@
 import json
+import os
+
+import diskcache
 import jsonpickle
 import hashlib
 import pickle
@@ -6,6 +9,8 @@ import git
 
 from pathlib import Path
 from typing import Any, Union, SupportsFloat
+
+from guidance.llms.caches import Cache
 
 PathType = Union[str, Path]
 
@@ -43,7 +48,9 @@ def load_dict(path: PathType) -> dict:
     return d
 
 
-def ensure_number(x: Union[SupportsFloat], allow_none: bool = False) -> Union[int, float, None]:
+def ensure_number(
+    x: Union[SupportsFloat], allow_none: bool = False
+) -> Union[int, float, None]:
     import numpy as np
     import torch
 
@@ -72,3 +79,22 @@ def pickle_hash(obj: Any) -> str:
     return hashed
 
 
+class DiskCache(Cache):
+    """DiskCache is a cache that uses diskcache lib."""
+
+    def __init__(self, cache_directory: str, llm_name: str):
+        self._diskcache = diskcache.Cache(
+            os.path.join(cache_directory, f"_{llm_name}.diskcache")
+        )
+
+    def __getitem__(self, key: str) -> str:
+        return self._diskcache[key]
+
+    def __setitem__(self, key: str, value: str) -> None:
+        self._diskcache[key] = value
+
+    def __contains__(self, key: str) -> bool:
+        return key in self._diskcache
+
+    def clear(self):
+        self._diskcache.clear()
