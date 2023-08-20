@@ -18,20 +18,17 @@ import types
 import re
 import guidance
 import openai
-import diskcache
 import platformdirs
-from guidance.llms.caches import Cache
 import backoff
 from transformers.file_utils import ModelOutput
 
+from bazaar.py_utils import DiskCache
 from bazaar.schema import Quote
 
 if TYPE_CHECKING:
     import torch
 
 
-MODEL_CACHE = {}
-OAI_MODELS = ["gpt-3.5-turbo", "gpt-3.5-turbo-16k", "gpt-4", "gpt-4-32k"]
 OAI_EXCEPTIONS = (
     openai.error.APIError,
     openai.error.RateLimitError,
@@ -39,26 +36,40 @@ OAI_EXCEPTIONS = (
     openai.error.TryAgain,
 )
 
+MODEL_CACHE = {}
+OAI_MODELS = ["gpt-3.5-turbo", "gpt-3.5-turbo-16k", "gpt-4", "gpt-4-32k"]
+OAI_EMBEDDINGS = ["text-embedding-ada-002"]
 
-class DiskCache(Cache):
-    """DiskCache is a cache that uses diskcache lib."""
+DEFAULT_LLM_NAME = "gpt-3.5-turbo"
+DEFAULT_RERANKER_NAME = "ms-marco-MiniLM-L-4-v2"
+DEFAULT_EMBEDDING_NAME = "text-embedding-ada-002"
 
-    def __init__(self, cache_directory: str, llm_name: str):
-        self._diskcache = diskcache.Cache(
-            os.path.join(cache_directory, f"_{llm_name}.diskcache")
-        )
 
-    def __getitem__(self, key: str) -> str:
-        return self._diskcache[key]
+def default_llm_name(set_to: Optional[str] = None) -> str:
+    global DEFAULT_LLM_NAME
+    if set_to is not None:
+        DEFAULT_LLM_NAME = set_to
+    if DEFAULT_LLM_NAME is None:
+        raise ValueError("Default LLM not set")
+    return DEFAULT_LLM_NAME
 
-    def __setitem__(self, key: str, value: str) -> None:
-        self._diskcache[key] = value
 
-    def __contains__(self, key: str) -> bool:
-        return key in self._diskcache
+def default_reranker_name(set_to: Optional[str] = None) -> str:
+    global DEFAULT_RERANKER_NAME
+    if set_to is not None:
+        DEFAULT_RERANKER_NAME = set_to
+    if DEFAULT_RERANKER_NAME is None:
+        raise ValueError("Default reranker not set")
+    return DEFAULT_RERANKER_NAME
 
-    def clear(self):
-        self._diskcache.clear()
+
+def default_embedding_name(set_to: Optional[str] = None) -> str:
+    global DEFAULT_EMBEDDING_NAME
+    if set_to is not None:
+        DEFAULT_EMBEDDING_NAME = set_to
+    if DEFAULT_EMBEDDING_NAME is None:
+        raise ValueError("Default embedding not set")
+    return DEFAULT_EMBEDDING_NAME
 
 
 def get_hf_auth_token(
@@ -383,7 +394,9 @@ class RemoteLlaMa2(LLaMa2):
         self.model_monitor = None
 
 
-def get_llm(model_name: str = "gpt-3.5-turbo", **extra_kwargs):
+def get_llm(model_name: Optional[str] = None, **extra_kwargs):
+    if model_name is None:
+        model_name = default_llm_name()
     oai_models = ["gpt-3.5-turbo", "gpt-3.5-turbo-16k", "gpt-4", "gpt-4-32k"]
     name_to_cls_kwargs_mapping = {
         "Llama-2-70b-chat-hf": (LLaMa2, {"size": "70b"}),
@@ -628,7 +641,9 @@ class CrossEncoderMiniLMReranker(LMReranker):
         super().__init__(model_id, **super_kwargs)
 
 
-def get_reranker(model_name: str, **extra_kwargs):
+def get_reranker(model_name: Optional[str] = None, **extra_kwargs):
+    if model_name is None:
+        model_name = default_reranker_name()
     name_to_cls_and_kwargs_mapping = {
         "ms-marco-MiniLM-L-2-v2": (CrossEncoderMiniLMReranker, {"num_layers": 2}),
         "ms-marco-MiniLM-L-4-v2": (CrossEncoderMiniLMReranker, {"num_layers": 4}),
@@ -665,7 +680,7 @@ def clean_program_string(program_string: str, indent: Optional[int] = None) -> s
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
-def break_down_question(question: str, model: str = "gpt-3.5-turbo") -> List[str]:
+def break_down_question(question: str, model: Optional[str] = None) -> List[str]:
     def _extract_questions(input_string: str) -> List[str]:
         if not input_string.startswith("SUBQUESTIONS"):
             return []
@@ -701,7 +716,7 @@ def break_down_question(question: str, model: str = "gpt-3.5-turbo") -> List[str
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
-def generate_hyde_passage(question: str, model: str = "gpt-3.5-turbo") -> str:
+def generate_hyde_passage(question: str, model: Optional[str] = None) -> str:
     def _parse_answer(answer: str) -> str:
         return answer.replace("ANSWER:", "").strip()
 
@@ -728,7 +743,7 @@ def generate_hyde_passage(question: str, model: str = "gpt-3.5-turbo") -> str:
     return program["hyde_answer"]
 
 
-def generate_keywords(text: str, model_name: str = "gpt-3.5-turbo") -> List[str]:
+def generate_keywords(text: str, model_name: Optional[str] = None) -> List[str]:
     program_string = """
     {{#system~}}
     You will be given some text, which may be a passage or a question. Your task is to extract keywords that can be useful for search. 
@@ -759,12 +774,11 @@ def generate_keywords(text: str, model_name: str = "gpt-3.5-turbo") -> List[str]
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def generate_embedding(
-    text: str, model="text-embedding-ada-002", as_query: bool = False, **embedder_kwargs
+    text: str, model: Optional[str] = None, as_query: bool = False, **embedder_kwargs
 ) -> List[float]:
-    oai_embedders = [
-        "text-embedding-ada-002",
-    ]
-    if model in oai_embedders:
+    if model is None:
+        model = default_embedding_name()
+    if model in OAI_EMBEDDINGS:
         return openai.Embedding.create(input=[text], model=model, **embedder_kwargs)[
             "data"
         ][0]["embedding"]
@@ -851,7 +865,7 @@ def select_quotes_with_heuristic(
     quotes: List[Quote],
     budget: Optional[SupportsFloat] = None,
     fraction_of_max_budget: Optional[float] = None,
-    model_name: str = "gpt-3.5-turbo",
+    model_name: Optional[str] = None,
 ) -> List[Quote]:
     assert all(
         [quotes[0].query.compare_content(quote.query) for quote in quotes[1:]]
@@ -968,7 +982,7 @@ def select_quotes_with_heuristic(
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def extract_reasonable_questions_from_passage(
-    passage: str, model_name: str = "gpt-3.5-turbo"
+    passage: str, model_name: Optional[str] = None
 ) -> List[str]:
     program_string = """
     {{#system~}}
@@ -1012,7 +1026,7 @@ def extract_reasonable_questions_from_passage(
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
-def filter_nuggets(nuggets: List[str], model_name="gpt-3.5-turbo") -> List[str]:
+def filter_nuggets(nuggets: List[str], model_name: Optional[str] = None) -> List[str]:
     program_string = """
     {{#system~}}
     You are an exam auditor. Your job is to reject bad questions. A question is good when it is factual and could have universal agreement. A question is not good when  it is ambiguous or makes highly specific references (e.g., to figures). 
@@ -1033,8 +1047,8 @@ def filter_nuggets(nuggets: List[str], model_name="gpt-3.5-turbo") -> List[str]:
     """
     program_string = clean_program_string(program_string)
     # Run the program
-    program = guidance(
-        program_string, llm=guidance.llms.OpenAI(model_name), silent=True
+    program = guidance(  # noqa
+        program_string, llm=get_llm(model_name), silent=True
     )  # noqa
     nugget_strs = []
     for i in range(len(nuggets)):
@@ -1095,7 +1109,7 @@ def select_quotes_with_debate(
     quotes: List[Quote],
     budget: Optional[SupportsFloat] = None,
     fraction_of_max_budget: Optional[float] = None,
-    model_name: str = "gpt-3.5-turbo",
+    model_name: Optional[str] = None,
 ) -> List[Quote]:
     assert all(
         [quotes[0].query.compare_content(quote.query) for quote in quotes[1:]]
@@ -1210,7 +1224,7 @@ def select_quotes_with_debate(
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
-def clean_block_content(block: dict, model_name: str):
+def clean_block_content(block: dict, model_name: Optional[str] = None):
     program_string = """
     {{#system~}}
     You are a text passage cleaner bot. You will be provided a text passage and you will reply with an exact copy of the input text passage, but with the following (and only the following) modifications:
@@ -1238,9 +1252,7 @@ def clean_block_content(block: dict, model_name: str):
     return block
 
 
-def rerank_quotes(
-    quotes: List[Quote], model_name: str = "ms-marco-MiniLM-L-2-v2"
-) -> List[float]:
+def rerank_quotes(quotes: List[Quote], model_name: Optional[str] = None) -> List[float]:
     question = quotes[0].query.text
     passages = [
         " [...] ".join([block.content for block in quote.answer_blocks])
@@ -1253,7 +1265,7 @@ def rerank_quotes(
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
-def synthesize_answer(quotes: List[Quote], model_name="gpt-3.5-turbo") -> str:
+def synthesize_answer(quotes: List[Quote], model_name: Optional[str] = None) -> str:
     question = quotes[0].query.text
     passages = [
         {
@@ -1328,7 +1340,7 @@ def synthesize_answer(quotes: List[Quote], model_name="gpt-3.5-turbo") -> str:
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
-def get_closed_book_answer(question: str, model_name="gpt-3.5-turbo") -> str:
+def get_closed_book_answer(question: str, model_name: Optional[str] = None) -> str:
     program_string = """
     {{#system~}}
     You are an intelligent AI assistant. You will be given a question. Your task is to answer it to the best of your ability. 
@@ -1353,7 +1365,7 @@ def get_closed_book_answer(question: str, model_name="gpt-3.5-turbo") -> str:
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def get_open_book_answer(
-    question: str, gold_passage: str, model_name="gpt-3.5-turbo"
+    question: str, gold_passage: str, model_name: Optional[str] = None
 ) -> str:
     program_string = """
     {{#system~}}
@@ -1386,7 +1398,7 @@ def evaluate_answer_with_debate(
     retrieved_answer: Optional[str],
     open_book_answer: str,
     closed_book_answer: str,
-    model_name="gpt-4",
+    model_name: str = "gpt-4",
 ) -> Dict[str, Dict[str, int]]:
     program_string = """
     {{#system~}}

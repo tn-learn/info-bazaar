@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, List, Union, Optional, Dict, Any
 
+from bazaar.lem_utils import default_llm_name, default_embedding_name
 from bazaar.py_utils import ensure_number
 
 if TYPE_CHECKING:
@@ -24,8 +25,8 @@ class Query:
     issued_by: Optional["BuyerAgent"] = None
     urgency: Optional[int] = None
     required_by_time: Optional[int] = None
-    processor_model: str = "gpt-3.5-turbo"
-    embedding_model: str = "text-embedding-ada-002"
+    processor_model: Optional[str] = None
+    embedding_model: Optional[str] = None
     # Containers for hyde and text
     _text_embedding: Optional[List[float]] = None
     _hyde_text: Optional[str] = None
@@ -41,6 +42,10 @@ class Query:
         if self.urgency is not None:
             assert self.required_by_time is None
             self.required_by_time = self.created_at_time + self.urgency
+        if self.processor_model is None:
+            self.processor_model = default_llm_name()
+        if self.embedding_model is None:
+            self.embedding_model = default_embedding_name()
 
     def time_till_deadline(self, now):
         time_remaining = self.required_by_time - now
