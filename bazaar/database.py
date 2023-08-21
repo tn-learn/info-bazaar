@@ -1,11 +1,14 @@
 from collections import defaultdict
 from typing import List, Optional, Tuple, Callable, Dict
 
+import sqlite3
+import hashlib
 import numpy as np
 from rank_bm25 import BM25Okapi
 from nltk.tokenize import word_tokenize
 from sklearn.metrics.pairwise import cosine_similarity
 
+from bazaar.lem_utils import generate_embedding, default_embedding_name
 from bazaar.schema import Block, Query
 from dataclasses import dataclass, field
 
@@ -283,3 +286,43 @@ def build_retriever(
             )
         )
     return FilterChain(filters)
+
+class EmbeddingManager:
+    def __init__(self, db_path: str):
+        self.conn = sqlite3.connect(db_path)
+        self._create_table()
+
+    def _create_table(self) -> None:
+        with self.conn:
+            self.conn.execute("""
+                CREATE TABLE IF NOT EXISTS embeddings (
+                    key TEXT PRIMARY KEY,
+                    embedding BLOB
+                )
+            """)
+
+    def _create_key(self, text: str, model_name: Optional[str] = None) -> str:
+        if model_name is None:
+            model_name = default_embedding_name()
+        return hashlib.sha256((text + model_name).encode()).hexdigest()
+
+    def get_embedding(self, content: str, model_name: Optional[str] = None) -> np.ndarray:
+        if model_name is None:
+            model_name = default_embedding_name()
+
+        key = self._create_key(content, model_name)
+        cursor = self.conn.execute("SELECT embedding FROM embeddings WHERE key = ?", (key,))
+        result = cursor.fetchone()
+        if result:
+            return np.frombuffer(result[0], dtype=np.float32)
+        else:
+            computed_embedding = generate_embedding(content, model=model_name)
+            self._store_embedding(key, computed_embedding)
+            return computed_embedding
+
+    def _store_embedding(self, key: str, embedding) -> None:
+        with self.conn:
+            self.conn.execute("INSERT INTO embeddings (key, embedding) VALUES (?, ?)", (key, embedding.tobytes()))
+
+    def close(self):
+        self.conn.close()
