@@ -23,10 +23,10 @@ import backoff
 from transformers.file_utils import ModelOutput
 
 from bazaar.py_utils import DiskCache
-from bazaar.schema import Quote
 
 if TYPE_CHECKING:
     import torch
+    from bazaar.schema import Quote
 
 
 OAI_EXCEPTIONS = (
@@ -84,6 +84,11 @@ def get_hf_auth_token(
     return hf_auth_token
 
 
+def set_hf_auth_token(hf_auth_token: Optional[str] = None):
+    os.environ["HF_AUTH_TOKEN"] = hf_auth_token
+    return hf_auth_token
+
+
 def get_hf_cache_directory(
     hf_cache_directory: Optional[str], raise_if_not_found: bool = False
 ) -> str:
@@ -97,6 +102,37 @@ def get_hf_cache_directory(
         # Use the default cache directory
         hf_cache_directory = platformdirs.user_cache_dir("huggingface")
     return hf_cache_directory
+
+
+def set_hf_cache_directory(hf_cache_directory: Optional[str] = None):
+    if hf_cache_directory is not None:
+        os.makedirs(hf_cache_directory, exist_ok=True)
+    os.environ["HF_CACHE_DIRECTORY"] = hf_cache_directory
+    return hf_cache_directory
+
+
+def get_guidance_cache_directory(
+    guidance_cache_directory: Optional[str] = None,
+    raise_if_not_found: bool = False,
+    auto_default: bool = True,
+) -> str:
+    if guidance_cache_directory is None:
+        guidance_cache_directory = os.getenv("GUIDANCE_CACHE_DIRECTORY")
+    if guidance_cache_directory is None and raise_if_not_found:
+        raise ValueError(
+            "Guidance cache directory not provided (set with export GUIDANCE_CACHE_DIRECTORY=...)"
+        )
+    if guidance_cache_directory is None and auto_default:
+        # Use the default cache directory
+        guidance_cache_directory = platformdirs.user_cache_dir("guidance")
+    return guidance_cache_directory
+
+
+def set_guidance_cache_directory(guidance_cache_directory: Optional[str] = None):
+    if guidance_cache_directory is not None:
+        os.makedirs(guidance_cache_directory, exist_ok=True)
+    os.environ["GUIDANCE_CACHE_DIRECTORY"] = guidance_cache_directory
+    return guidance_cache_directory
 
 
 def get_sent_tokenizer():
@@ -151,8 +187,9 @@ class LLaMa2(guidance.llms.Transformers):
         super().__init__(model=self.model, tokenizer=self.tokenizer, **super_kwargs)
         # Configure the base class
         self.chat_mode = True
-        if guidance_cache_directory is None:
-            guidance_cache_directory = os.getenv("GUIDANCE_CACHE_DIRECTORY")
+        guidance_cache_directory = get_guidance_cache_directory(  # noqa
+            guidance_cache_directory, raise_if_not_found=False, auto_default=False
+        )
         if guidance_cache_directory is not None:
             # Set a custom cache directory. This is needed for MPI cluster because
             # sqlite is borked on ~/
@@ -397,15 +434,15 @@ class RemoteLlaMa2(LLaMa2):
 def get_llm(model_name: Optional[str] = None, **extra_kwargs):
     if model_name is None:
         model_name = default_llm_name()
-    oai_models = ["gpt-3.5-turbo", "gpt-3.5-turbo-16k", "gpt-4", "gpt-4-32k"]
     name_to_cls_kwargs_mapping = {
         "Llama-2-70b-chat-hf": (LLaMa2, {"size": "70b"}),
         "RemoteLlama-2-70b-chat-hf": (RemoteLlaMa2, {"size": "70b"}),
     }
-    if model_name in oai_models:
+    if model_name in OAI_MODELS:
         llm = guidance.llms.OpenAI(model_name, **extra_kwargs)
-        if os.getenv("GUIDANCE_CACHE_DIRECTORY") is not None:
-            llm.cache = DiskCache(os.getenv("GUIDANCE_CACHE_DIRECTORY"), llm.llm_name)
+        guidance_cache_directory = get_guidance_cache_directory(auto_default=False)
+        if guidance_cache_directory is not None:
+            llm.cache = DiskCache(guidance_cache_directory, llm.llm_name)
         return llm
     elif model_name in name_to_cls_kwargs_mapping:
         global MODEL_CACHE
@@ -862,11 +899,11 @@ def split_to_paragraphs(
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def select_quotes_with_heuristic(
-    quotes: List[Quote],
+    quotes: List["Quote"],
     budget: Optional[SupportsFloat] = None,
     fraction_of_max_budget: Optional[float] = None,
     model_name: Optional[str] = None,
-) -> List[Quote]:
+) -> List["Quote"]:
     assert all(
         [quotes[0].query.compare_content(quote.query) for quote in quotes[1:]]
     ), "All quotes must have the same query."
@@ -1106,11 +1143,11 @@ def extract_nuggets(block):
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def select_quotes_with_debate(
-    quotes: List[Quote],
+    quotes: List["Quote"],
     budget: Optional[SupportsFloat] = None,
     fraction_of_max_budget: Optional[float] = None,
     model_name: Optional[str] = None,
-) -> List[Quote]:
+) -> List["Quote"]:
     assert all(
         [quotes[0].query.compare_content(quote.query) for quote in quotes[1:]]
     ), "All quotes must have the same query."
@@ -1252,7 +1289,7 @@ def clean_block_content(block: dict, model_name: Optional[str] = None):
     return block
 
 
-def rerank_quotes(quotes: List[Quote], model_name: Optional[str] = None) -> List[float]:
+def rerank_quotes(quotes: List["Quote"], model_name: Optional[str] = None) -> List[float]:
     question = quotes[0].query.text
     passages = [
         " [...] ".join([block.content for block in quote.answer_blocks])
@@ -1265,7 +1302,7 @@ def rerank_quotes(quotes: List[Quote], model_name: Optional[str] = None) -> List
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
-def synthesize_answer(quotes: List[Quote], model_name: Optional[str] = None) -> str:
+def synthesize_answer(quotes: List["Quote"], model_name: Optional[str] = None) -> str:
     question = quotes[0].query.text
     passages = [
         {

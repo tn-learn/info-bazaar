@@ -5,6 +5,13 @@ from typing import Optional
 import numpy as np
 from speedrun import BaseExperiment, register_default_dispatch, IOMixin
 
+from bazaar.lem_utils import (
+    default_llm_name,
+    get_llm,
+    set_hf_auth_token,
+    set_hf_cache_directory,
+    set_guidance_cache_directory,
+)
 from bazaar.py_utils import dump_dict
 from bazaar.sim_builder import SimulationConfig, load
 from bazaar.simulator import BazaarSimulator
@@ -27,6 +34,22 @@ class SimulationRunner(BaseExperiment, IOMixin):
     def __init__(self, experiment_directory: Optional[str] = None):
         super().__init__(experiment_directory)
         self.auto_setup()
+
+    def _build(self):
+        self._prepare_llm()
+        self._build_simulation()
+
+    def _prepare_llm(self):
+        # Set the paths
+        set_hf_auth_token(self.get("llm/hf_auth_token"))
+        set_hf_cache_directory(self.get("llm/hf_cache_directory", "/tmp/hf"))
+        set_guidance_cache_directory(
+            self.get("llm/guidance_cache_directory", "/tmp/gd")
+        )
+        # TODO: On the MPIC, we'll need to copy over the LLaMa model to /tmp/hf
+        default_llm_name(set_to=self.get("llm/name", "gpt-3.5-turbo"))
+        # This should load the lem
+        get_llm()
 
     def _build_simulation(self):
         self.sim_config = sim_config = SimulationConfig(**self.get("sim_config"))
