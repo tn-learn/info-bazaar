@@ -2,6 +2,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, List, Union, Optional, Dict, Any
 
+import tiktoken
+
 from bazaar.lem_utils import default_llm_name, default_embedding_name
 from bazaar.py_utils import ensure_number
 
@@ -304,26 +306,16 @@ class BuyerPrincipal(Principal):
         )
 
 
-@dataclass(frozen=True, unsafe_hash=True)
-class Nugget:
-    question: str
-    answer: str
-    embedding: str
-
-    def __repr__(self):
-        return f"Nugget(question={self.question}, answer={self.answer})"
-
-
-@dataclass(frozen=True)
+@dataclass
 class Block:
     document_id: str
     document_title: str
+    section_title: str
     publication_date: str
-    block_id: str
+    token_start: int
+    token_end: int
     content: str
-    num_tokens: int
-    embedding: List[float]
-    nuggets: List[Nugget] = field(default_factory=list)
+    questions: List[str] = field(default_factory=list)
 
     def __repr__(self):
         return repr_factory(
@@ -336,6 +328,19 @@ class Block:
     def evaluation_summary(self) -> Dict[str, Any]:
         return dict(block_id=self.block_id, content=self.content)
 
+    @property
+    def block_id(self) -> str:
+        return f"{self.document_id}/{self.section_title}/{self.token_start}/{self.token_end}"
+
+    @staticmethod
+    def num_tokens_in_content(content: str, model_name: str = "gpt-3.5-turbo") -> int:
+        tiktoken_enc = tiktoken.encoding_for_model(model_name)
+        return len(tiktoken_enc.encode(content))
+
+    @property
+    def num_tokens(self, model_name: Optional[str] = None) -> int:
+        return self.num_tokens_in_content(self.content, model_name)
+
     def __hash__(self):
         return hash(
             (
@@ -344,9 +349,7 @@ class Block:
                 self.publication_date,
                 self.block_id,
                 self.content,
-                self.num_tokens,
-                tuple(self.embedding),
-                tuple(self.nuggets),
+                tuple(self.questions),
             )
         )
 

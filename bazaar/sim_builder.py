@@ -1,4 +1,5 @@
 import json
+import pickle
 from dataclasses import dataclass
 from typing import Tuple, List
 
@@ -51,9 +52,9 @@ class SimulationConfig:
 
 
 def load(path: str, config: SimulationConfig):
-    with open(path, "r") as f:
-        dataset = json.load(f)
-
+    with open(path, "rb") as f:
+        breakpoint()
+        dataset = pickle.load(f)
     rng = np.random.RandomState(config.rng_seed)
     buyers = build_buyers(dataset=dataset, config=config, rng=rng)
     authors, institutions = build_authors_and_institutions(
@@ -81,7 +82,7 @@ def build_buyers(
     buyers = []
     for arxiv_id, data in dataset.items():
         for block in data["blocks"]:
-            for idx, nugget in enumerate(block.get("nuggets", [])):
+            for idx, question in enumerate(block.questions):
                 max_budget = np.random.lognormal(
                     mean=config.buyer_max_budget_mean,
                     sigma=config.buyer_max_budget_sigma,
@@ -95,15 +96,14 @@ def build_buyers(
                     high=config.query_creation_time_end,
                 )
                 query = Query(
-                    text=nugget["question"],
+                    text=question,
                     max_budget=max_budget,
                     urgency=urgency,
                     created_at_time=created_at_time,
-                    _gold_block_id=block["block_id"]
+                    _gold_block_id=block.block_id,
                 )
                 buyer = BuyerPrincipal(
-                    name=f"buyer-{block['block_id']}-{idx}",
-                    query=query,
+                    name=f"buyer-{block.block_id}-{idx}", query=query,
                 )
                 buyers.append(buyer)
     return buyers
@@ -116,9 +116,7 @@ def sample_block_prices(mean: float, sigma: float, blocks: List["Block"]):
 def allocate_block_prices(entity, mean, sigma, rng):
     # Sample block prices from a log normal distribution
     block_prices = sample_block_prices(
-        mean=mean,
-        sigma=sigma,
-        blocks=entity.public_blocks.values(),
+        mean=mean, sigma=sigma, blocks=entity.public_blocks.values(),
     )
     for idx, block_id in enumerate(entity.public_blocks.keys()):
         entity.block_prices[block_id] = block_prices[idx]
@@ -194,28 +192,17 @@ def build_authors_and_institutions(
     # Assign blocks to institutions and authors
     for arxiv_id, data in dataset.items():
         for block in data["blocks"]:
-            if block.get("nuggets") is None:
-                block["nuggets"] = []
-            block_obj = Block(
-                document_id=arxiv_id,
-                document_title=data["title"],
-                publication_date=data["publication_date"],
-                block_id=block["block_id"],
-                content=block["content"],
-                num_tokens=block["num_tokens"],
-                embedding=block["embedding"],
-            )
             for authorship in data["authorships"]:
                 if authorship.get("author_position") == "first":
                     institution = authorship.get("institutions", [])
                     if not institution:
                         continue
                     institutions[institution[0]["id"]].public_blocks[
-                        block_obj.block_id
-                    ] = block_obj
+                        block.block_id
+                    ] = block
                     authors[authorship["author"]["id"]].public_blocks[
-                        block_obj.block_id
-                    ] = block_obj
+                        block.block_id
+                    ] = block
 
     # Distribute blocks in authors and institutions
     authors, institutions = distribute_blocks(authors, institutions, config, rng)
