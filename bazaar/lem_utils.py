@@ -1,4 +1,7 @@
+import copy
 import os
+
+import tiktoken
 import torch
 import requests
 from collections import defaultdict
@@ -828,13 +831,15 @@ def generate_embedding(
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def split_to_paragraphs(
-    block: dict, model_name: str, target_num_paragraphs: int = -1
-) -> List[str]:
+    block: "Block", model_name: Optional[str], target_num_paragraphs: int = -1
+) -> List["Block"]:
+
     if model_name in OAI_MODELS:
         raise NotImplementedError("Deep guidance not implemented for OpenAI models.")
     if target_num_paragraphs == -1:
-        target_num_paragraphs = (block["num_tokens"] // 450) + 1
+        target_num_paragraphs = (block.num_tokens // 450) + 1
     # Split text by sentences
+    text = block.content
     sentences = get_sent_tokenizer()(text)
     # This one's for the llamas
     program_string = """
@@ -894,7 +899,16 @@ def split_to_paragraphs(
     ]
     # Join the sentences in each paragraph
     paragraphs = [" ".join(paragraph) for paragraph in paragraphs]
-    return paragraphs
+    ret_blocks = []
+    token_start = block.token_start
+    for paragraph in paragraphs:
+        block_cpy = copy.deepcopy(block)
+        block_cpy.content = paragraph
+        block_cpy.token_start = token_start
+        block_cpy.token_end = token_start + block_cpy.num_tokens
+        ret_blocks.append(block_cpy)
+        token_start = block_cpy.token_end
+    return ret_blocks
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
@@ -1063,41 +1077,7 @@ def extract_reasonable_questions_from_passage(
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
-def filter_nuggets(nuggets: List[str], model_name: Optional[str] = None) -> List[str]:
-    program_string = """
-    {{#system~}}
-    You are an exam auditor. Your job is to reject bad questions. A question is good when it is factual and could have universal agreement. A question is not good when  it is ambiguous or makes highly specific references (e.g., to figures). 
-
-    You will be presented with an enumerated list of questions. You will respond in the following format, indicating True for questions that are fair and False for questions that are not fair:
-    
-    <Option Number>. <True / False>
-    ... 
-    {{~/system}}
-        
-    {{#user~}}
-    {{nugget_strs}}
-    {{~/user}}
-    
-    {{#assistant~}}
-    {{gen "answer" temperature=0.0 max_tokens=512}}
-    {{~/assistant}}
-    """
-    program_string = clean_program_string(program_string)
-    # Run the program
-    program = guidance(  # noqa
-        program_string, llm=get_llm(model_name), silent=True
-    )  # noqa
-    nugget_strs = []
-    for i in range(len(nuggets)):
-        nugget_strs.append(f"{i}. {nuggets[i]['question']}")
-    program_output = program(nugget_strs=nugget_strs)
-    breakpoint()
-    answer = program_output["answer"]
-    return answer
-
-
-@backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
-def extract_nuggets(block):
+def extract_questions(content: str, model_name: Optional[str] = None) -> List[str]:
     program_string = """
     {{#system~}}
     Bobby is an exam creator and Michael is an exam auditor. Bobby's job is to read a passage and propose some questions that could be answered by someone who has not seen that passage. Michael's job is determine whether a question is good or bad. Good questions are factual and have an objective answer. Bad questions are ambiguous, make specific references, or reference the passage in any way.
@@ -1116,30 +1096,19 @@ def extract_nuggets(block):
     {{~/user}}
     
     {{#assistant~}}
+    Bobby: Alright, let's get started with the deliberation. Here's my first question:
     {{gen "deliberation" temperature=0.1 max_tokens=2048}}
+    
+    Bobby: Great! So, we have the following good questions:
+    {{gen "questions" temperature=0.1 max_tokens=2048}}
     {{~/assistant}}
     """
     program_string = clean_program_string(program_string)
-    program = guidance(program_string, llm=llm, silent=True)  # noqa
-    program_output = program(passage=block["content"])
-    return answer
-    # print(program_output["verdict"])
-    # program_string = clean_program_string(program_string)
-    # program = guidance(program_string, llm=guidance.llms.OpenAI(model_name))  # noqa
-    # program_output = program(
-    #     content=f"The scientific text is as follows: {block['content']}"
-    # )
-    # contnt = program_output["answer"]
-    # question_pattern = r"question: \"(.*?)\""
-    # answer_pattern = r"answer: \"(.*?)\""
-    # breakpoint()
-    # question_match = re.search(question_pattern, content)
-    # answer_match = re.search(answer_pattern, content)
-
-    # question = question_match.group(1) if question_match else None
-    # answer = answer_match.group(1) if answer_match else None
-    # return question, answer
-
+    program = guidance(program_string, llm=get_llm(model_name), silent=True)  # noqa
+    program_output = program(passage=content)
+    pattern = re.compile(r'QUESTION \d+\. (.+?)\n')
+    questions = pattern.findall(program_output["questions"])
+    return questions
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def select_quotes_with_debate(
@@ -1261,32 +1230,33 @@ def select_quotes_with_debate(
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
-def clean_block_content(block: dict, model_name: Optional[str] = None):
+def clean_content(content: str, model_name: Optional[str] = None) -> str:
     program_string = """
     {{#system~}}
     You are a text passage cleaner bot. You will be provided a text passage and you will reply with an exact copy of the input text passage, but with the following (and only the following) modifications:
 
     1. Improve use of white space, tabs, and new-lines. This should shorten the passage.
     2. Remove citations (e.g., Huges et al. [hugesGenerativeAdversarialLearning]).
-    3. Reformat any tabular data into markdown
+    3. Reformat any tabular data into markdown.
     {{~/system}}
     
     {{#user~}}
     The text passage is: {{passage}}
-    
-    Please return exactly the cleaned passage.
     {{~/user}}
     
     {{#assistant~}}
+    Sure, here is what I'm going to change:
+    {{gen "rationale" temperature=0.1}}
+    
+    Here is the passage with cleaned text:
     {{gen "cleaned_passage" temperature=0.1}}
     {{~/assistant}}    
     """
     program_string = clean_program_string(program_string)
     program = guidance(program_string, llm=get_llm(model_name), silent=True)  # noqa
-    program_output = program(passage=block["content"])
+    program_output = program(passage=content)
     cleaned_passage = program_output["cleaned_passage"]
-    block["content"] = cleaned_passage
-    return block
+    return cleaned_passage.strip()
 
 
 def rerank_quotes(quotes: List["Quote"], model_name: Optional[str] = None) -> List[float]:
