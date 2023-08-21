@@ -1,4 +1,5 @@
 import concurrent
+import copy
 from datetime import datetime
 import requests
 import pickle
@@ -16,7 +17,12 @@ import openai
 from typing import List
 import tiktoken
 from tqdm import tqdm
-from bazaar.lem_utils import clean_block_content, extract_nuggets, split_to_paragraphs
+from bazaar.lem_utils import (
+    clean_content,
+    extract_questions,
+    split_to_paragraphs,
+)
+from bazaar.schema import Block
 
 EMBEDDING_MODEL = "text-embedding-ada-002"
 
@@ -59,7 +65,7 @@ def download_pdf(arxiv_id, category):
         print(f"Error downloading file, status code: {response.status_code}")
 
 
-def parse_latex(latex_string, model_name="gpt-3.5-turbo"):
+def parse_latex(latex_string: str, title: str, publication_date: str):
     # Remove comments
     rm_comments = re.sub(r"(?<!\\)%.*$", "", latex_string, flags=re.MULTILINE)
 
@@ -107,23 +113,29 @@ def parse_latex(latex_string, model_name="gpt-3.5-turbo"):
         content_linebreak = re.sub(r"\\\\", " ", content_cite)
 
         # Split the remaining text into paragraphs
-        blocks = re.split(r"\n\n\s*", content_linebreak)  # Split by blank lines
-        blocks = [
-            paragraph.strip() for paragraph in blocks if paragraph.strip()
+        paras = re.split(r"\n\n\s*", content_linebreak)  # Split by blank lines
+        paras = [
+            paragraph.strip() for paragraph in paras if paragraph.strip()
         ]  # Remove leading and trailing whitespace and ignore empty paragraphs
-        blocks = [
-            LatexNodes2Text().latex_to_text(paragraph).strip() for paragraph in blocks
+        paras = [
+            LatexNodes2Text().latex_to_text(paragraph).strip() for paragraph in paras
         ]
-        for idx, block in enumerate(blocks):
-            num_tokens = len(tiktoken.encoding_for_model(model_name).encode(block))
-            all_blocks.append(
-                {
-                    "block_id": f"{arxiv_id}/{section_title}/{idx}",
-                    "content": block,
-                    "num_tokens": num_tokens,
-                }
+        token_start = 0
+        for idx, para in enumerate(paras):
+            token_end = token_start + Block.num_tokens_in_content(para)
+            block = Block(
+                document_id=arxiv_id,
+                document_title=title,
+                publication_date=publication_date,
+                token_start=token_start,
+                token_end=token_end,
+                section_title=section_title,
+                content=para,
             )
+            token_start = token_end
+            all_blocks.append(block)
     return all_blocks
+
 
 def remove_invalid_escapes(input_string):
     # Define a regular expression pattern to match invalid escape sequences
@@ -135,53 +147,40 @@ def remove_invalid_escapes(input_string):
     return cleaned_string
 
 
-def embed_nuggets(nuggets):
-    BATCH_SIZE = 1000  # you can submit up to 2048 embedding inputs per request
-    nugget_questions = [nugget["question"] for nugget in nuggets]
-    nugget_answers = [nugget["answer"] for nugget in nuggets]
-    embeddings = []
-    for batch_start in range(0, len(nuggets), BATCH_SIZE):
-        batch_end = batch_start + BATCH_SIZE
-        batch = nugget_answers[batch_start:batch_end]
-        print(f"Batch {batch_start} to {batch_end - 1}")
-        response = openai.Embedding.create(model=EMBEDDING_MODEL, input=batch)
-        batch_embeddings = [e["embedding"] for e in response["data"]]
-        embeddings.extend(batch_embeddings)
-    embeddings = [list(embedding) for embedding in embeddings]
-
-    for idx, embedding in enumerate(embeddings):
-        nuggets[idx]['embedding'] = embedding
-    return nuggets
-
 def merge_small_blocks(blocks: List[dict], min_block_size: int = 50):
     tiktoken_enc = tiktoken.encoding_for_model("gpt-3.5-turbo")
-
-    smol_blocks = [block for block in blocks if len(tiktoken_enc.encode(block['content'])) < min_block_size]
+    # copy the blocks so this is not destructive
+    blocks = copy.deepcopy(blocks)
+    smol_blocks = [
+        block
+        for block in blocks
+        if len(tiktoken_enc.encode(block["content"])) < min_block_size
+    ]
     while smol_blocks:
         for idx in range(len(smol_blocks)):
             block_idx = blocks.index(smol_blocks[idx])
             if block_idx > 0:  # Merge with previous block if not the first block
-                blocks[block_idx - 1]['content'] += smol_blocks[idx]['content']
-                blocks[block_idx - 1]['num_tokens'] +=  smol_blocks[idx]['num_tokens']
-            elif block_idx < len(blocks) - 1:  # Merge with next block if not the last block
-                blocks[block_idx + 1]['content'] += smol_blocks[idx]['content']
-                blocks[block_idx + 1]['num_tokens'] +=  smol_blocks[idx]['num_tokens']
+                blocks[block_idx - 1]["content"] += smol_blocks[idx]["content"]
+                blocks[block_idx - 1]["num_tokens"] += smol_blocks[idx]["num_tokens"]
+            elif (
+                block_idx < len(blocks) - 1
+            ):  # Merge with next block if not the last block
+                blocks[block_idx + 1]["content"] += smol_blocks[idx]["content"]
+                blocks[block_idx + 1]["num_tokens"] += smol_blocks[idx]["num_tokens"]
             blocks.pop(block_idx)  # Remove the current small block
-    
-        # Update the list of small blocks after merging
-        smol_blocks = [block for block in blocks if len(tiktoken_enc.encode(block['content'])) < min_block_size]
-    return blocks
-    
-def improve_block_formatting(blocks: List[dict], model_name: str):
-    cleaned_blocks = []
-    for block in tqdm(blocks):
-        cleaned_blocks.append(clean_block_content(block, model_name=model_name))
-    return cleaned_blocks
 
-    
+        # Update the list of small blocks after merging
+        smol_blocks = [
+            block
+            for block in blocks
+            if len(tiktoken_enc.encode(block["content"])) < min_block_size
+        ]
+    return blocks
+
+
 # PARSE ARXIV METADATA SNAPSHOT FOR CATEGORY
 # -----------------------------------------------------------
-category = "machine-learning" # astrophysics
+category = "machine-learning"  # astrophysics
 if category == "astrophysics":
     if os.path.exists("data/arxiv-meta-astro-ph-2017-2023.json"):
         print("Loading arxiv papers.")
@@ -251,7 +250,9 @@ else:
                 continue
             for oa_work in result:
                 for arxiv_id, metadata in selected_metadata.items():
-                    if metadata['doi'] == oa_work['doi'].replace("https://doi.org/", ""):
+                    if metadata["doi"] == oa_work["doi"].replace(
+                        "https://doi.org/", ""
+                    ):
                         oa_works[arxiv_id] = oa_work
 
     with open(f"data/{category}/oa_works.pkl", "wb") as f:
@@ -269,7 +270,9 @@ else:
         futures = []
         for arxiv_id, oa_work in tqdm(oa_works.items()):
             futures.append(executor.submit(download_pdf, arxiv_id, category))
-        for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures)):
+        for future in tqdm(
+            concurrent.futures.as_completed(futures), total=len(futures)
+        ):
             pass
 
 
@@ -338,7 +341,8 @@ if category == "astrophysics":
     paper_samples = json.load(
         open(
             os.path.join(
-                data_root, "paper_samples_concept_0.4_n_100_weighting_50_inst_50_conc.json",
+                data_root,
+                "paper_samples_concept_0.4_n_100_weighting_50_inst_50_conc.json",
             ),
             "r",
         )
@@ -361,66 +365,47 @@ else:
             continue
         try:
             data = oa_works_w_arxiv[arxiv_id]
-            blocks = parse_latex(data["paper"])
+            blocks = parse_latex(data["paper"], data["title"], data["publication_date"])
+            blocks = blocks[:10]
             model_name = "RemoteLlama-2-70b-chat-hf"
-            cleaned_blocks = improve_block_formatting(blocks[:3], model_name=model_name)
+
+            cleaned_blocks = []
+            for block in tqdm(blocks):
+                cleaned = clean_content(block.content, model_name=model_name)
+                block.content = cleaned
+
             merged_blocks = merge_small_blocks(cleaned_blocks)
             final_blocks = []
             for block in merged_blocks:
-                if block['num_tokens'] > 450:
-                    breakpoint()
-
+                if block.num_tokens > 450:
                     new_blocks = split_to_paragraphs(block, model_name=model_name)
                     final_blocks.extend(new_blocks)
                 else:
                     final_blocks.append(block)
-
-            response = openai.Embedding.create(model=EMBEDDING_MODEL, input=final_blocks)
-            batch_embeddings = [e["embedding"] for e in response["data"]]
-            for idx, block in enumerate(blocks):
-                block['embedding'] = batch_embeddings[idx]
             data["blocks"] = blocks
             dataset_step_0[arxiv_id] = data
         except Exception as e:
-            print(e)
-
+            print(f"Error embedding blocks for {arxiv_id}: {e}")
     pickle.dump(dataset_step_0, open(f"data/{category}/dataset_step_0.pkl", "wb"))
 
 
-# EXTRACT NUGGETS
+# EXTRACT QUESTIONS
 # -----------------------------------------------------------
 dataset_step_1 = {}
 
-if os.path.exists(f"data/{category}/dataset_step_1.json"):
-    with open(f"data/{category}/dataset_step_1.json", "r") as f:
-        dataset_step_1 = json.load(f)
+path = f"data/{category}/dataset_step_1.pkl"
+if os.path.exists(path):
+    with open(path, "rb") as f:
+        dataset_step_1 = pickle.load(f)
 else:
-
     for arxiv_id, data in tqdm(dataset_step_0.items()):
-        for block_id, block in tqdm(enumerate(data['blocks'])):
-            try:
-                question, answer = extract_nuggets(block)
-                nuggets = [{"question": question, "answer": answer}]
-                filtered_nuggets = filter_nuggets(nuggets)
-                embedding_dict = embed_nuggets(filtered_nuggets)
-                block['nuggets'] = embedding_dict
-            except Exception as e:
-                print(e)
-                block['nuggets'] = {}
-            break
-        try:
-            data["vendor_id"] = data["authorships"][0]["institutions"][0]["id"].replace(
-                "https://openalex.org/", ""
+        for block_id, block in tqdm(enumerate(data["blocks"])):
+            block.questions = extract_questions(
+                block.content, model_name="RemoteLlama-2-70b-chat-hf"
             )
-        except Exception as e:
-            data["vendor_id"] = ""
+            break
         dataset_step_1[arxiv_id] = data
+        breakpoint()
         if (len(dataset_step_1) % 10) == 0:
-            json.dump(
-                dataset_step_1,
-                open(f"data/{category}/dataset_step_1.json", "w"),
-            )
-        time.sleep(2)
-        if len(dataset_step_1) == 100:
-            break
-    json.dump(dataset_step_1, open(f"data/{category}/dataset_step_1.json", "w"))
+            pickle.dump(dataset_step_1, open(path, "wb"))
+    pickle.dump(dataset_step_1, open(path, "wb"))
