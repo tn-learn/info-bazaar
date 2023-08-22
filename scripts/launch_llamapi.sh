@@ -7,6 +7,9 @@ export LLAMAPI_API_HOST=${LLAMAPI_API_HOST:-0.0.0.0}
 export LLAMAPI_API_PORT=${LLAMAPI_API_PORT:-8000}
 export LLAMAPI_NUM_CELERY_WORKERS=${LLAMAPI_NUM_CELERY_WORKERS:-2}
 
+# GPU type parameter (default to rtx8000 if not specified)
+GPU_TYPE=${1:-rtx8000}
+
 # Temporary file to store cluster IDs (with a unique timestamp)
 CLUSTER_ID_FILE="/tmp/llamapi_cluster_ids_$(date +%s).txt"
 echo "" > $CLUSTER_ID_FILE
@@ -15,16 +18,15 @@ echo "" > $CLUSTER_ID_FILE
 cleanup() {
     echo "Cleaning up..."
 
-    # Kill the Condor jobs
-    while read -r CLUSTER_ID
+    # Cancel the SLURM jobs
+    while read -r JOB_ID
     do
-        condor_rm $CLUSTER_ID
+        scancel $JOB_ID
     done < $CLUSTER_ID_FILE
 
     # Cleanup the temporary file
     rm -f $CLUSTER_ID_FILE
 
-    # You can add more cleanup tasks if needed
     exit
 }
 
@@ -43,9 +45,10 @@ python -m llamapi.server &
 # Give the server some time to initialize
 sleep 5
 
-# Submit jobs to HTCondor to launch Celery workers and store the CLUSTER_ID
+# Submit jobs to SLURM to launch Celery workers and store the JOB_ID
 for i in $(seq 1 $LLAMAPI_NUM_CELERY_WORKERS); do
-    condor_submit celery_worker.submit | grep -oP "submitted to cluster \K\d+" >> $CLUSTER_ID_FILE
+    JOB_ID=$(salloc --gres=gpu:${GPU_TYPE}:1 --mem 32G -c 6 --partition long | grep -oP "Granted job allocation \K\d+")
+    echo $JOB_ID >> $CLUSTER_ID_FILE
 done
 
 # Keep the script running to maintain the FastAPI and Redis servers
