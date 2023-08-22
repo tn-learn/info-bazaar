@@ -1,7 +1,6 @@
 import copy
 import os
 
-import tiktoken
 import torch
 import requests
 from collections import defaultdict
@@ -325,7 +324,7 @@ class FakeLlama:
         Returns:
             A dictionary containing the response data.
         """
-        url = "http://127.0.0.1:8823/generate"
+        url = "http://127.0.0.1:8824/generate"
         headers = {
             "accept": "application/json",
             "Content-Type": "application/json",
