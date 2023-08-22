@@ -1,4 +1,8 @@
+import copy
 import os
+
+import torch
+import requests
 from collections import defaultdict
 from typing import (
     List,
@@ -16,19 +20,17 @@ import types
 import re
 import guidance
 import openai
-import diskcache
 import platformdirs
-from guidance.llms.caches import Cache
 import backoff
+from transformers.file_utils import ModelOutput
 
-from bazaar.schema import Quote
+from bazaar.py_utils import DiskCache
 
 if TYPE_CHECKING:
     import torch
+    from bazaar.schema import Quote
 
 
-MODEL_CACHE = {}
-OAI_MODELS = ["gpt-3.5-turbo", "gpt-3.5-turbo-16k", "gpt-4", "gpt-4-32k"]
 OAI_EXCEPTIONS = (
     openai.error.APIError,
     openai.error.RateLimitError,
@@ -36,26 +38,40 @@ OAI_EXCEPTIONS = (
     openai.error.TryAgain,
 )
 
+MODEL_CACHE = {}
+OAI_MODELS = ["gpt-3.5-turbo", "gpt-3.5-turbo-16k", "gpt-4", "gpt-4-32k"]
+OAI_EMBEDDINGS = ["text-embedding-ada-002"]
 
-class DiskCache(Cache):
-    """DiskCache is a cache that uses diskcache lib."""
+DEFAULT_LLM_NAME = "gpt-3.5-turbo"
+DEFAULT_RERANKER_NAME = "ms-marco-MiniLM-L-4-v2"
+DEFAULT_EMBEDDING_NAME = "text-embedding-ada-002"
 
-    def __init__(self, cache_directory: str, llm_name: str):
-        self._diskcache = diskcache.Cache(
-            os.path.join(cache_directory, f"_{llm_name}.diskcache")
-        )
 
-    def __getitem__(self, key: str) -> str:
-        return self._diskcache[key]
+def default_llm_name(set_to: Optional[str] = None) -> str:
+    global DEFAULT_LLM_NAME
+    if set_to is not None:
+        DEFAULT_LLM_NAME = set_to
+    if DEFAULT_LLM_NAME is None:
+        raise ValueError("Default LLM not set")
+    return DEFAULT_LLM_NAME
 
-    def __setitem__(self, key: str, value: str) -> None:
-        self._diskcache[key] = value
 
-    def __contains__(self, key: str) -> bool:
-        return key in self._diskcache
+def default_reranker_name(set_to: Optional[str] = None) -> str:
+    global DEFAULT_RERANKER_NAME
+    if set_to is not None:
+        DEFAULT_RERANKER_NAME = set_to
+    if DEFAULT_RERANKER_NAME is None:
+        raise ValueError("Default reranker not set")
+    return DEFAULT_RERANKER_NAME
 
-    def clear(self):
-        self._diskcache.clear()
+
+def default_embedding_name(set_to: Optional[str] = None) -> str:
+    global DEFAULT_EMBEDDING_NAME
+    if set_to is not None:
+        DEFAULT_EMBEDDING_NAME = set_to
+    if DEFAULT_EMBEDDING_NAME is None:
+        raise ValueError("Default embedding not set")
+    return DEFAULT_EMBEDDING_NAME
 
 
 def get_hf_auth_token(
@@ -67,6 +83,11 @@ def get_hf_auth_token(
         raise ValueError(
             "HuggingFace auth token not provided (set with export HF_AUTH_TOKEN=...)"
         )
+    return hf_auth_token
+
+
+def set_hf_auth_token(hf_auth_token: Optional[str] = None):
+    os.environ["HF_AUTH_TOKEN"] = hf_auth_token
     return hf_auth_token
 
 
@@ -83,6 +104,37 @@ def get_hf_cache_directory(
         # Use the default cache directory
         hf_cache_directory = platformdirs.user_cache_dir("huggingface")
     return hf_cache_directory
+
+
+def set_hf_cache_directory(hf_cache_directory: Optional[str] = None):
+    if hf_cache_directory is not None:
+        os.makedirs(hf_cache_directory, exist_ok=True)
+    os.environ["HF_CACHE_DIRECTORY"] = hf_cache_directory
+    return hf_cache_directory
+
+
+def get_guidance_cache_directory(
+    guidance_cache_directory: Optional[str] = None,
+    raise_if_not_found: bool = False,
+    auto_default: bool = True,
+) -> str:
+    if guidance_cache_directory is None:
+        guidance_cache_directory = os.getenv("GUIDANCE_CACHE_DIRECTORY")
+    if guidance_cache_directory is None and raise_if_not_found:
+        raise ValueError(
+            "Guidance cache directory not provided (set with export GUIDANCE_CACHE_DIRECTORY=...)"
+        )
+    if guidance_cache_directory is None and auto_default:
+        # Use the default cache directory
+        guidance_cache_directory = platformdirs.user_cache_dir("guidance")
+    return guidance_cache_directory
+
+
+def set_guidance_cache_directory(guidance_cache_directory: Optional[str] = None):
+    if guidance_cache_directory is not None:
+        os.makedirs(guidance_cache_directory, exist_ok=True)
+    os.environ["GUIDANCE_CACHE_DIRECTORY"] = guidance_cache_directory
+    return guidance_cache_directory
 
 
 def get_sent_tokenizer():
@@ -127,6 +179,32 @@ class LLaMa2(guidance.llms.Transformers):
         monitor_model: bool = False,
         **super_kwargs,
     ):
+        # Init the super
+        self.initialize_model(
+            hf_auth_token=hf_auth_token,
+            hf_cache_directory=hf_cache_directory,
+            size=size,
+            monitor_model=monitor_model,
+        )
+        super().__init__(model=self.model, tokenizer=self.tokenizer, **super_kwargs)
+        # Configure the base class
+        self.chat_mode = True
+        guidance_cache_directory = get_guidance_cache_directory(  # noqa
+            guidance_cache_directory, raise_if_not_found=False, auto_default=False
+        )
+        if guidance_cache_directory is not None:
+            # Set a custom cache directory. This is needed for MPI cluster because
+            # sqlite is borked on ~/
+            self.cache = DiskCache(guidance_cache_directory, self.llm_name)
+        self.llm_name = self.model_id.split("/")[-1]
+
+    def initialize_model(
+        self,
+        hf_auth_token: str,
+        hf_cache_directory: str,
+        size: int,
+        monitor_model: bool,
+    ):
         import transformers
         import torch
 
@@ -144,12 +222,12 @@ class LLaMa2(guidance.llms.Transformers):
             bnb_4bit_compute_dtype=torch.bfloat16,
         )
         assert size in ["7b", "13b", "70b"]
-        model_id = f"meta-llama/Llama-2-{size}-chat-hf"
+        self.model_id = f"meta-llama/Llama-2-{size}-chat-hf"
         model_config = transformers.AutoConfig.from_pretrained(
-            model_id, use_auth_token=hf_auth_token, cache_dir=hf_cache_directory
+            self.model_id, use_auth_token=hf_auth_token, cache_dir=hf_cache_directory
         )
-        model = transformers.AutoModelForCausalLM.from_pretrained(
-            model_id,
+        self.model = transformers.AutoModelForCausalLM.from_pretrained(
+            self.model_id,
             config=model_config,
             trust_remote_code=True,
             quantization_config=bnb_config,
@@ -157,25 +235,14 @@ class LLaMa2(guidance.llms.Transformers):
             use_auth_token=hf_auth_token,
             cache_dir=hf_cache_directory,
         )
-        tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model_id, use_auth_token=hf_auth_token, cache_dir=hf_cache_directory
+        self.tokenizer = transformers.AutoTokenizer.from_pretrained(
+            self.model_id, use_auth_token=hf_auth_token, cache_dir=hf_cache_directory
         )
         # Patch monitor if required
         if monitor_model:
-            self.model_monitor = self.patch_generate_with_input_monitor_(model)
+            self.model_monitor = self.patch_generate_with_input_monitor_(self.model)
         else:
             self.model_monitor = None
-        # Init the super
-        super().__init__(model=model, tokenizer=tokenizer, **super_kwargs)
-        # Configure the base class
-        self.chat_mode = True
-        if guidance_cache_directory is None:
-            guidance_cache_directory = os.getenv("GUIDANCE_CACHE_DIRECTORY")
-        if guidance_cache_directory is not None:
-            # Set a custom cache directory. This is needed for MPI cluster because
-            # sqlite is borked on ~/
-            self.cache = DiskCache(guidance_cache_directory, self.llm_name)
-        self.llm_name = model_id.split("/")[-1]
 
     @staticmethod
     def role_start(role):
@@ -225,15 +292,159 @@ class LLaMa2(guidance.llms.Transformers):
         return monitor
 
 
-def get_llm(model_name: str = "gpt-3.5-turbo", **extra_kwargs):
-    oai_models = ["gpt-3.5-turbo", "gpt-3.5-turbo-16k", "gpt-4", "gpt-4-32k"]
+class FakeLlama:
+    def __init__(self, model_config):
+        self.model_config = model_config
+
+    def prepare_for_json(self, kwargs):
+        prepared_data = {}
+
+        # Convert tensor to a list
+        if "inputs" in kwargs:
+            prepared_data["inputs"] = kwargs["inputs"].tolist()
+
+        # Convert simple types directly
+        for key in [
+            "temperature",
+            "max_new_tokens",
+            "top_p",
+            "pad_token_id",
+            "output_scores",
+            "return_dict_in_generate",
+        ]:
+            if key in kwargs:
+                prepared_data[key] = kwargs[key]
+        return prepared_data
+
+    def generate(self, *args, **kwargs) -> Dict[str, Any]:
+        """
+        Sends a request to a specific URL to generate data, and returns the response.
+        Converts specific response fields to torch tensors if present.
+
+        Returns:
+            A dictionary containing the response data.
+        """
+        url = "http://127.0.0.1:8824/generate"
+        headers = {
+            "accept": "application/json",
+            "Content-Type": "application/json",
+        }
+        data = self.prepare_for_json(kwargs)
+
+        try:
+            response = requests.post(url, json=data, headers=headers)
+            response.raise_for_status()  # Raises an HTTPError if the HTTP request returned an unsuccessful status code
+            response_data = response.json()
+        except requests.RequestException as e:
+            # Handle HTTP-related errors here, e.g., connection errors, timeouts, etc.
+            print(f"An error occurred while making the request: {e}")
+            return {}
+        except ValueError as e:
+            # Handle JSON decoding errors here
+            print(f"An error occurred while decoding the response: {e}")
+            return {}
+
+        # Convert specific fields to torch tensors if present
+        for key in ["sequences", "scores", "attentions", "hidden_states"]:
+            if response_data.get(key) is not None:
+                response_data[key] = torch.tensor(response_data[key])
+
+        return response_data
+
+    def prepare_inputs_for_generation(
+        self, input_ids: torch.LongTensor, **kwargs
+    ) -> Dict[str, Any]:
+        return {"input_ids": input_ids}
+
+    @staticmethod
+    def _update_model_kwargs_for_generation(
+        outputs: ModelOutput,
+        model_kwargs: Dict[str, Any],
+        is_encoder_decoder: bool = False,
+    ) -> Dict[str, Any]:
+        # update past
+        if "past_key_values" in outputs:
+            model_kwargs["past"] = outputs.past_key_values
+        elif "mems" in outputs:
+            model_kwargs["past"] = outputs.mems
+        elif "past_buckets_states" in outputs:
+            model_kwargs["past"] = outputs.past_buckets_states
+        else:
+            model_kwargs["past"] = None
+
+        # update attention mask
+        if not is_encoder_decoder:
+            if "attention_mask" in model_kwargs:
+                attention_mask = model_kwargs["attention_mask"]
+                model_kwargs["attention_mask"] = torch.cat(
+                    [
+                        attention_mask,
+                        attention_mask.new_ones((attention_mask.shape[0], 1)),
+                    ],
+                    dim=-1,
+                )
+
+        return model_kwargs
+
+    def to(self, device):
+        return self
+
+    def eval(self):
+        return self
+
+    def __call__(self, *args, **kwargs):
+        return self
+
+    @property
+    def device(self):
+        return "cpu"
+
+    @property
+    def config(self):
+        return self.model_config
+
+
+class FakeTokenizer:
+    pass
+
+
+class RemoteLlaMa2(LLaMa2):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def initialize_model(
+        self,
+        hf_auth_token: str,
+        hf_cache_directory: str,
+        size: int,
+        monitor_model: bool,
+    ):
+        import transformers
+
+        self.model_id = f"meta-llama/Llama-2-{size}-chat-hf"
+        model_config = transformers.AutoConfig.from_pretrained(
+            self.model_id, use_auth_token=hf_auth_token, cache_dir=hf_cache_directory
+        )
+        self.model = FakeLlama(model_config)
+        self.tokenizer = transformers.AutoTokenizer.from_pretrained(
+            self.model_id, use_auth_token=hf_auth_token, cache_dir=hf_cache_directory
+        )
+        self.llm_name = self.model_id.split("/")[-1]
+        self.model_monitor = None
+
+
+def get_llm(model_name: Optional[str] = None, **extra_kwargs):
+    if model_name is None:
+        model_name = default_llm_name()
     name_to_cls_kwargs_mapping = {
         "Llama-2-70b-chat-hf": (LLaMa2, {"size": "70b"}),
+        "RemoteLlama-2-70b-chat-hf": (RemoteLlaMa2, {"size": "70b"}),
     }
-    if model_name in oai_models:
+    if model_name in OAI_MODELS:
         llm = guidance.llms.OpenAI(model_name, **extra_kwargs)
-        if os.getenv("GUIDANCE_CACHE_DIRECTORY") is not None:
-            llm.cache = DiskCache(os.getenv("GUIDANCE_CACHE_DIRECTORY"), llm.llm_name)
+        guidance_cache_directory = get_guidance_cache_directory(auto_default=False)
+        if guidance_cache_directory is not None:
+            llm.cache = DiskCache(guidance_cache_directory, llm.llm_name)
         return llm
     elif model_name in name_to_cls_kwargs_mapping:
         global MODEL_CACHE
@@ -361,7 +572,7 @@ def get_embedder(model_name: str, **extra_kwargs) -> TransformersEmbedding:
         raise ValueError(f"Unknown model {model_name}")
 
 
-class Reranker:
+class LMReranker:
     def __init__(
         self,
         model_id: str,
@@ -462,14 +673,16 @@ class Reranker:
         return scores
 
 
-class CrossEncoderMiniLMReranker(Reranker):
+class CrossEncoderMiniLMReranker(LMReranker):
     def __init__(self, num_layers: int, **super_kwargs):
         assert num_layers in [2, 4, 6, 12]
         model_id = f"cross-encoder/ms-marco-MiniLM-L-{num_layers}-v2"
         super().__init__(model_id, **super_kwargs)
 
 
-def get_reranker(model_name: str, **extra_kwargs):
+def get_reranker(model_name: Optional[str] = None, **extra_kwargs):
+    if model_name is None:
+        model_name = default_reranker_name()
     name_to_cls_and_kwargs_mapping = {
         "ms-marco-MiniLM-L-2-v2": (CrossEncoderMiniLMReranker, {"num_layers": 2}),
         "ms-marco-MiniLM-L-4-v2": (CrossEncoderMiniLMReranker, {"num_layers": 4}),
@@ -506,7 +719,7 @@ def clean_program_string(program_string: str, indent: Optional[int] = None) -> s
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
-def break_down_question(question: str, model: str = "gpt-3.5-turbo") -> List[str]:
+def break_down_question(question: str, model: Optional[str] = None) -> List[str]:
     def _extract_questions(input_string: str) -> List[str]:
         if not input_string.startswith("SUBQUESTIONS"):
             return []
@@ -542,7 +755,7 @@ def break_down_question(question: str, model: str = "gpt-3.5-turbo") -> List[str
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
-def generate_hyde_passage(question: str, model: str = "gpt-3.5-turbo") -> str:
+def generate_hyde_passage(question: str, model: Optional[str] = None) -> str:
     def _parse_answer(answer: str) -> str:
         return answer.replace("ANSWER:", "").strip()
 
@@ -569,7 +782,7 @@ def generate_hyde_passage(question: str, model: str = "gpt-3.5-turbo") -> str:
     return program["hyde_answer"]
 
 
-def generate_keywords(text: str, model_name: str = "gpt-3.5-turbo") -> List[str]:
+def generate_keywords(text: str, model_name: Optional[str] = None) -> List[str]:
     program_string = """
     {{#system~}}
     You will be given some text, which may be a passage or a question. Your task is to extract keywords that can be useful for search. 
@@ -600,12 +813,11 @@ def generate_keywords(text: str, model_name: str = "gpt-3.5-turbo") -> List[str]
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def generate_embedding(
-    text: str, model="text-embedding-ada-002", as_query: bool = False, **embedder_kwargs
+    text: str, model: Optional[str] = None, as_query: bool = False, **embedder_kwargs
 ) -> List[float]:
-    oai_embedders = [
-        "text-embedding-ada-002",
-    ]
-    if model in oai_embedders:
+    if model is None:
+        model = default_embedding_name()
+    if model in OAI_EMBEDDINGS:
         return openai.Embedding.create(input=[text], model=model, **embedder_kwargs)[
             "data"
         ][0]["embedding"]
@@ -618,11 +830,15 @@ def generate_embedding(
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def split_to_paragraphs(
-    text: str, target_num_paragraphs: int, model_name="gpt-3.5-turbo"
-) -> List[str]:
+    block: "Block", model_name: Optional[str], target_num_paragraphs: int = -1
+) -> List["Block"]:
+
     if model_name in OAI_MODELS:
         raise NotImplementedError("Deep guidance not implemented for OpenAI models.")
+    if target_num_paragraphs == -1:
+        target_num_paragraphs = (block.num_tokens // 450) + 1
     # Split text by sentences
+    text = block.content
     sentences = get_sent_tokenizer()(text)
     # This one's for the llamas
     program_string = """
@@ -668,10 +884,7 @@ def split_to_paragraphs(
     program = guidance(  # noqa
         program_string, llm=get_llm(model_name=model_name), silent=True
     )
-    program_output = program(
-        sentences=sentences,
-        num_para=target_num_paragraphs,
-    )
+    program_output = program(sentences=sentences, num_para=target_num_paragraphs)
     paragraph_indices = [int(x) - 1 for x in program_output["parasplits"]]
     num_paragraphs = len(set(paragraph_indices))
     # Split the sentences into paragraphs as given by the paragraph indices
@@ -685,16 +898,25 @@ def split_to_paragraphs(
     ]
     # Join the sentences in each paragraph
     paragraphs = [" ".join(paragraph) for paragraph in paragraphs]
-    return paragraphs
+    ret_blocks = []
+    token_start = block.token_start
+    for paragraph in paragraphs:
+        block_cpy = copy.deepcopy(block)
+        block_cpy.content = paragraph
+        block_cpy.token_start = token_start
+        block_cpy.token_end = token_start + block_cpy.num_tokens
+        ret_blocks.append(block_cpy)
+        token_start = block_cpy.token_end
+    return ret_blocks
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def select_quotes_with_heuristic(
-    quotes: List[Quote],
+    quotes: List["Quote"],
     budget: Optional[SupportsFloat] = None,
     fraction_of_max_budget: Optional[float] = None,
-    model_name: str = "gpt-3.5-turbo",
-) -> List[Quote]:
+    model_name: Optional[str] = None,
+) -> List["Quote"]:
     assert all(
         [quotes[0].query.compare_content(quote.query) for quote in quotes[1:]]
     ), "All quotes must have the same query."
@@ -810,7 +1032,7 @@ def select_quotes_with_heuristic(
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def extract_reasonable_questions_from_passage(
-    passage: str, model_name: str = "gpt-3.5-turbo"
+    passage: str, model_name: Optional[str] = None
 ) -> List[str]:
     program_string = """
     {{#system~}}
@@ -854,41 +1076,7 @@ def extract_reasonable_questions_from_passage(
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
-def filter_nuggets(nuggets: List[str], model_name="gpt-3.5-turbo") -> List[str]:
-    program_string = """
-    {{#system~}}
-    You are an exam auditor. Your job is to reject bad questions. A question is good when it is factual and could have universal agreement. A question is not good when  it is ambiguous or makes highly specific references (e.g., to figures). 
-
-    You will be presented with an enumerated list of questions. You will respond in the following format, indicating True for questions that are fair and False for questions that are not fair:
-    
-    <Option Number>. <True / False>
-    ... 
-    {{~/system}}
-        
-    {{#user~}}
-    {{nugget_strs}}
-    {{~/user}}
-    
-    {{#assistant~}}
-    {{gen "answer" temperature=0.0 max_tokens=512}}
-    {{~/assistant}}
-    """
-    program_string = clean_program_string(program_string)
-    # Run the program
-    program = guidance(
-        program_string, llm=guidance.llms.OpenAI(model_name), silent=True
-    )  # noqa
-    nugget_strs = []
-    for i in range(len(nuggets)):
-        nugget_strs.append(f"{i}. {nuggets[i]['question']}")
-    program_output = program(nugget_strs=nugget_strs)
-    breakpoint()
-    answer = program_output["answer"]
-    return answer
-
-
-@backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
-def extract_nuggets(block):
+def extract_questions(content: str, model_name: Optional[str] = None) -> List[str]:
     program_string = """
     {{#system~}}
     Bobby is an exam creator and Michael is an exam auditor. Bobby's job is to read a passage and propose some questions that could be answered by someone who has not seen that passage. Michael's job is determine whether a question is good or bad. Good questions are factual and have an objective answer. Bad questions are ambiguous, make specific references, or reference the passage in any way.
@@ -907,38 +1095,27 @@ def extract_nuggets(block):
     {{~/user}}
     
     {{#assistant~}}
+    Bobby: Alright, let's get started with the deliberation. Here's my first question:
     {{gen "deliberation" temperature=0.1 max_tokens=2048}}
+    
+    Bobby: Great! So, we have the following good questions:
+    {{gen "questions" temperature=0.1 max_tokens=2048}}
     {{~/assistant}}
     """
     program_string = clean_program_string(program_string)
-    program = guidance(program_string, llm=llm, silent=True)  # noqa
-    program_output = program(passage=block["content"])
-    return answer
-    # print(program_output["verdict"])
-    # program_string = clean_program_string(program_string)
-    # program = guidance(program_string, llm=guidance.llms.OpenAI(model_name))  # noqa
-    # program_output = program(
-    #     content=f"The scientific text is as follows: {block['content']}"
-    # )
-    # contnt = program_output["answer"]
-    # question_pattern = r"question: \"(.*?)\""
-    # answer_pattern = r"answer: \"(.*?)\""
-    # breakpoint()
-    # question_match = re.search(question_pattern, content)
-    # answer_match = re.search(answer_pattern, content)
-
-    # question = question_match.group(1) if question_match else None
-    # answer = answer_match.group(1) if answer_match else None
-    # return question, answer
-
+    program = guidance(program_string, llm=get_llm(model_name), silent=True)  # noqa
+    program_output = program(passage=content)
+    pattern = re.compile(r'QUESTION \d+\. (.+?)\n')
+    questions = pattern.findall(program_output["questions"])
+    return questions
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def select_quotes_with_debate(
-    quotes: List[Quote],
+    quotes: List["Quote"],
     budget: Optional[SupportsFloat] = None,
     fraction_of_max_budget: Optional[float] = None,
-    model_name: str = "gpt-3.5-turbo",
-) -> List[Quote]:
+    model_name: Optional[str] = None,
+) -> List["Quote"]:
     assert all(
         [quotes[0].query.compare_content(quote.query) for quote in quotes[1:]]
     ), "All quotes must have the same query."
@@ -1052,14 +1229,14 @@ def select_quotes_with_debate(
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
-def clean_block_content(block: dict, model_name: str = "gpt-3.5-turbo"):
+def clean_content(content: str, model_name: Optional[str] = None) -> str:
     program_string = """
     {{#system~}}
     You are a text passage cleaner bot. You will be provided a text passage and you will reply with an exact copy of the input text passage, but with the following (and only the following) modifications:
 
     1. Improve use of white space, tabs, and new-lines. This should shorten the passage.
     2. Remove citations (e.g., Huges et al. [hugesGenerativeAdversarialLearning]).
-    3. Reformat any tabular data into markdown
+    3. Reformat any tabular data into markdown.
     {{~/system}}
     
     {{#user~}}
@@ -1067,20 +1244,21 @@ def clean_block_content(block: dict, model_name: str = "gpt-3.5-turbo"):
     {{~/user}}
     
     {{#assistant~}}
-    {{gen "cleaned_passage" temperature=0.0}}
+    Sure, here is what I'm going to change:
+    {{gen "rationale" temperature=0.1}}
+    
+    Here is the passage with cleaned text:
+    {{gen "cleaned_passage" temperature=0.1}}
     {{~/assistant}}    
     """
     program_string = clean_program_string(program_string)
     program = guidance(program_string, llm=get_llm(model_name), silent=True)  # noqa
-    program_output = program(passage=block["content"])
+    program_output = program(passage=content)
     cleaned_passage = program_output["cleaned_passage"]
-    block["content"] = cleaned_passage
-    return block
+    return cleaned_passage.strip()
 
 
-def rerank_quotes(
-    quotes: List[Quote], model_name: str = "ms-marco-MiniLM-L-2-v2"
-) -> List[float]:
+def rerank_quotes(quotes: List["Quote"], model_name: Optional[str] = None) -> List[float]:
     question = quotes[0].query.text
     passages = [
         " [...] ".join([block.content for block in quote.answer_blocks])
@@ -1093,7 +1271,7 @@ def rerank_quotes(
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
-def synthesize_answer(quotes: List[Quote], model_name="gpt-3.5-turbo") -> str:
+def synthesize_answer(quotes: List["Quote"], model_name: Optional[str] = None) -> str:
     question = quotes[0].query.text
     passages = [
         {
@@ -1168,7 +1346,7 @@ def synthesize_answer(quotes: List[Quote], model_name="gpt-3.5-turbo") -> str:
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
-def get_closed_book_answer(question: str, model_name="gpt-3.5-turbo") -> str:
+def get_closed_book_answer(question: str, model_name: Optional[str] = None) -> str:
     program_string = """
     {{#system~}}
     You are an intelligent AI assistant. You will be given a question. Your task is to answer it to the best of your ability. 
@@ -1193,7 +1371,7 @@ def get_closed_book_answer(question: str, model_name="gpt-3.5-turbo") -> str:
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def get_open_book_answer(
-    question: str, gold_passage: str, model_name="gpt-3.5-turbo"
+    question: str, gold_passage: str, model_name: Optional[str] = None
 ) -> str:
     program_string = """
     {{#system~}}
@@ -1226,7 +1404,7 @@ def evaluate_answer_with_debate(
     retrieved_answer: Optional[str],
     open_book_answer: str,
     closed_book_answer: str,
-    model_name="gpt-4",
+    model_name: str = "gpt-4",
 ) -> Dict[str, Dict[str, int]]:
     program_string = """
     {{#system~}}
