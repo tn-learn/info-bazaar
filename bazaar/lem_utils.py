@@ -1,5 +1,6 @@
 import copy
 import os
+import sys
 
 import torch
 import requests
@@ -17,11 +18,12 @@ from collections.abc import Mapping, Sequence
 
 import types
 
-import re
 import guidance
+import re
 import openai
 import platformdirs
 import backoff
+from guidance import Program
 from transformers.file_utils import ModelOutput
 
 from bazaar.py_utils import DiskCache
@@ -45,6 +47,18 @@ OAI_EMBEDDINGS = ["text-embedding-ada-002"]
 DEFAULT_LLM_NAME = "gpt-3.5-turbo"
 DEFAULT_RERANKER_NAME = "ms-marco-MiniLM-L-4-v2"
 DEFAULT_EMBEDDING_NAME = "text-embedding-ada-002"
+
+def ask_for_guidance(
+    program_string, inputs: dict, output_keys: List[str], **guidance_kwargs
+):
+    llm = guidance_kwargs.get("llm")
+    if isinstance(llm, RemoteLLM):
+        # TODO Call API
+        pass
+    else:
+        program = guidance(program_string, **guidance_kwargs)  # noqa
+        program_output = program(**inputs)
+        return {key: program_output[key] for key in output_keys}
 
 
 def default_llm_name(set_to: Optional[str] = None) -> str:
@@ -202,7 +216,7 @@ class LLaMa2(guidance.llms.Transformers):
         self,
         hf_auth_token: str,
         hf_cache_directory: str,
-        size: int,
+        size: str,
         monitor_model: bool,
     ):
         import transformers
@@ -291,146 +305,16 @@ class LLaMa2(guidance.llms.Transformers):
         model.generate = types.MethodType(generate, model)
         return monitor
 
+class RemoteLLM:
+    def get_json_identifier(self):
+        pass
 
-class FakeLlama:
-    def __init__(self, model_config):
-        self.model_config = model_config
 
-    def prepare_for_json(self, kwargs):
-        prepared_data = {}
-
-        # Convert tensor to a list
-        if "inputs" in kwargs:
-            prepared_data["inputs"] = kwargs["inputs"].tolist()
-
-        # Convert simple types directly
-        for key in [
-            "temperature",
-            "max_new_tokens",
-            "top_p",
-            "pad_token_id",
-            "output_scores",
-            "return_dict_in_generate",
-        ]:
-            if key in kwargs:
-                prepared_data[key] = kwargs[key]
-        return prepared_data
-
-    def generate(self, *args, **kwargs) -> Dict[str, Any]:
-        """
-        Sends a request to a specific URL to generate data, and returns the response.
-        Converts specific response fields to torch tensors if present.
-
-        Returns:
-            A dictionary containing the response data.
-        """
-        url = "http://127.0.0.1:8824/generate"
-        headers = {
-            "accept": "application/json",
-            "Content-Type": "application/json",
+class RemoteLlaMa2(RemoteLLM):
+    def get_json_identifier(self):
+        return {
+            "model_name": "Llama-2-70b-chat-hf"
         }
-        data = self.prepare_for_json(kwargs)
-
-        try:
-            response = requests.post(url, json=data, headers=headers)
-            response.raise_for_status()  # Raises an HTTPError if the HTTP request returned an unsuccessful status code
-            response_data = response.json()
-        except requests.RequestException as e:
-            # Handle HTTP-related errors here, e.g., connection errors, timeouts, etc.
-            print(f"An error occurred while making the request: {e}")
-            return {}
-        except ValueError as e:
-            # Handle JSON decoding errors here
-            print(f"An error occurred while decoding the response: {e}")
-            return {}
-
-        # Convert specific fields to torch tensors if present
-        for key in ["sequences", "scores", "attentions", "hidden_states"]:
-            if response_data.get(key) is not None:
-                response_data[key] = torch.tensor(response_data[key])
-
-        return response_data
-
-    def prepare_inputs_for_generation(
-        self, input_ids: torch.LongTensor, **kwargs
-    ) -> Dict[str, Any]:
-        return {"input_ids": input_ids}
-
-    @staticmethod
-    def _update_model_kwargs_for_generation(
-        outputs: ModelOutput,
-        model_kwargs: Dict[str, Any],
-        is_encoder_decoder: bool = False,
-    ) -> Dict[str, Any]:
-        # update past
-        if "past_key_values" in outputs:
-            model_kwargs["past"] = outputs.past_key_values
-        elif "mems" in outputs:
-            model_kwargs["past"] = outputs.mems
-        elif "past_buckets_states" in outputs:
-            model_kwargs["past"] = outputs.past_buckets_states
-        else:
-            model_kwargs["past"] = None
-
-        # update attention mask
-        if not is_encoder_decoder:
-            if "attention_mask" in model_kwargs:
-                attention_mask = model_kwargs["attention_mask"]
-                model_kwargs["attention_mask"] = torch.cat(
-                    [
-                        attention_mask,
-                        attention_mask.new_ones((attention_mask.shape[0], 1)),
-                    ],
-                    dim=-1,
-                )
-
-        return model_kwargs
-
-    def to(self, device):
-        return self
-
-    def eval(self):
-        return self
-
-    def __call__(self, *args, **kwargs):
-        return self
-
-    @property
-    def device(self):
-        return "cpu"
-
-    @property
-    def config(self):
-        return self.model_config
-
-
-class FakeTokenizer:
-    pass
-
-
-class RemoteLlaMa2(LLaMa2):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def initialize_model(
-        self,
-        hf_auth_token: str,
-        hf_cache_directory: str,
-        size: int,
-        monitor_model: bool,
-    ):
-        import transformers
-
-        self.model_id = f"meta-llama/Llama-2-{size}-chat-hf"
-        model_config = transformers.AutoConfig.from_pretrained(
-            self.model_id, use_auth_token=hf_auth_token, cache_dir=hf_cache_directory
-        )
-        self.model = FakeLlama(model_config)
-        self.tokenizer = transformers.AutoTokenizer.from_pretrained(
-            self.model_id, use_auth_token=hf_auth_token, cache_dir=hf_cache_directory
-        )
-        self.llm_name = self.model_id.split("/")[-1]
-        self.model_monitor = None
 
 
 def get_llm(model_name: Optional[str] = None, **extra_kwargs):
@@ -748,10 +632,17 @@ def break_down_question(question: str, model: Optional[str] = None) -> List[str]
     """  # noqa
     program_string = clean_program_string(program_string)
 
-    program = guidance(program_string, llm=get_llm(model), silent=True)(  # noqa
-        question=question, extract_questions=_extract_questions
-    )  # noqa
-    return program["sub_questions"]
+    program_outputs = ask_for_guidance(
+        program_string=program_string,
+        llm=get_llm(model),
+        silent=True,
+        inputs=dict(
+            question=question,
+            extract_questions=_extract_questions,
+        ),
+        output_keys=["sub_questions"],
+    )
+    return program_outputs["sub_questions"]
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
@@ -776,10 +667,17 @@ def generate_hyde_passage(question: str, model: Optional[str] = None) -> str:
     {{~/assistant}}
     """  # noqa
     program_string = clean_program_string(program_string)
-    program = guidance(program_string, llm=get_llm(model), silent=True)(  # noqa
-        question=question, parse_answer=_parse_answer
-    )  # noqa
-    return program["hyde_answer"]
+    program_outputs = ask_for_guidance(
+        program_string=program_string,
+        llm=get_llm(model),
+        silent=True,
+        inputs=dict(
+            question=question,
+            parse_answer=_parse_answer,
+        ),
+        output_keys=["hyde_answer"],
+    )
+    return program_outputs["hyde_answer"]
 
 
 def generate_keywords(text: str, model_name: Optional[str] = None) -> List[str]:
@@ -795,15 +693,19 @@ def generate_keywords(text: str, model_name: Optional[str] = None) -> List[str]:
     {{~/user}}
     
     {{#assistant~}}
-    {{gen 'keywords' stop="\n" temperature=0.0}}
+    {{gen 'keywords' stop="\\n" temperature=0.0}}
     {{~/assistant}}
     """
     program_string = clean_program_string(program_string)
-    program = guidance(program_string, llm=get_llm(model_name), silent=True)(  # noqa
-        text_to_keywordify=text
+    program_outputs = ask_for_guidance(
+        program_string=program_string,
+        llm=get_llm(model_name),
+        silent=True,
+        inputs=dict(text_to_keywordify=text),
+        output_keys=["keywords"],
     )
     # Split keywords by comma
-    keywords = program["keywords"].split(",")
+    keywords = program_outputs["keywords"].split(",")
     # Clean up
     keywords = [keyword.strip() for keyword in keywords]
     # Remove empty keywords
@@ -873,18 +775,24 @@ def split_to_paragraphs(
     {{#assistant~}}
     Understood, let us reflect about these sentences in a paragraph. 
 
-    {{gen 'thinks' temperature=0.1 stop="\n\n"}}
+    {{gen 'thinks' temperature=0.1 stop="\\n\\n"}}
 
     Here is the list of sentences with their corresponding paragraph numbers.
     {{#each sentences}}
-    Sentence {{add @index 1}}: Paragraph {{gen 'parasplits' list_append=True stop='\n'}}{{/each}}
+    Sentence {{add @index 1}}: Paragraph {{gen 'parasplits' list_append=True stop='\\n'}}{{/each}}
     {{~/assistant}}
     """
     program_string = clean_program_string(program_string)
-    program = guidance(  # noqa
-        program_string, llm=get_llm(model_name=model_name), silent=True
+    program_output = ask_for_guidance(
+        program_string=program_string,
+        llm=get_llm(model_name=model_name),
+        silent=True,
+        inputs=dict(
+            sentences=sentences,
+            num_para=target_num_paragraphs,
+        ),
+        output_keys=["parasplits"],
     )
-    program_output = program(sentences=sentences, num_para=target_num_paragraphs)
     paragraph_indices = [int(x) - 1 for x in program_output["parasplits"]]
     num_paragraphs = len(set(paragraph_indices))
     # Split the sentences into paragraphs as given by the paragraph indices
@@ -971,12 +879,17 @@ def select_quotes_with_heuristic(
     """
     program_string = clean_program_string(program_string)
     # Run the program
-    program = guidance(program_string, llm=get_llm(model_name), silent=True)  # noqa
-    program_output = program(
-        question=question,
-        options=options,
-        balance=budget,
-        average_quote_price=average_quote_price,
+    program_output = ask_for_guidance(
+        program_string=program_string,
+        llm=get_llm(model_name=model_name),
+        silent=True,
+        inputs=dict(
+            question=question,
+            options=options,
+            balance=budget,
+            average_quote_price=average_quote_price,
+        ),
+        output_keys=["answer"],
     )
     answer = program_output["answer"]
 
@@ -1056,9 +969,13 @@ def extract_reasonable_questions_from_passage(
     {{~/assistant}}
     """
     program_string = clean_program_string(program_string)
-    program = guidance(program_string, llm=get_llm(model_name), silent=True)  # noqa
-    program_output = program(passage=passage)
-
+    program_output = ask_for_guidance(
+        program_string=program_string,
+        llm=get_llm(model_name=model_name),
+        silent=True,
+        inputs=dict(passage=passage),
+        output_keys=["deliberation"],
+    )
     # Extract questions
     def extract_questions(text):
         lines = text.split("\n")
@@ -1103,11 +1020,17 @@ def extract_questions(content: str, model_name: Optional[str] = None) -> List[st
     {{~/assistant}}
     """
     program_string = clean_program_string(program_string)
-    program = guidance(program_string, llm=get_llm(model_name), silent=True)  # noqa
-    program_output = program(passage=content)
-    pattern = re.compile(r'QUESTION \d+\. (.+?)\n')
+    program_output = ask_for_guidance(
+        program_string=program_string,
+        llm=get_llm(model_name=model_name),
+        silent=True,
+        inputs=dict(passage=content),
+        output_keys=["questions"],
+    )
+    pattern = re.compile(r"QUESTION \d+\. (.+?)\n")
     questions = pattern.findall(program_output["questions"])
     return questions
+
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def select_quotes_with_debate(
@@ -1181,12 +1104,16 @@ def select_quotes_with_debate(
     program_string = clean_program_string(program_string)
 
     # Run the program
-    program = guidance(program_string, llm=get_llm(model_name))  # noqa
-    program_output = program(
-        question=question,
-        options=options,
-        # Remember that the prices are scaled, and the budget normed to 100
-        balance=100,
+    program_output = ask_for_guidance(
+        program_string=program_string,
+        llm=get_llm(model_name=model_name),
+        silent=True,
+        inputs=dict(
+            question=question,
+            options=options,
+            balance=100,
+        ),
+        output_keys=["answer"],
     )
     answer = program_output["answer"]
 
@@ -1252,13 +1179,20 @@ def clean_content(content: str, model_name: Optional[str] = None) -> str:
     {{~/assistant}}    
     """
     program_string = clean_program_string(program_string)
-    program = guidance(program_string, llm=get_llm(model_name), silent=True)  # noqa
-    program_output = program(passage=content)
+    program_output = ask_for_guidance(
+        program_string=program_string,
+        llm=get_llm(model_name=model_name),
+        silent=True,
+        inputs=dict(passage=content),
+        output_keys=["cleaned_passage"],
+    )
     cleaned_passage = program_output["cleaned_passage"]
     return cleaned_passage.strip()
 
 
-def rerank_quotes(quotes: List["Quote"], model_name: Optional[str] = None) -> List[float]:
+def rerank_quotes(
+    quotes: List["Quote"], model_name: Optional[str] = None
+) -> List[float]:
     question = quotes[0].query.text
     passages = [
         " [...] ".join([block.content for block in quote.answer_blocks])
@@ -1311,9 +1245,16 @@ def synthesize_answer(quotes: List["Quote"], model_name: Optional[str] = None) -
     """
     program_string = clean_program_string(program_string)
     # Run the program
-    program = guidance(program_string, llm=get_llm(model_name), silent=True)  # noqa
-    program_output = program(question=question, quotes=passages)
-    answer = program_output["answer"]
+    program_output = ask_for_guidance(
+        program_string=program_string,
+        llm=get_llm(model_name=model_name),
+        silent=True,
+        inputs=dict(
+            question=question,
+            quotes=passages,
+        ),
+        output_keys=["answer"],
+    )
 
     def separate_text_to_dict_corrected(text: str) -> Dict[str, str]:
         """
@@ -1362,8 +1303,13 @@ def get_closed_book_answer(question: str, model_name: Optional[str] = None) -> s
     """
     program_string = clean_program_string(program_string)
     # Run the program
-    program = guidance(program_string, llm=get_llm(model_name), silent=True)  # noqa
-    program_output = program(question=question)
+    program_output = ask_for_guidance(
+        program_string=program_string,
+        llm=get_llm(model_name=model_name),
+        silent=True,
+        inputs=dict(question=question),
+        output_keys=["answer"],
+    )
     answer = program_output["answer"]
     # Done
     return answer
@@ -1390,10 +1336,15 @@ def get_open_book_answer(
     """
     program_string = clean_program_string(program_string)
     # Run the program
-    program = guidance(program_string, llm=get_llm(model_name), silent=True)  # noqa
-    program_output = program(question=question, gold_passage=gold_passage)
+    program_output = ask_for_guidance(
+        program_string=program_string,
+        llm=get_llm(model_name=model_name),
+        silent=True,
+        inputs=dict(question=question, gold_passage=gold_passage),
+        output_keys=["answer"],
+    )
     answer = program_output["answer"]
-    # Done
+
     return answer
 
 
@@ -1457,16 +1408,21 @@ def evaluate_answer_with_debate(
     """
     program_string = clean_program_string(program_string)
     # Run the program
-    program = guidance(program_string, llm=get_llm(model_name), silent=True)  # noqa
     excuse_answer = "I'm sorry, I cannot not answer this question. I pass."
-    program_output = program(
-        question=question,
-        gold_passage=gold_passage,
-        retrieved_answer=(
-            retrieved_answer if retrieved_answer is not None else excuse_answer
+    program_output = ask_for_guidance(
+        program_string=program_string,
+        llm=get_llm(model_name=model_name),
+        silent=True,
+        inputs=dict(
+            question=question,
+            gold_passage=gold_passage,
+            retrieved_answer=(
+                retrieved_answer if retrieved_answer is not None else excuse_answer
+            ),
+            open_book_answer=open_book_answer,
+            closed_book_answer=closed_book_answer,
         ),
-        open_book_answer=open_book_answer,
-        closed_book_answer=closed_book_answer,
+        output_keys=["answer"],
     )
     answer = program_output["answer"]
 
