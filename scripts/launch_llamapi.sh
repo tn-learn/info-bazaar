@@ -1,11 +1,19 @@
 #!/bin/bash
 
 # Configuration Environment Variables
-export LLAMAPI_REDIS_BROKER_URL=${LLAMAPI_REDIS_BROKER_URL:-redis://localhost:6379/0}
-export LLAMAPI_REDIS_BACKEND_URL=${LLAMAPI_REDIS_BACKEND_URL:-redis://localhost:6379/1}
+LOGIN_NODE_HOSTNAME=$(hostname)
+export LLAMAPI_REDIS_BROKER_URL="redis://${LOGIN_NODE_HOSTNAME}:6379/0"
+export LLAMAPI_REDIS_BACKEND_URL="redis://${LOGIN_NODE_HOSTNAME}:6379/1"
 export LLAMAPI_API_HOST=${LLAMAPI_API_HOST:-0.0.0.0}
-export LLAMAPI_API_PORT=${LLAMAPI_API_PORT:-8000}
+export LLAMAPI_API_PORT=${LLAMAPI_API_PORT:-8910}
 export LLAMAPI_NUM_CELERY_WORKERS=${LLAMAPI_NUM_CELERY_WORKERS:-2}
+
+echo "LOGIN_NODE_HOSTNAME=${LOGIN_NODE_HOSTNAME}"
+echo "LLAMAPI_REDIS_BROKER_URL=${LLAMAPI_REDIS_BROKER_URL}"
+echo "LLAMAPI_REDIS_BACKEND_URL=${LLAMAPI_REDIS_BACKEND_URL}"
+echo "LLAMAPI_API_HOST=${LLAMAPI_API_HOST}"
+echo "LLAMAPI_API_PORT=${LLAMAPI_API_PORT}"
+echo "LLAMAPI_NUM_CELERY_WORKERS=${LLAMAPI_NUM_CELERY_WORKERS}"
 
 # GPU type parameter (default to rtx8000 if not specified)
 GPU_TYPE=${1:-rtx8000}
@@ -45,10 +53,14 @@ python -m llamapi.server &
 # Give the server some time to initialize
 sleep 5
 
+JOB_ID_FILE="/tmp/llamapi_job_ids_$(date +%s).txt"
+touch $JOB_ID_FILE
+echo $JOB_ID_FILE
+
 # Submit jobs to SLURM to launch Celery workers and store the JOB_ID
 for i in $(seq 1 $LLAMAPI_NUM_CELERY_WORKERS); do
-    JOB_ID=$(salloc --gres=gpu:${GPU_TYPE}:1 --mem 32G -c 6 --partition long | grep -oP "Granted job allocation \K\d+")
-    echo $JOB_ID >> $CLUSTER_ID_FILE
+    JOB_ID=$(sbatch --output=$SCRATCH/tn/info-bazaar/logs/celery_worker_%j.log --gres=gpu:$GPU_TYPE $SCRATCH/tn/info-bazaar/scripts/celery_worker.sh $i | grep -oP "Submitted batch job \K\d+")
+    echo $JOB_ID >> $JOB_ID_FILE
 done
 
 # Keep the script running to maintain the FastAPI and Redis servers
