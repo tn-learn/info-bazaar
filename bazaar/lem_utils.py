@@ -45,17 +45,44 @@ MODEL_CACHE = {}
 OAI_MODELS = ["gpt-3.5-turbo", "gpt-3.5-turbo-16k", "gpt-4", "gpt-4-32k"]
 OAI_EMBEDDINGS = ["text-embedding-ada-002"]
 
-DEFAULT_LLM_NAME = "gpt-3.5-turbo"
+DEFAULT_LLM_NAME = "RemoteLlama-2-70b-chat-hf"
 DEFAULT_RERANKER_NAME = "ms-marco-MiniLM-L-4-v2"
 DEFAULT_EMBEDDING_NAME = "text-embedding-ada-002"
+
 
 def ask_for_guidance(
     program_string, inputs: dict, output_keys: List[str], **guidance_kwargs
 ):
     llm = guidance_kwargs.get("llm")
     if isinstance(llm, RemoteLLM):
-        # TODO Call API
-        pass
+        breakpoint()
+        url = "http://127.0.0.1:8910/predict/"
+        headers = {
+            "accept": "application/json",
+            "Content-Type": "application/json",
+        }
+        guidance_kwargs["llm"] = llm.get_json_identifier()
+        data = json.dumps(
+            {
+                "program_string": program_string,
+                "inputs": inputs,
+                "guidance_kwargs": guidance_kwargs,
+            }
+        )
+        try:
+            response = requests.post(url, json=data, headers=headers)
+            response.raise_for_status()  # Raises an HTTPError if the HTTP request returned an unsuccessful status code
+            response_data = response.json()
+        except requests.RequestException as e:
+            # Handle HTTP-related errors here, e.g., connection errors, timeouts, etc.
+            print(f"An error occurred while making the request: {e}")
+            return {}
+        except ValueError as e:
+            # Handle JSON decoding errors here
+            print(f"An error occurred while decoding the response: {e}")
+            return {}
+
+        return response_data
     else:
         program = guidance(program_string, **guidance_kwargs)  # noqa
         program_output = program(**inputs)
@@ -306,16 +333,15 @@ class LLaMa2(guidance.llms.Transformers):
         model.generate = types.MethodType(generate, model)
         return monitor
 
+
 class RemoteLLM:
     def get_json_identifier(self):
-        pass
+        raise NotImplementedError
 
 
 class RemoteLlaMa2(RemoteLLM):
     def get_json_identifier(self):
-        return {
-            "model_name": "Llama-2-70b-chat-hf"
-        }
+        return {"model_name": "Llama-2-70b-chat-hf"}
 
 
 def get_llm(model_name: Optional[str] = None, **extra_kwargs):
@@ -323,7 +349,7 @@ def get_llm(model_name: Optional[str] = None, **extra_kwargs):
         model_name = default_llm_name()
     name_to_cls_kwargs_mapping = {
         "Llama-2-70b-chat-hf": (LLaMa2, {"size": "70b"}),
-        "RemoteLlama-2-70b-chat-hf": (RemoteLlaMa2, {"size": "70b"}),
+        "RemoteLlama-2-70b-chat-hf": (RemoteLlaMa2, {}),
     }
     if model_name in OAI_MODELS:
         llm = guidance.llms.OpenAI(model_name, **extra_kwargs)
@@ -365,14 +391,10 @@ class TransformersEmbedding:
         hf_auth_token = get_hf_auth_token(hf_auth_token)
         # Init the tokenizer and embedding
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model_id,
-            cache_dir=hf_cache_directory,
-            use_auth_token=hf_auth_token,
+            model_id, cache_dir=hf_cache_directory, use_auth_token=hf_auth_token,
         )
         self.model = transformers.AutoModel.from_pretrained(
-            model_id,
-            cache_dir=hf_cache_directory,
-            use_auth_token=hf_auth_token,
+            model_id, cache_dir=hf_cache_directory, use_auth_token=hf_auth_token,
         )
         # Manually ship to device
         self.model.to(self.device)
@@ -483,14 +505,10 @@ class LMReranker:
         hf_cache_directory = get_hf_cache_directory(hf_cache_directory)
         # Init the tokenizer and model
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model_id,
-            cache_dir=hf_cache_directory,
-            use_auth_token=hf_auth_token,
+            model_id, cache_dir=hf_cache_directory, use_auth_token=hf_auth_token,
         )
         self.model = transformers.AutoModelForSequenceClassification.from_pretrained(
-            model_id,
-            cache_dir=hf_cache_directory,
-            use_auth_token=hf_auth_token,
+            model_id, cache_dir=hf_cache_directory, use_auth_token=hf_auth_token,
         )
         self.model.to(self.device)
         self.model.eval()
@@ -637,10 +655,7 @@ def break_down_question(question: str, model: Optional[str] = None) -> List[str]
         program_string=program_string,
         llm=get_llm(model),
         silent=True,
-        inputs=dict(
-            question=question,
-            extract_questions=_extract_questions,
-        ),
+        inputs=dict(question=question, extract_questions=_extract_questions,),
         output_keys=["sub_questions"],
     )
     return program_outputs["sub_questions"]
@@ -672,10 +687,7 @@ def generate_hyde_passage(question: str, model: Optional[str] = None) -> str:
         program_string=program_string,
         llm=get_llm(model),
         silent=True,
-        inputs=dict(
-            question=question,
-            parse_answer=_parse_answer,
-        ),
+        inputs=dict(question=question, parse_answer=_parse_answer,),
         output_keys=["hyde_answer"],
     )
     return program_outputs["hyde_answer"]
@@ -788,10 +800,7 @@ def split_to_paragraphs(
         program_string=program_string,
         llm=get_llm(model_name=model_name),
         silent=True,
-        inputs=dict(
-            sentences=sentences,
-            num_para=target_num_paragraphs,
-        ),
+        inputs=dict(sentences=sentences, num_para=target_num_paragraphs,),
         output_keys=["parasplits"],
     )
     paragraph_indices = [int(x) - 1 for x in program_output["parasplits"]]
@@ -1109,11 +1118,7 @@ def select_quotes_with_debate(
         program_string=program_string,
         llm=get_llm(model_name=model_name),
         silent=True,
-        inputs=dict(
-            question=question,
-            options=options,
-            balance=100,
-        ),
+        inputs=dict(question=question, options=options, balance=100,),
         output_keys=["answer"],
     )
     answer = program_output["answer"]
@@ -1250,10 +1255,7 @@ def synthesize_answer(quotes: List["Quote"], model_name: Optional[str] = None) -
         program_string=program_string,
         llm=get_llm(model_name=model_name),
         silent=True,
-        inputs=dict(
-            question=question,
-            quotes=passages,
-        ),
+        inputs=dict(question=question, quotes=passages,),
         output_keys=["answer"],
     )
 

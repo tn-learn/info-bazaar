@@ -1,38 +1,21 @@
-import json
-import torch
-
+import guidance
 from celery import Celery, Task
-import time
+
+from bazaar.lem_utils import get_llm, clean_program_string
 from llamapi import REDIS_BROKER_URL, REDIS_BACKEND_URL
 
 # Celery setup using the configurations from __init__.py
 celery_app = Celery(__name__, broker=REDIS_BROKER_URL, backend=REDIS_BACKEND_URL)
 
-# Load Huggingface model and tokenizer here (omitted for brevity)
-# They will be loaded once when the worker starts.
-
-MODEL_CACHE = {}
-
-
-class Model:
-    def __init__(self):
-        pass
-
-    def generate(self, *args, **kwargs):
-        pass
-
-    def deflate(self, payload: bytes):
-        
-        pass
-
 
 @celery_app.task(bind=True, base=Task)
-def run_inference(self, texts: list):
+def run_inference(self, program_string: str, inputs: dict, guidance_kwargs: dict):
     print(
         f"Running inference for task ID: {self.request.id} on worker: {self.request.hostname}"
     )
-    # Simulated inference logic
-    # Replace with your actual model inference
-    time.sleep(10)
-    predictions = [text[0:5] for text in texts]
-    return predictions
+    model_name = guidance_kwargs.pop("model_name")
+    program_string = clean_program_string(program_string)
+    program = guidance(program_string, llm=get_llm(model_name), **guidance_kwargs)
+    outputs = program(**inputs)
+    return outputs
+
