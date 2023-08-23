@@ -1,4 +1,5 @@
 import copy
+import json
 import os
 import sys
 
@@ -1281,7 +1282,7 @@ def synthesize_answer(quotes: List["Quote"], model_name: Optional[str] = None) -
 
         return parts
 
-    answer = separate_text_to_dict_corrected(answer)["answer"]
+    answer = separate_text_to_dict_corrected(program_output)["answer"]
 
     return answer
 
