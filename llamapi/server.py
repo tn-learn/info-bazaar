@@ -42,8 +42,13 @@ async def get_results(task_id: str):
 
     if task.state == states.PENDING:
         return {"status": "Pending"}
+    elif task.state == states.FAILURE:
+        error_message = str(task.result)  # Get the exception message
+        logger.error(f"Task failed with error: {error_message}")
+        return {"status": "Failure", "error": error_message}
     elif task.state != states.SUCCESS:
-        print(task.__dict__)
+        logger.debug(task.__dict__)
+        logger.error(f"Task state: {task.state}, something went wrong.")
         raise HTTPException(
             status_code=500, detail=f"Task state: {task.state}, something went wrong."
         )
