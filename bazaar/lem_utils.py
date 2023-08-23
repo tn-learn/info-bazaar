@@ -1,10 +1,7 @@
 import copy
-import json
 import os
-import time
 
 import torch
-import requests
 from collections import defaultdict
 from typing import (
     List,
@@ -26,6 +23,7 @@ import platformdirs
 import backoff
 
 from bazaar.py_utils import DiskCache
+from llamapi.client import ask_for_guidance
 
 if TYPE_CHECKING:
     import torch
@@ -46,54 +44,6 @@ OAI_EMBEDDINGS = ["text-embedding-ada-002"]
 DEFAULT_LLM_NAME = "RemoteLlama-2-70b-chat-hf"
 DEFAULT_RERANKER_NAME = "ms-marco-MiniLM-L-4-v2"
 DEFAULT_EMBEDDING_NAME = "text-embedding-ada-002"
-
-
-def ask_for_guidance(
-    program_string, inputs: dict, output_keys: List[str], **guidance_kwargs
-):
-    BASE_URL = "http://localhost:8910"
-    llm = guidance_kwargs.get("llm")
-    if isinstance(llm, RemoteLLM):
-        breakpoint()
-        url = f"{BASE_URL}/predict/"
-        headers = {
-            "accept": "application/json",
-            "Content-Type": "application/json",
-        }
-        guidance_kwargs["llm"] = llm.get_json_identifier()
-        data = json.dumps(
-            {
-                "program_string": program_string,
-                "inputs": inputs,
-                "guidance_kwargs": guidance_kwargs,
-                "output_keys": output_keys,
-            }
-        )
-        response = requests.post(url, json={"payload": data}, headers=headers)
-        response.raise_for_status()  # Raises an HTTPError if the HTTP request returned an unsuccessful status code
-        response_data = response.json()
-
-        def poll_for_results(task_id):
-            while True:
-                result_response = requests.get(f"{BASE_URL}/results/{task_id}")
-                result_data = result_response.json()
-                status = result_data.get("status")
-
-                if status == "Success":
-                    return result_data.get("result")
-                elif status == "Pending":
-                    print(f"Task ID {task_id}: Still pending...")
-                    time.sleep(2)  # Wait for 2 seconds before polling again
-                else:
-                    print("Failed to get results.")
-                    break
-            
-        response_data = poll_for_results(response_data.get("task_id"))
-        return response_data
-    else:
-        program = guidance(program_string, **guidance_kwargs)  # noqa
-        program_output = program(**inputs)
-        return {key: program_output[key] for key in output_keys}
 
 
 def default_llm_name(set_to: Optional[str] = None) -> str:
@@ -342,13 +292,18 @@ class LLaMa2(guidance.llms.Transformers):
 
 
 class RemoteLLM:
+    use_remote_guidance: bool = True
+
     def get_json_identifier(self):
         raise NotImplementedError
 
 
 class RemoteLlaMa2(RemoteLLM):
+    def __init__(self, size: str):
+        self.size = size
+
     def get_json_identifier(self):
-        return {"model_name": "Llama-2-70b-chat-hf"}
+        return {"model_name": f"Llama-2-{self.size}-chat-hf"}
 
 
 def get_llm(model_name: Optional[str] = None, **extra_kwargs):
@@ -356,7 +311,7 @@ def get_llm(model_name: Optional[str] = None, **extra_kwargs):
         model_name = default_llm_name()
     name_to_cls_kwargs_mapping = {
         "Llama-2-70b-chat-hf": (LLaMa2, {"size": "70b"}),
-        "RemoteLlama-2-70b-chat-hf": (RemoteLlaMa2, {}),
+        "RemoteLlama-2-70b-chat-hf": (RemoteLlaMa2, {"size": "70b"}),
     }
     if model_name in OAI_MODELS:
         llm = guidance.llms.OpenAI(model_name, **extra_kwargs)
