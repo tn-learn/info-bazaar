@@ -4,8 +4,11 @@ from typing import Dict, List, Optional
 
 import requests
 import time
-
+import logging
 from llamapi import HOST_URL
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def ask_for_guidance(
@@ -47,15 +50,21 @@ def ask_for_guidance(
                 if status == "Success":
                     return result_data.get("result")
                 elif status == "Pending":
-                    print(f"Task ID {task_id}: Still pending...")
+                    logger.info(f"Task ID {task_id}: Still pending...")
                     time.sleep(2)  # Wait for 2 seconds before polling again
+                elif status == "Failure":
+                    raise Exception(
+                        f"Error in server. Exception: {result_data.get('result')}"
+                    )
                 else:
-                    print("Failed to get results.")
+                    logger.error("Failed to get results.")
                     break
 
         response_data = poll_for_results(response_data.get("task_id"))
         return response_data
     else:
+        import guidance
+
         program = guidance(program_string, **guidance_kwargs)  # noqa
         program_output = program(**inputs)
         return {key: program_output[key] for key in output_keys}
