@@ -67,10 +67,11 @@ def ask_for_guidance(
                 "program_string": program_string,
                 "inputs": inputs,
                 "guidance_kwargs": guidance_kwargs,
+                "output_keys": output_keys,
             }
         )
         try:
-            response = requests.post(url, json=data, headers=headers)
+            response = requests.post(url, json={"payload": data}, headers=headers)
             response.raise_for_status()  # Raises an HTTPError if the HTTP request returned an unsuccessful status code
             response_data = response.json()
         except requests.RequestException as e:
