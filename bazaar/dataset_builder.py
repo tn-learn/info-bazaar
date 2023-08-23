@@ -434,7 +434,7 @@ def merge_small_blocks(blocks: List[dict], min_block_size: int = 50):
     return blocks
 
 
-def embed_blocks(
+def build_blocks(
     category: str,
     oa_works_w_arxiv: dict,
     data_root: str,

@@ -7,7 +7,7 @@ from bazaar.dataset_builder import (
     download_arxiv_papers,
     load_or_parse_latex_source,
     filter_and_load_oa_works,
-    embed_blocks,
+    build_blocks,
     extract_questions_from_blocks,
 )
 
@@ -28,7 +28,7 @@ def main():
     download_arxiv_papers(category, oa_works, data_root)
     papers = load_or_parse_latex_source(category, data_root)
     oa_works_w_arxiv, paper_samples = filter_and_load_oa_works(category, papers, oa_works, data_root=data_root)
-    dataset_step_0 = embed_blocks(category, oa_works_w_arxiv, data_root, paper_samples)
+    dataset_step_0 = build_blocks(category, oa_works_w_arxiv, data_root, paper_samples)
     dataset_step_1 = extract_questions_from_blocks(category, dataset_step_0, model_name=model_name)
 
     # Save the final dataset as needed
