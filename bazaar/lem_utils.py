@@ -1,7 +1,7 @@
 import copy
 import json
 import os
-import sys
+import time
 
 import torch
 import requests
@@ -24,8 +24,6 @@ import re
 import openai
 import platformdirs
 import backoff
-from guidance import Program
-from transformers.file_utils import ModelOutput
 
 from bazaar.py_utils import DiskCache
 
@@ -53,10 +51,11 @@ DEFAULT_EMBEDDING_NAME = "text-embedding-ada-002"
 def ask_for_guidance(
     program_string, inputs: dict, output_keys: List[str], **guidance_kwargs
 ):
+    BASE_URL = "http://localhost:8910"
     llm = guidance_kwargs.get("llm")
     if isinstance(llm, RemoteLLM):
         breakpoint()
-        url = "http://127.0.0.1:8910/predict/"
+        url = f"{BASE_URL}/predict/"
         headers = {
             "accept": "application/json",
             "Content-Type": "application/json",
@@ -70,19 +69,26 @@ def ask_for_guidance(
                 "output_keys": output_keys,
             }
         )
-        try:
-            response = requests.post(url, json={"payload": data}, headers=headers)
-            response.raise_for_status()  # Raises an HTTPError if the HTTP request returned an unsuccessful status code
-            response_data = response.json()
-        except requests.RequestException as e:
-            # Handle HTTP-related errors here, e.g., connection errors, timeouts, etc.
-            print(f"An error occurred while making the request: {e}")
-            return {}
-        except ValueError as e:
-            # Handle JSON decoding errors here
-            print(f"An error occurred while decoding the response: {e}")
-            return {}
+        response = requests.post(url, json={"payload": data}, headers=headers)
+        response.raise_for_status()  # Raises an HTTPError if the HTTP request returned an unsuccessful status code
+        response_data = response.json()
 
+        def poll_for_results(task_id):
+            while True:
+                result_response = requests.get(f"{BASE_URL}:8910/results/{task_id}")
+                result_data = result_response.json()
+                status = result_data.get("status")
+
+                if status == "Success":
+                    return result_data.get("result")
+                elif status == "Pending":
+                    print(f"Task ID {task_id}: Still pending...")
+                    time.sleep(2)  # Wait for 2 seconds before polling again
+                else:
+                    print("Failed to get results.")
+                    break
+            
+        response_data = poll_for_results(response_data.get("task_id"))
         return response_data
     else:
         program = guidance(program_string, **guidance_kwargs)  # noqa
