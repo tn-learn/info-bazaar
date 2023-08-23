@@ -1,43 +1,61 @@
-from typing import Any
-import pickle
+import json
+import os
+from typing import Dict, List, Optional
 
-import transformers
+import requests
+import time
 
-
-class RemoteGuidanceClient:
-    """This class should look like a HF model to guidance."""
-
-    def __init__(self, *args, **kwargs):
-        args, kwargs = self.preprocess_model_args_and_kwargs(args, kwargs)
-        self._model_args = args
-        self._model_kwargs = kwargs
-        # Init the config (which is needed downstream)
-        assert "config" in kwargs, "Config must be pre-specified for RemoteGuidance."
-        self.config = kwargs.get("config")
-        self.device = "cpu"
-
-    def preprocess_model_args_and_kwargs(self, args: tuple, kwargs: dict):
-        # Make shallow copies
-        args = tuple(args)
-        kwargs = dict(kwargs)
-        # Replace cache dir with an instruction to fill it in on the server
-        if "cache_dir" in kwargs:
-            kwargs["cache_dir"] = "env:LLAMAPI_HF_CACHE_DIRECTORY"
-        return args, kwargs
-
-    def serialize_model_args_and_kwargs(self) -> bytes:
-        return pickle.dumps((self._model_args, self._model_kwargs))
-
-    def generate(self, *args, **kwargs):
-        # This is where we deflate the payload
-        pass
-
-    def prepare_inputs_for_generation(self):
-        pass
+from llamapi import HOST_URL
 
 
-def test_remote_guidance():
-    model_id = "meta-llama/Llama-2-70b-chat-hf"
-    model_config = transformers.AutoConfig.from_pretrained(model_id)
-    model = RemoteGuidanceClient(model_config)
-    pass
+def ask_for_guidance(
+    program_string: str,
+    *,
+    inputs: Dict[str, str],
+    output_keys: List[str],
+    host_url: Optional[str] = None,
+    **guidance_kwargs,
+):
+    if host_url is None:
+        host_url = HOST_URL
+    llm = guidance_kwargs.get("llm")
+    if getattr(llm, "use_remote_guidance", False):
+        url = f"{host_url}/guidance/"
+        headers = {
+            "accept": "application/json",
+            "Content-Type": "application/json",
+        }
+        guidance_kwargs["llm"] = llm.get_json_identifier()
+        data = json.dumps(
+            {
+                "program_string": program_string,
+                "inputs": inputs,
+                "guidance_kwargs": guidance_kwargs,
+                "output_keys": output_keys,
+            }
+        )
+        response = requests.post(url, json={"payload": data}, headers=headers)
+        response.raise_for_status()  # Raises an HTTPError if the HTTP request returned an unsuccessful status code
+        response_data = response.json()
+
+        def poll_for_results(task_id):
+            while True:
+                result_response = requests.get(f"{host_url}/results/{task_id}")
+                result_data = result_response.json()
+                status = result_data.get("status")
+
+                if status == "Success":
+                    return result_data.get("result")
+                elif status == "Pending":
+                    print(f"Task ID {task_id}: Still pending...")
+                    time.sleep(2)  # Wait for 2 seconds before polling again
+                else:
+                    print("Failed to get results.")
+                    break
+
+        response_data = poll_for_results(response_data.get("task_id"))
+        return response_data
+    else:
+        program = guidance(program_string, **guidance_kwargs)  # noqa
+        program_output = program(**inputs)
+        return {key: program_output[key] for key in output_keys}

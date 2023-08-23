@@ -1,9 +1,14 @@
 import json
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from celery import Celery, states
+import logging
+
 from llamapi import REDIS_BROKER_URL, REDIS_BACKEND_URL, API_HOST, API_PORT
-import llamapi.worker
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # FastAPI app setup
 app = FastAPI()
@@ -14,24 +19,24 @@ celery_app = Celery(
 )
 
 
-class PredictionRequest(BaseModel):
+class GuidanceRequest(BaseModel):
     payload: str
 
 
-@app.post("/predict/")
-async def predict(prediction_request: PredictionRequest):
+@app.post("/guidance/")
+async def guidance(prediction_request: GuidanceRequest):
     payload = json.loads(prediction_request.payload)
-    print(f"Received request with text: {payload}")
+    logger.debug(f"Received request with text: {payload}")
 
-    task = celery_app.send_task("worker.run_inference", kwargs=payload)
-    print(f"Dispatched task with ID: {task.id}")
+    task = celery_app.send_task("llamapi.worker.run_inference", kwargs=payload)
+    logger.info(f"Dispatched task with ID: {task.id}")
 
     return {"task_id": task.id}
 
 
 @app.get("/results/{task_id}")
 async def get_results(task_id: str):
-    print(f"Fetching results for task ID: {task_id}")
+    logger.info(f"Fetching results for task ID: {task_id}")
 
     task = celery_app.AsyncResult(task_id)
 
