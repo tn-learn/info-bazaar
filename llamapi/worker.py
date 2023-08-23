@@ -1,3 +1,6 @@
+import json
+import torch
+
 from celery import Celery, Task
 import time
 from llamapi import REDIS_BROKER_URL, REDIS_BACKEND_URL
@@ -7,6 +10,20 @@ celery_app = Celery(__name__, broker=REDIS_BROKER_URL, backend=REDIS_BACKEND_URL
 
 # Load Huggingface model and tokenizer here (omitted for brevity)
 # They will be loaded once when the worker starts.
+
+MODEL_CACHE = {}
+
+
+class Model:
+    def __init__(self):
+        pass
+
+    def generate(self, *args, **kwargs):
+        pass
+
+    def deflate(self, payload: bytes):
+        
+        pass
 
 
 @celery_app.task(bind=True, base=Task)
