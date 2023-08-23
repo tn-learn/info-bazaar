@@ -3,6 +3,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from celery import Celery, states
 from llamapi import REDIS_BROKER_URL, REDIS_BACKEND_URL, API_HOST, API_PORT
+import llamapi.worker
 
 # FastAPI app setup
 app = FastAPI()
@@ -22,7 +23,7 @@ async def predict(prediction_request: PredictionRequest):
     payload = json.loads(prediction_request.payload)
     print(f"Received request with text: {payload}")
 
-    task = celery_app.send_task("llamapi.worker.run_inference", kwargs=payload)
+    task = celery_app.send_task("worker.run_inference", kwargs=payload)
     print(f"Dispatched task with ID: {task.id}")
 
     return {"task_id": task.id}
