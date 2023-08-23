@@ -75,7 +75,7 @@ def ask_for_guidance(
 
         def poll_for_results(task_id):
             while True:
-                result_response = requests.get(f"{BASE_URL}:8910/results/{task_id}")
+                result_response = requests.get(f"{BASE_URL}/results/{task_id}")
                 result_data = result_response.json()
                 status = result_data.get("status")
 
