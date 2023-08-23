@@ -37,8 +37,9 @@ async def get_results(task_id: str):
     if task.state == states.PENDING:
         return {"status": "Pending"}
     elif task.state != states.SUCCESS:
+        print(task.__dict__)
         raise HTTPException(
-            status_code=500, detail="Task failed, something went wrong."
+            status_code=500, detail=f"Task state: {task.state}, something went wrong."
         )
 
     return {"status": "Success", "result": task.result}
