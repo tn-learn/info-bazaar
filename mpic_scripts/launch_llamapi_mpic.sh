@@ -5,6 +5,8 @@ echo "Setting up environment variables..."
 # Redis
 export LLAMAPI_REDIS_BROKER_URL=${LLAMAPI_REDIS_BROKER_URL:-redis://0.0.0.0:6379/0}
 export LLAMAPI_REDIS_BACKEND_URL=${LLAMAPI_REDIS_BACKEND_URL:-redis://0.0.0.0:6379/1}
+export LLAMAPI_REDIS_SERVER_EXECUTABLE=${LLAMAPI_REDIS_SERVER_EXECUTABLE:-/home/nrahaman/utils/redis-stable/src/redis-server}
+export LLAMAPI_REDIS_CLI_EXECUTABLE=${LLAMAPI_REDIS_CLI_EXECUTABLE:-/home/nrahaman/utils/redis-stable/src/redis-cli}
 
 # FastAPI
 export LLAMAPI_API_HOST=${LLAMAPI_API_HOST:-0.0.0.0}
@@ -77,8 +79,8 @@ trap cleanup SIGINT
 
 echo "Starting Redis server..."
 # Check if Redis is already running
-if ! redis-cli ping > /dev/null 2>&1; then
-    redis-server --protected-mode no &
+if ! $LLAMAPI_REDIS_CLI_EXECUTABLE ping > /dev/null 2>&1; then
+    $LLAMAPI_REDIS_SERVER_EXECUTABLE --protected-mode no &
     # Give Redis some time to initialize
     sleep 5
 else
