@@ -7,10 +7,12 @@ export LLAMAPI_REDIS_BROKER_URL=${LLAMAPI_REDIS_BROKER_URL:-redis://0.0.0.0:6379
 export LLAMAPI_REDIS_BACKEND_URL=${LLAMAPI_REDIS_BACKEND_URL:-redis://0.0.0.0:6379/1}
 export LLAMAPI_REDIS_SERVER_EXECUTABLE=${LLAMAPI_REDIS_SERVER_EXECUTABLE:-/home/nrahaman/utils/redis-stable/src/redis-server}
 export LLAMAPI_REDIS_CLI_EXECUTABLE=${LLAMAPI_REDIS_CLI_EXECUTABLE:-/home/nrahaman/utils/redis-stable/src/redis-cli}
+REDIS_PID=""
 
 # FastAPI
 export LLAMAPI_API_HOST=${LLAMAPI_API_HOST:-0.0.0.0}
 export LLAMAPI_API_PORT=${LLAMAPI_API_PORT:-8000}
+FASTAPI_PID=""
 
 # Celery
 export LLAMAPI_NUM_CELERY_WORKERS=${LLAMAPI_NUM_CELERY_WORKERS:-2}
@@ -62,6 +64,14 @@ echo "" > $CLUSTER_ID_FILE
 cleanup() {
     echo "Cleaning up..."
 
+    # Kill the Redis server if it was started by this script
+    if [ ! -z "$REDIS_PID" ]; then
+        kill $REDIS_PID
+    fi
+
+    # Kill FastAPI
+    kill $FASTAPI_PID
+
     # Kill the Condor jobs
     while read -r CLUSTER_ID
     do
@@ -82,6 +92,8 @@ echo "Starting Redis server..."
 # Check if Redis is already running
 if ! $LLAMAPI_REDIS_CLI_EXECUTABLE ping > /dev/null 2>&1; then
     $LLAMAPI_REDIS_SERVER_EXECUTABLE --protected-mode no &
+    REDIS_PID=$!
+
     # Give Redis some time to initialize
     sleep 5
 else
