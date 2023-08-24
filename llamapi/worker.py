@@ -15,6 +15,7 @@ def run_inference(self, program_string: str, inputs: dict, guidance_kwargs: dict
         f"Running inference for task ID: {self.request.id} on worker: {self.request.hostname}"
     )
     model_name = guidance_kwargs["llm"]["model_name"]
+    del guidance_kwargs["llm"]
     program_string = clean_program_string(program_string)
     program = guidance(program_string, llm=get_llm(model_name), **guidance_kwargs)
     program_output = program(**inputs)
