@@ -3,8 +3,8 @@
 echo "Setting up environment variables..."
 # Configuration Environment Variables
 # Redis
-export LLAMAPI_REDIS_BROKER_URL=${LLAMAPI_REDIS_BROKER_URL:-redis://localhost:6379/0}
-export LLAMAPI_REDIS_BACKEND_URL=${LLAMAPI_REDIS_BACKEND_URL:-redis://localhost:6379/1}
+export LLAMAPI_REDIS_BROKER_URL=${LLAMAPI_REDIS_BROKER_URL:-redis://0.0.0.0:6379/0}
+export LLAMAPI_REDIS_BACKEND_URL=${LLAMAPI_REDIS_BACKEND_URL:-redis://0.0.0.0:6379/1}
 
 # FastAPI
 export LLAMAPI_API_HOST=${LLAMAPI_API_HOST:-0.0.0.0}
@@ -12,9 +12,9 @@ export LLAMAPI_API_PORT=${LLAMAPI_API_PORT:-8000}
 
 # Celery
 export LLAMAPI_NUM_CELERY_WORKERS=${LLAMAPI_NUM_CELERY_WORKERS:-2}
-export LLAMAPI_CELERY_CPUS=${LLAMAPI_CELERY_CPUS:-2}             # Default to 1 CPU
+export LLAMAPI_CELERY_CPUS=${LLAMAPI_CELERY_CPUS:-2}             # Default to 2 CPUs
 export LLAMAPI_CELERY_RAM_MB=${LLAMAPI_CELERY_RAM_MB:-10000}     # Default to 100 GB
-export LLAMAPI_CELERY_GPUS=${LLAMAPI_CELERY_GPUS:-1}             # Default to 0 GPUs
+export LLAMAPI_CELERY_GPUS=${LLAMAPI_CELERY_GPUS:-1}             # Default to 1 GPUs
 export LLAMAPI_CELERY_DISK_GB=${LLAMAPI_CELERY_DISK_GB:-160}     # Default to 160 GB
 export LLAMAPI_GPU_MIN_VRAM_MB=${LLAMAPI_GPU_MIN_VRAM_MB:-70}    # Default to a100
 
