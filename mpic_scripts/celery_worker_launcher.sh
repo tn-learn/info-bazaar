@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# Print the redis urls
+echo "==========================================="
+echo "Redis Broker URL: $LLAMAPI_REDIS_BROKER_URL"
+echo "Redis Backend URL: $LLAMAPI_REDIS_BACKEND_URL"
+echo "==========================================="
+
 # Define and create the guidance and huggingface cache directories in /tmp
 GUIDANCE_CACHE_DIR="/tmp/guidance_cache"
 HUGGINGFACE_CACHE_DIR="/tmp/huggingface_cache"
