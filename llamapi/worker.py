@@ -27,6 +27,7 @@ def run_inference(
     )
     try:
         model_name = guidance_kwargs["llm"]["model_name"]
+        guidance_kwargs.pop("llm")
         program_string = clean_program_string(program_string)
         program = guidance(  # noqa
             program_string, llm=get_llm(model_name), **guidance_kwargs
