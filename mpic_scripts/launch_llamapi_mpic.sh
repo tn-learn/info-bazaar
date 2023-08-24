@@ -19,6 +19,7 @@ export LLAMAPI_CELERY_RAM_MB=${LLAMAPI_CELERY_RAM_MB:-10000}     # Default to 10
 export LLAMAPI_CELERY_GPUS=${LLAMAPI_CELERY_GPUS:-1}             # Default to 1 GPUs
 export LLAMAPI_CELERY_DISK_GB=${LLAMAPI_CELERY_DISK_GB:-160}     # Default to 160 GB
 export LLAMAPI_GPU_MIN_VRAM_MB=${LLAMAPI_GPU_MIN_VRAM_MB:-70}    # Default to a100
+export LLAMAPI_CONDOR_BID=${LLAMAPI_CONDOR_BID:-2000}            # Default bid amount
 
 # Logistics
 export LLAMAPI_TMPDIR=${LLAMAPI_TMPDIR:-/fast/nrahaman/persistmp/llamapi}
@@ -107,7 +108,7 @@ for i in $(seq 1 $LLAMAPI_NUM_CELERY_WORKERS); do
 
     echo "Submitting worker $i to HTCondor..."
     # Submit the job to HTCondor using the generated submission file
-    condor_submit $LLAMAPI_SUBMIT_FILES_DIR/celery_worker_$i.submit | grep -oP "submitted to cluster \K\d+" >> $CLUSTER_ID_FILE
+    condor_submit_bid $LLAMAPI_CONDOR_BID $LLAMAPI_SUBMIT_FILES_DIR/celery_worker_$i.submit | grep -oP "submitted to cluster \K\d+" >> $CLUSTER_ID_FILE
 done
 
 # Keep the script running to maintain the FastAPI and Redis servers
