@@ -58,7 +58,7 @@ mkdir -p $LLAMAPI_LOGS_DIR
 
 # Temporary file to store cluster IDs (with a unique timestamp)
 CLUSTER_ID_FILE="$SESSION_TMP_DIR/llamapi_cluster_ids.txt"
-echo "" > $CLUSTER_ID_FILE
+touch $CLUSTER_ID_FILE
 
 # Function to cleanup resources when script is terminated
 cleanup() {
