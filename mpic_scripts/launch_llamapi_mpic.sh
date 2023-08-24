@@ -16,12 +16,12 @@ FASTAPI_PID=""
 
 # Celery
 export LLAMAPI_NUM_CELERY_WORKERS=${LLAMAPI_NUM_CELERY_WORKERS:-2}
-export LLAMAPI_CELERY_CPUS=${LLAMAPI_CELERY_CPUS:-2}             # Default to 2 CPUs
-export LLAMAPI_CELERY_RAM_MB=${LLAMAPI_CELERY_RAM_MB:-10000}     # Default to 100 GB
-export LLAMAPI_CELERY_GPUS=${LLAMAPI_CELERY_GPUS:-1}             # Default to 1 GPUs
-export LLAMAPI_CELERY_DISK_GB=${LLAMAPI_CELERY_DISK_GB:-160}     # Default to 160 GB
-export LLAMAPI_GPU_MIN_VRAM_MB=${LLAMAPI_GPU_MIN_VRAM_MB:-70}    # Default to a100
-export LLAMAPI_CONDOR_BID=${LLAMAPI_CONDOR_BID:-2000}            # Default bid amount
+export LLAMAPI_CELERY_CPUS=${LLAMAPI_CELERY_CPUS:-2}                # Default to 2 CPUs
+export LLAMAPI_CELERY_RAM_MB=${LLAMAPI_CELERY_RAM_MB:-10000}        # Default to 100 GB
+export LLAMAPI_CELERY_GPUS=${LLAMAPI_CELERY_GPUS:-1}                # Default to 1 GPUs
+export LLAMAPI_CELERY_DISK_GB=${LLAMAPI_CELERY_DISK_GB:-160}        # Default to 160 GB
+export LLAMAPI_GPU_MIN_VRAM_MB=${LLAMAPI_GPU_MIN_VRAM_MB:-70000}    # Default to a100
+export LLAMAPI_CONDOR_BID=${LLAMAPI_CONDOR_BID:-2000}               # Default bid amount
 
 # Logistics
 export LLAMAPI_TMPDIR=${LLAMAPI_TMPDIR:-/fast/nrahaman/persistmp/llamapi}
