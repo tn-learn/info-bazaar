@@ -112,6 +112,9 @@ sleep 5
 # Get the current script's directory
 DIR_PATH=$(dirname $(realpath $0))
 
+# Make sure that the celery launcher script is executable
+chmod +x $DIR_PATH/celery_worker_launcher.sh
+
 # Submit jobs to HTCondor to launch Celery workers and store the CLUSTER_ID
 for i in $(seq 1 $LLAMAPI_NUM_CELERY_WORKERS); do
     echo "Generating submission file for worker $i..."
