@@ -3,8 +3,9 @@
 echo "Setting up environment variables..."
 # Configuration Environment Variables
 # Redis
-export LLAMAPI_REDIS_BROKER_URL=${LLAMAPI_REDIS_BROKER_URL:-redis://0.0.0.0:6379/0}
-export LLAMAPI_REDIS_BACKEND_URL=${LLAMAPI_REDIS_BACKEND_URL:-redis://0.0.0.0:6379/1}
+CURRENT_IP=$(hostname -I | awk '{print $1}')
+export LLAMAPI_REDIS_BROKER_URL=${LLAMAPI_REDIS_BROKER_URL:-redis://$CURRENT_IP:6379/0}
+export LLAMAPI_REDIS_BACKEND_URL=${LLAMAPI_REDIS_BACKEND_URL:-redis://$CURRENT_IP:6379/1}
 export LLAMAPI_REDIS_SERVER_EXECUTABLE=${LLAMAPI_REDIS_SERVER_EXECUTABLE:-/home/nrahaman/utils/redis-stable/src/redis-server}
 export LLAMAPI_REDIS_CLI_EXECUTABLE=${LLAMAPI_REDIS_CLI_EXECUTABLE:-/home/nrahaman/utils/redis-stable/src/redis-cli}
 REDIS_PID=""
