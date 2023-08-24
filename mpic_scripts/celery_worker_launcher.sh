@@ -17,6 +17,14 @@ echo "Copying LLaMa2 from $LLAMA2_PATH to $HUGGINGFACE_CACHE_DIR..."
 # Copy the specified directory to the huggingface cache directory
 cp -r $LLAMA2_PATH $HUGGINGFACE_CACHE_DIR/
 
+# Get the directory where the script resides
+SCRIPT_DIR=$(dirname $(realpath $0))
+
+# Get the directory above the script's location and cd into it
+# Call the script from the parent dir so llamapi is importable for reals
+PARENT_DIR=$(dirname $SCRIPT_DIR)
+cd $PARENT_DIR
+
 echo "Starting celery worker..."
 # Launch the celery worker (you can customize this command as needed)
 celery -A llamapi.worker worker --loglevel=info
