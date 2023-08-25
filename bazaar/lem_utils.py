@@ -51,10 +51,9 @@ DEFAULT_EMBEDDING_NAME = "text-embedding-ada-002"
 def ask_for_guidance(
     program_string, inputs: dict, output_keys: List[str], **guidance_kwargs
 ):
-    BASE_URL = "http://localhost:8910"
+    BASE_URL = "http://localhost:8911"
     llm = guidance_kwargs.get("llm")
     if isinstance(llm, RemoteLLM):
-        breakpoint()
         url = f"{BASE_URL}/predict/"
         headers = {
             "accept": "application/json",
@@ -1188,7 +1187,7 @@ def clean_content(content: str, model_name: Optional[str] = None) -> str:
     {{gen "rationale" temperature=0.1}}
     
     Here is the passage with cleaned text:
-    {{gen "cleaned_passage" temperature=0.1}}
+    {{gen "cleaned_passage" temperature=0.1  stop="\\n\\n"}}
     {{~/assistant}}    
     """
     program_string = clean_program_string(program_string)
