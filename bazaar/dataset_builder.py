@@ -1,6 +1,6 @@
 from datetime import datetime
 import pickle
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import gzip
 import tarfile
 import json
@@ -81,7 +81,7 @@ def get_llm_metadata(data_root: str):
         url = f"https://api.crossref.org/works?query.title={encoded_title}"
         x = requests.get(url)
         try:
-            doi = x.json()['message']['items'][0]['DOI']
+            doi = x.json()["message"]["items"][0]["DOI"]
         except Exception as e:
             doi = None
         details = {
@@ -120,6 +120,7 @@ def get_llm_metadata(data_root: str):
                 print(f"An error occurred while fetching {arxiv_link}: {str(e)}")
 
         return arxiv_id, details
+
     metadata = {}
     for arxiv_link in tqdm(arxiv_links):
         arxiv_id, details = fetch_arxiv_details(arxiv_link)
@@ -182,9 +183,7 @@ def load_or_scrape_openalex_works(
             futures = [
                 executor.submit(fetch_works, chunk) for chunk in chunks(metadata)
             ]
-            for future in tqdm(
-                concurrent.futures.as_completed(futures), total=len(futures)
-            ):
+            for future in tqdm(as_completed(futures), total=len(futures)):
                 result = future.result()
                 if result.status_code == 200:
                     result = result.json()["results"]
@@ -229,10 +228,10 @@ def download_arxiv_papers(category: str, oa_works: dict, data_root: str):
         with ThreadPoolExecutor(max_workers=5) as executor:
             futures = []
             for arxiv_id, oa_work in tqdm(oa_works.items()):
-                futures.append(executor.submit(download_pdf, arxiv_id, category, data_root))
-            for future in tqdm(
-                concurrent.futures.as_completed(futures), total=len(futures)
-            ):
+                futures.append(
+                    executor.submit(download_pdf, arxiv_id, category, data_root)
+                )
+            for future in tqdm(as_completed(futures), total=len(futures)):
                 pass
 
 
@@ -461,18 +460,24 @@ def build_blocks(
                     arxiv_id, data["paper"], data["title"], data["publication_date"]
                 )
 
-                cleaned_blocks = []
-                for block in tqdm(blocks):
-                    block.content = clean_content(block.content, model_name=model_name)
+                with ThreadPoolExecutor(max_workers=10) as executor:
+                    future_map = {
+                        executor.submit(clean_content, b.content): b for b in blocks
+                    }
+                    for future in tqdm(as_completed(future_map), total=len(future_map)):
+                        block = future_map[future]
+                        block.content = future.result()
 
-                merged_blocks = merge_small_blocks(cleaned_blocks)
-                final_blocks = []
-                for block in merged_blocks:
-                    if block.num_tokens > 450:
-                        new_blocks = split_to_paragraphs(block, model_name=model_name)
-                        final_blocks.extend(new_blocks)
-                    else:
-                        final_blocks.append(block)
+                merged_blocks = merge_small_blocks(blocks)
+                final_blocks = [b for b in merged_blocks if b.num_tokens <= 450]
+                to_split = [block for block in merged_blocks if block.num_tokens > 450]
+                with ThreadPoolExecutor(max_workers=10) as executor:
+                    futures = [
+                        executor.submit(split_to_paragraphs, b) for b in to_split
+                    ]
+                    for future in tqdm(as_completed(futures), total=len(futures)):
+                        bs = future.result()
+                        final_blocks.extend(bs)
                 data["blocks"] = blocks
                 dataset_step_0[arxiv_id] = data
             except Exception as e:
@@ -493,10 +498,16 @@ def extract_questions_from_blocks(category, dataset_step_0, model_name):
             dataset_step_1 = pickle.load(f)
     else:
         for arxiv_id, data in tqdm(dataset_step_0.items()):
-            for block_id, block in tqdm(enumerate(data["blocks"])):
-                block.questions = extract_questions(
-                    block.content, model_name=model_name
-                )
+
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                future_map = {
+                    executor.submit(extract_questions, b.content, model_name): b
+                    for b in data["blocks"]
+                }
+                for future in tqdm(as_completed(future_map), total=len(future_map)):
+                    block = future_map[future]
+                    block.questions = future.result()
+
             dataset_step_1[arxiv_id] = data
             if (len(dataset_step_1) % 10) == 0:
                 pickle.dump(dataset_step_1, open(path, "wb"))
