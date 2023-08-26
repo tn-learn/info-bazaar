@@ -6,6 +6,10 @@ echo "Redis Broker URL: $LLAMAPI_REDIS_BROKER_URL"
 echo "Redis Backend URL: $LLAMAPI_REDIS_BACKEND_URL"
 echo "==========================================="
 
+# Set the proxy
+export HTTP_PROXY=http://proxy:8080
+export HTTPS_PROXY=https://proxy:8080
+
 # Create the cache directories in tmp
 GUIDANCE_CACHE_DIR="/tmp/guidance_cache"
 mkdir -p $GUIDANCE_CACHE_DIR
