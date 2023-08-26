@@ -39,7 +39,7 @@ cleanup() {
 }
 
 # Trap the SIGINT signal (Ctrl+C) and call the cleanup function
-trap cleanup SIGINT
+ trap cleanup SIGINT
 
 # Start Redis server without protection
 redis-server --protected-mode no &
