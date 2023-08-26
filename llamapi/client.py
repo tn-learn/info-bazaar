@@ -54,7 +54,7 @@ def ask_for_guidance(
                     time.sleep(POLL_INTERVAL)  # Wait for 2 seconds before polling again
                 elif status == "Failure":
                     raise Exception(
-                        f"Error in server. Exception: {result_data.get('result')}"
+                        f"Error in server. Exception: {result_data.get('error')}"
                     )
                 else:
                     logger.error("Failed to get results.")

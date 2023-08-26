@@ -22,6 +22,7 @@ request_memory  = {os.environ['LLAMAPI_CELERY_RAM_MB']}
 request_gpus    = {os.environ['LLAMAPI_CELERY_GPUS']}
 requirements    = TARGET.CUDAGlobalMemoryMb > {os.environ['LLAMAPI_GPU_MIN_VRAM_MB']}
 request_disk    = {os.environ['LLAMAPI_CELERY_DISK_GB']}G
+environment     = "LLAMAPI_CELERY_WORKER_NUM={worker_num}"
 queue
 """
 
