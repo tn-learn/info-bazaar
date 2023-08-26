@@ -112,6 +112,13 @@ def set_hf_cache_directory(hf_cache_directory: Optional[str] = None):
     return hf_cache_directory
 
 
+def resolve_model_id(model_id: str) -> str:
+    if os.environ.get("HF_MODEL_ID_OVERRIDE") is not None:
+        return os.environ["HF_MODEL_ID_OVERRIDE"]
+    else:
+        return model_id
+
+
 def get_guidance_cache_directory(
     guidance_cache_directory: Optional[str] = None,
     raise_if_not_found: bool = False,
@@ -222,11 +229,13 @@ class LLaMa2(guidance.llms.Transformers):
         )
         assert size in ["7b", "13b", "70b"]
         self.model_id = f"meta-llama/Llama-2-{size}-chat-hf"
+
+        model_id = resolve_model_id(self.model_id)
         model_config = transformers.AutoConfig.from_pretrained(
-            self.model_id, use_auth_token=hf_auth_token, cache_dir=hf_cache_directory
+            model_id, use_auth_token=hf_auth_token, cache_dir=hf_cache_directory
         )
         self.model = transformers.AutoModelForCausalLM.from_pretrained(
-            self.model_id,
+            model_id,
             config=model_config,
             trust_remote_code=True,
             quantization_config=bnb_config,
@@ -235,7 +244,7 @@ class LLaMa2(guidance.llms.Transformers):
             cache_dir=hf_cache_directory,
         )
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(
-            self.model_id, use_auth_token=hf_auth_token, cache_dir=hf_cache_directory
+            model_id, use_auth_token=hf_auth_token, cache_dir=hf_cache_directory
         )
         # Patch monitor if required
         if monitor_model:
@@ -608,8 +617,6 @@ def break_down_question(question: str, model: Optional[str] = None) -> List[str]
     {{#assistant~}} 
     {{gen 'subqs' stop="\\n\\n" temperature=0.0}}
     {{~/assistant}}
-
-    {{set 'sub_questions' (extract_questions subqs) hidden=True}}
     """  # noqa
     program_string = clean_program_string(program_string)
 
@@ -617,10 +624,10 @@ def break_down_question(question: str, model: Optional[str] = None) -> List[str]
         program_string=program_string,
         llm=get_llm(model),
         silent=True,
-        inputs=dict(question=question, extract_questions=_extract_questions,),
-        output_keys=["sub_questions"],
+        inputs=dict(question=question),
+        output_keys=["subqs"],
     )
-    return program_outputs["sub_questions"]
+    return _extract_questions(program_outputs["subqs"])
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
