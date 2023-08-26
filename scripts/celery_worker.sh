@@ -17,6 +17,7 @@ fi
 
 export HF_CACHE_DIRECTORY=$SLURM_TMPDIR/hf_home/
 export HF_HOME=$SLURM_TMPDIR/hf_home/
+export GUIDANCE_CACHE_DIRECTORY=$SLURM_TMPDIR/guidance_cache
 cd llamapi
 celery -A worker.celery_app worker --loglevel=info --concurrency 1 -n worker${WORKER_IDX}@%h
 
