@@ -46,6 +46,8 @@ def ensure_model_available(model_name):
         if not os.path.exists(dest_path) and copy_needed:
             logger.info(f"Copying model {model_name} from {src_path} to {dest_path}")
             shutil.copytree(src_path, dest_path)
+        else:
+            logger.info(f"Found model {model_name} in {dest_path}")
     else:
         logger.error(f"Model {model_name} not found in MODEL_PATHS")
         raise ValueError(f"Model {model_name} not found in MODEL_PATHS")
@@ -63,9 +65,11 @@ def run_inference(
         f"Running inference for task ID: {self.request.id} on worker: {self.request.hostname}"
     )
     try:
+        # Make sure the model is all setup
         model_name = guidance_kwargs["llm"]["model_name"]
         guidance_kwargs.pop("llm")
         ensure_model_available(model_name)
+        # Call guidance
         program_string = clean_program_string(program_string)
         program = guidance(  # noqa
             program_string, llm=get_llm(model_name), **guidance_kwargs
