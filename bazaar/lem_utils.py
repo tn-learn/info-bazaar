@@ -115,7 +115,7 @@ def set_hf_cache_directory(hf_cache_directory: Optional[str] = None):
 def resolve_model_id(model_id: str) -> str:
     if os.environ.get("HF_MODEL_ID_OVERRIDE") is not None:
         retval = os.environ["HF_MODEL_ID_OVERRIDE"]
-        assert os.path.exists(retval)
+        assert os.path.exists(retval), f"Model path {retval} does not exist"
         return retval
     else:
         return model_id
