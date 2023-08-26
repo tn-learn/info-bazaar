@@ -1,6 +1,6 @@
 from datetime import datetime
 import pickle
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import gzip
 import tarfile
 import json
@@ -8,9 +8,9 @@ from typing import Callable, Optional
 
 from tqdm import tqdm
 import feedparser
+from collections import deque
 
 from bazaar.lem_utils import extract_questions, split_to_paragraphs, clean_content
-import concurrent
 import copy
 import requests
 from itertools import islice
@@ -81,7 +81,7 @@ def get_llm_metadata(data_root: str):
         url = f"https://api.crossref.org/works?query.title={encoded_title}"
         x = requests.get(url)
         try:
-            doi = x.json()['message']['items'][0]['DOI']
+            doi = x.json()["message"]["items"][0]["DOI"]
         except Exception as e:
             doi = None
         details = {
@@ -120,6 +120,7 @@ def get_llm_metadata(data_root: str):
                 print(f"An error occurred while fetching {arxiv_link}: {str(e)}")
 
         return arxiv_id, details
+
     metadata = {}
     for arxiv_link in tqdm(arxiv_links):
         arxiv_id, details = fetch_arxiv_details(arxiv_link)
@@ -182,9 +183,7 @@ def load_or_scrape_openalex_works(
             futures = [
                 executor.submit(fetch_works, chunk) for chunk in chunks(metadata)
             ]
-            for future in tqdm(
-                concurrent.futures.as_completed(futures), total=len(futures)
-            ):
+            for future in tqdm(as_completed(futures), total=len(futures)):
                 result = future.result()
                 if result.status_code == 200:
                     result = result.json()["results"]
@@ -229,10 +228,10 @@ def download_arxiv_papers(category: str, oa_works: dict, data_root: str):
         with ThreadPoolExecutor(max_workers=5) as executor:
             futures = []
             for arxiv_id, oa_work in tqdm(oa_works.items()):
-                futures.append(executor.submit(download_pdf, arxiv_id, category, data_root))
-            for future in tqdm(
-                concurrent.futures.as_completed(futures), total=len(futures)
-            ):
+                futures.append(
+                    executor.submit(download_pdf, arxiv_id, category, data_root)
+                )
+            for future in tqdm(as_completed(futures), total=len(futures)):
                 pass
 
 
@@ -403,47 +402,47 @@ def filter_and_load_oa_works(category, papers, oa_works, data_root=None):
 # -----------------------------------------------------------
 
 
-def merge_small_blocks(blocks: List[dict], min_block_size: int = 50):
+def merge_small_blocks(blocks: List[Block], min_block_size: int = 50):
     tiktoken_enc = tiktoken.encoding_for_model("gpt-3.5-turbo")
     # copy the blocks so this is not destructive
     blocks = copy.deepcopy(blocks)
     smol_blocks = [
         block
         for block in blocks
-        if len(tiktoken_enc.encode(block["content"])) < min_block_size
+        if len(tiktoken_enc.encode(block.content)) < min_block_size
     ]
     while smol_blocks:
         for idx in range(len(smol_blocks)):
             block_idx = blocks.index(smol_blocks[idx])
             if block_idx > 0:  # Merge with previous block if not the first block
-                blocks[block_idx - 1]["content"] += smol_blocks[idx]["content"]
-                blocks[block_idx - 1]["num_tokens"] += smol_blocks[idx]["num_tokens"]
+                blocks[block_idx - 1].content += smol_blocks[idx].content
             elif (
                 block_idx < len(blocks) - 1
             ):  # Merge with next block if not the last block
-                blocks[block_idx + 1]["content"] += smol_blocks[idx]["content"]
-                blocks[block_idx + 1]["num_tokens"] += smol_blocks[idx]["num_tokens"]
+                blocks[block_idx + 1].content += smol_blocks[idx].content
             blocks.pop(block_idx)  # Remove the current small block
 
         # Update the list of small blocks after merging
         smol_blocks = [
             block
             for block in blocks
-            if len(tiktoken_enc.encode(block["content"])) < min_block_size
+            if len(tiktoken_enc.encode(block.content)) < min_block_size
         ]
     return blocks
 
 
 def build_blocks(
-    category: str,
-    oa_works_w_arxiv: dict,
-    data_root: str,
-    paper_samples: Optional[dict] = None,
-    model_name: str = "RemoteLlama-2-70b-chat-hf",
+        category: str,
+        oa_works_w_arxiv: dict,
+        data_root: str,
+        paper_samples: Optional[dict] = None,
+        model_name: str = "RemoteLlama-2-70b-chat-hf",
+        max_workers: int = 10
 ):
     dataset_step_0 = {}
     file_path = f"{data_root}/{category}/dataset_step_0.pkl"
-
+    task_queue = deque()
+    futures_map = {}
     if os.path.exists(file_path):
         print("Loading embedded blocks.")
         with open(file_path, "rb") as f:
@@ -452,31 +451,30 @@ def build_blocks(
         print("Embedding blocks.")
         if paper_samples is None:
             paper_samples = list(oa_works_w_arxiv.keys())[-100:]
-        for arxiv_id in tqdm(paper_samples):
+
+        for arxiv_id in paper_samples:
             if arxiv_id not in oa_works_w_arxiv:
                 continue
             try:
                 data = oa_works_w_arxiv[arxiv_id]
-                blocks = parse_latex(
-                    arxiv_id, data["paper"], data["title"], data["publication_date"]
-                )
+                blocks = parse_latex(arxiv_id, data["paper"], data["title"], data["publication_date"])
+                blocks = merge_small_blocks(blocks)
+                for block in blocks:
+                    task_queue.append((arxiv_id, block))
 
-                cleaned_blocks = []
-                for block in tqdm(blocks):
-                    block.content = clean_content(block.content, model_name=model_name)
-
-                merged_blocks = merge_small_blocks(cleaned_blocks)
-                final_blocks = []
-                for block in merged_blocks:
-                    if block.num_tokens > 450:
-                        new_blocks = split_to_paragraphs(block, model_name=model_name)
-                        final_blocks.extend(new_blocks)
-                    else:
-                        final_blocks.append(block)
-                data["blocks"] = blocks
-                dataset_step_0[arxiv_id] = data
             except Exception as e:
                 print(f"Error embedding blocks for {arxiv_id}: {e}")
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [executor.submit(split_to_paragraphs, block, model_name) for arxiv_id, block in task_queue]
+            for future, (arxiv_id, block) in zip(futures, task_queue):
+                futures_map[future] = (arxiv_id, block)
+
+            for future in as_completed(futures_map):
+                arxiv_id, block = futures_map[future]
+                bs = future.result()
+                dataset_step_0.setdefault(arxiv_id, {'blocks': []})['blocks'].extend(bs)
+
         pickle.dump(dataset_step_0, open(file_path, "wb"))
 
     return dataset_step_0
@@ -484,22 +482,36 @@ def build_blocks(
 
 # EXTRACT QUESTIONS
 # -----------------------------------------------------------
-def extract_questions_from_blocks(category, dataset_step_0, model_name):
-    dataset_step_1 = {}
+
+def extract_questions_from_blocks(category, dataset_step_0, model_name, max_workers=10):
+    dataset_step_1 = copy.deepcopy(dataset_step_0)
     path = f"data/{category}/dataset_step_1.pkl"
+    task_queue = deque()
+    futures_map = {}
 
     if os.path.exists(path):
+        print("Loading dataset_step_1.")
         with open(path, "rb") as f:
             dataset_step_1 = pickle.load(f)
     else:
-        for arxiv_id, data in tqdm(dataset_step_0.items()):
-            for block_id, block in tqdm(enumerate(data["blocks"])):
-                block.questions = extract_questions(
-                    block.content, model_name=model_name
-                )
-            dataset_step_1[arxiv_id] = data
-            if (len(dataset_step_1) % 10) == 0:
-                pickle.dump(dataset_step_1, open(path, "wb"))
+        print("Extracting questions.")
+        for arxiv_id, data in dataset_step_1.items():
+            for block in data["blocks"]:
+                task_queue.append((arxiv_id, block))
+        for arxiv_id, data in dataset_step_1.items():
+            data["blocks"] = []
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [executor.submit(extract_questions, block.content, model_name) for arxiv_id, block in task_queue]
+            for future, (arxiv_id, block) in zip(futures, task_queue):
+                futures_map[future] = (arxiv_id, block)
+
+            for future in as_completed(futures_map):
+                arxiv_id, block = futures_map[future]
+                questions = future.result()
+                block.questions = questions
+                dataset_step_1[arxiv_id]["blocks"].append(block)
+        print("Saving dataset_step_1.pkl")
         pickle.dump(dataset_step_1, open(path, "wb"))
 
     return dataset_step_1
