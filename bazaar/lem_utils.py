@@ -24,6 +24,8 @@ import re
 import openai
 import platformdirs
 import backoff
+# from accelerate import init_empty_weights
+# from accelerate.utils import load_and_quantize_model, BnbQuantizationConfig
 
 from bazaar.py_utils import DiskCache
 
@@ -252,6 +254,7 @@ class LLaMa2(guidance.llms.Transformers):
         hf_cache_directory: str,
         size: str,
         monitor_model: bool,
+        load_in_4bit: bool = True,
     ):
         import transformers
         import torch
@@ -264,7 +267,7 @@ class LLaMa2(guidance.llms.Transformers):
         )
         # Build the model
         bnb_config = transformers.BitsAndBytesConfig(
-            load_in_4bit=True,
+            load_in_4bit=load_in_4bit,
             bnb_4bit_quant_type="nf4",
             bnb_4bit_use_double_quant=True,
             bnb_4bit_compute_dtype=torch.bfloat16,
@@ -274,6 +277,13 @@ class LLaMa2(guidance.llms.Transformers):
         model_config = transformers.AutoConfig.from_pretrained(
             self.model_id, use_auth_token=hf_auth_token, cache_dir=hf_cache_directory
         )
+        # if size == "70b" and load_in_4bit:
+        #     bnb_quantization_config = BnbQuantizationConfig(load_in_4bit=True, llm_int8_threshold=6)
+        #
+        #     with init_empty_weights():
+        #         empty_model = transformers.AutoModelForCausalLM.from_config(model_config)
+        #         self.model = load_and_quantize_model(empty_model, weights_location=f"{hf_cache_directory}/llama-2-70b-nf4.pt", bnb_quantization_config=bnb_quantization_config, device_map="auto")
+        # else:
         self.model = transformers.AutoModelForCausalLM.from_pretrained(
             self.model_id,
             config=model_config,
@@ -751,13 +761,19 @@ def generate_embedding(
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def split_to_paragraphs(
-    block: "Block", model_name: Optional[str], target_num_paragraphs: int = -1
+    block: "Block", model_name: str, target_num_paragraphs: int = -1
 ) -> List["Block"]:
 
     if model_name in OAI_MODELS:
         raise NotImplementedError("Deep guidance not implemented for OpenAI models.")
     if target_num_paragraphs == -1:
         target_num_paragraphs = (block.num_tokens // 450) + 1
+    if target_num_paragraphs == 1:
+        return [block]
+    #TODO: fix the length issue then delete this.
+    if block.num_tokens > 450:
+        block.content = block.content[:450]
+        return [block]
     # Split text by sentences
     text = block.content
     sentences = get_sent_tokenizer()(text)
@@ -794,7 +810,7 @@ def split_to_paragraphs(
     {{#assistant~}}
     Understood, let us reflect about these sentences in a paragraph. 
 
-    {{gen 'thinks' temperature=0.1 stop="\\n\\n"}}
+    {{gen 'thinks' temperature=0.1 stop="\\n\\n" max_tokens=512}}
 
     Here is the list of sentences with their corresponding paragraph numbers.
     {{#each sentences}}
@@ -1029,10 +1045,10 @@ def extract_questions(content: str, model_name: Optional[str] = None) -> List[st
     
     {{#assistant~}}
     Bobby: Alright, let's get started with the deliberation. Here's my first question:
-    {{gen "deliberation" temperature=0.1 max_tokens=2048}}
+    {{gen "deliberation" temperature=0.1 max_tokens=1024}}
     
     Bobby: Great! So, we have the following good questions:
-    {{gen "questions" temperature=0.1 max_tokens=2048}}
+    {{gen "questions" temperature=0.1 max_tokens=1024}}
     {{~/assistant}}
     """
     program_string = clean_program_string(program_string)
@@ -1044,7 +1060,10 @@ def extract_questions(content: str, model_name: Optional[str] = None) -> List[st
         output_keys=["questions"],
     )
     pattern = re.compile(r"QUESTION \d+\. (.+?)\n")
-    questions = pattern.findall(program_output["questions"])
+    try:
+        questions = pattern.findall(program_output["questions"])
+    except Exception:
+        questions = []
     return questions
 
 

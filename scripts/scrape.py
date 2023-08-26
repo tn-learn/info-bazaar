@@ -22,12 +22,12 @@ def main():
     data_root = args.data_root
     category = args.category
     model_name = args.model_name
-
     metadata = load_or_parse_arxiv_data(category, data_root)
     oa_works = load_or_scrape_openalex_works(category, metadata, data_root)
     download_arxiv_papers(category, oa_works, data_root)
     papers = load_or_parse_latex_source(category, data_root)
     oa_works_w_arxiv, paper_samples = filter_and_load_oa_works(category, papers, oa_works, data_root=data_root)
+    # paper_samples = {"1706.03762", "1711.00350", "1803.05457"}
     dataset_step_0 = build_blocks(category, oa_works_w_arxiv, data_root, paper_samples)
     dataset_step_1 = extract_questions_from_blocks(category, dataset_step_0, model_name=model_name)
 

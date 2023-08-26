@@ -338,8 +338,8 @@ class Block:
         return len(tiktoken_enc.encode(content))
 
     @property
-    def num_tokens(self, model_name: Optional[str] = None) -> int:
-        return self.num_tokens_in_content(self.content, model_name)
+    def num_tokens(self) -> int:
+        return self.num_tokens_in_content(self.content)
 
     def __hash__(self):
         return hash(
