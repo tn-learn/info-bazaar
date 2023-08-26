@@ -1,7 +1,7 @@
 import os.path
 from typing import List, Dict
 
-import shutil
+import subprocess
 import guidance
 import logging
 from celery import Celery, Task
@@ -49,7 +49,13 @@ def ensure_model_available(model_name):
         # If not, copy it
         if not os.path.exists(dest_path) and copy_needed:
             logger.info(f"Copying model {model_name} from {src_path} to {dest_path}")
-            shutil.copytree(src_path, dest_path)
+            try:
+                subprocess.run(["cp", "-r", src_path, dest_path])
+            except subprocess.CalledProcessError:
+                logger.error(
+                    f"Error copying model {model_name} from {src_path} to {dest_path}."
+                )
+                raise
         else:
             logger.info(f"Found model {model_name} in {dest_path}")
     else:
