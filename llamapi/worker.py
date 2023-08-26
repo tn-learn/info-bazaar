@@ -40,7 +40,11 @@ def ensure_model_available(model_name):
         dest_path = os.path.join(LLAMAPI_LOCAL_HF_CACHE_DIRECTORY, model_directory)
         # Determine if copy is needed
         copy_needed = src_path != dest_path
-
+        if not copy_needed:
+            logger.info(
+                f"Copy not needed for {model_name} because the source path "
+                f"{src_path} is the same as the destination path {dest_path}."
+            )
         # Check if model already exists in the destination
         # If not, copy it
         if not os.path.exists(dest_path) and copy_needed:

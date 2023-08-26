@@ -25,8 +25,8 @@ export LLAMAPI_GPU_MIN_VRAM_MB=${LLAMAPI_GPU_MIN_VRAM_MB:-70000}    # Default to
 export LLAMAPI_CONDOR_BID=${LLAMAPI_CONDOR_BID:-2000}               # Default bid amount
 
 # Huggingface
-export LLAMAPI_GLOBAL_HF_CACHE_DIR=${LLAMAPI_GLOBAL_HF_CACHE_DIR:-/fast/nrahaman/persistmp/huggingface_cache}
-export LLAMAPI_LOCAL_HF_CACHE_DIR=${LLAMAPI_LOCAL_HF_CACHE_DIR:-/tmp/huggingface_cache}
+export LLAMAPI_GLOBAL_HF_CACHE_DIRECTORY=${LLAMAPI_GLOBAL_HF_CACHE_DIRECTORY:-/fast/nrahaman/persistmp/huggingface_cache}
+export LLAMAPI_LOCAL_HF_CACHE_DIRECTORY=${LLAMAPI_LOCAL_HF_CACHE_DIRECTORY:-/tmp/huggingface_cache}
 
 # Logistics
 export LLAMAPI_TMPDIR=${LLAMAPI_TMPDIR:-/fast/nrahaman/persistmp/llamapi}

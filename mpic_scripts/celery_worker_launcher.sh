@@ -14,7 +14,7 @@ export HTTPS_PROXY=https://proxy:8080
 GUIDANCE_CACHE_DIR="/tmp/guidance_cache"
 mkdir -p $GUIDANCE_CACHE_DIR
 
-HUGGINGFACE_CACHE_DIR=$LLAMAPI_LOCAL_HF_CACHE_DIR
+HUGGINGFACE_CACHE_DIR=$LLAMAPI_LOCAL_HF_CACHE_DIRECTORY
 mkdir -p $HUGGINGFACE_CACHE_DIR
 
 # Export the paths of these directories so that they can be accessed by other processes
