@@ -24,6 +24,10 @@ export LLAMAPI_CELERY_DISK_GB=${LLAMAPI_CELERY_DISK_GB:-160}        # Default to
 export LLAMAPI_GPU_MIN_VRAM_MB=${LLAMAPI_GPU_MIN_VRAM_MB:-70000}    # Default to a100
 export LLAMAPI_CONDOR_BID=${LLAMAPI_CONDOR_BID:-2000}               # Default bid amount
 
+# Huggingface
+export LLAMAPI_GLOBAL_HF_CACHE_DIR=${LLAMAPI_GLOBAL_HF_CACHE_DIR:-/fast/nrahaman/persistmp/huggingface_cache}
+export LLAMAPI_LOCAL_HF_CACHE_DIR=${LLAMAPI_LOCAL_HF_CACHE_DIR:-/tmp/huggingface_cache}
+
 # Logistics
 export LLAMAPI_TMPDIR=${LLAMAPI_TMPDIR:-/fast/nrahaman/persistmp/llamapi}
 export LLAMAPI_SESSION_ID=$(date +%s)
@@ -45,6 +49,9 @@ echo "Celery RAM (MB): $LLAMAPI_CELERY_RAM_MB"
 echo "Celery GPUs: $LLAMAPI_CELERY_GPUS"
 echo "Celery Disk (GB): $LLAMAPI_CELERY_DISK_GB"
 echo "GPU Minimum VRAM (MB): $LLAMAPI_GPU_MIN_VRAM_MB"
+echo "Condor Bid: $LLAMAPI_CONDOR_BID"
+echo "Global Huggingface Cache Directory: $LLAMAPI_GLOBAL_HF_CACHE_DIR"
+echo "Local Huggingface Cache Directory: $LLAMAPI_LOCAL_HF_CACHE_DIR"
 echo "TMP Directory: $LLAMAPI_TMPDIR"
 echo "Session ID: $LLAMAPI_SESSION_ID"
 echo "Session TMP Directory: $SESSION_TMP_DIR"
@@ -63,21 +70,27 @@ touch $CLUSTER_ID_FILE
 
 # Function to cleanup resources when script is terminated
 cleanup() {
-    echo "Cleaning up..."
+    echo "Cleaning up. This will take a short while."
+
+    # Kill FastAPI
+    kill $FASTAPI_PID
+
+    # Wait a bit to ensure FastAPI has fully terminated
+    sleep 5
+
+    # Kill the Condor jobs (this will terminate the Celery workers)
+    while read -r CLUSTER_ID
+    do
+        condor_rm $CLUSTER_ID
+    done < $CLUSTER_ID_FILE
+
+    # Wait for a short duration to allow the Celery workers to shut down gracefully
+    sleep 15
 
     # Kill the Redis server if it was started by this script
     if [ ! -z "$REDIS_PID" ]; then
         kill $REDIS_PID
     fi
-
-    # Kill FastAPI
-    kill $FASTAPI_PID
-
-    # Kill the Condor jobs
-    while read -r CLUSTER_ID
-    do
-        condor_rm $CLUSTER_ID
-    done < $CLUSTER_ID_FILE
 
     # Cleanup the temporary file
     rm -f $CLUSTER_ID_FILE
@@ -85,6 +98,7 @@ cleanup() {
     # You can add more cleanup tasks if needed
     exit
 }
+
 
 # Trap the SIGINT signal (Ctrl+C) and call the cleanup function
 trap cleanup SIGINT
@@ -130,7 +144,7 @@ done
 # Print the address for the client to connect
 echo "=============================================="
 echo "LlamAPI is up and running!"
-echo "Clients should connect to: http://$LLAMAPI_API_HOST:$LLAMAPI_API_PORT"
+echo "Clients should connect to: http://$CURRENT_IP:$LLAMAPI_API_PORT"
 echo "=============================================="
 
 # Keep the script running to maintain the FastAPI and Redis servers

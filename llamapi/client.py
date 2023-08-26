@@ -5,7 +5,7 @@ from typing import Dict, List, Optional
 import requests
 import time
 import logging
-from llamapi import HOST_URL
+from llamapi import HOST_URL, POLL_INTERVAL
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -51,7 +51,7 @@ def ask_for_guidance(
                     return result_data.get("result")
                 elif status == "Pending":
                     logger.info(f"Task ID {task_id}: Still pending...")
-                    time.sleep(2)  # Wait for 2 seconds before polling again
+                    time.sleep(POLL_INTERVAL)  # Wait for 2 seconds before polling again
                 elif status == "Failure":
                     raise Exception(
                         f"Error in server. Exception: {result_data.get('result')}"
