@@ -32,4 +32,4 @@ cd $PARENT_DIR
 
 echo "Starting celery worker..."
 # Launch the celery worker (you can customize this command as needed)
-celery -A llamapi.worker worker --loglevel=info
+celery -A llamapi.worker worker --loglevel=info --concurrency 1 -n worker${LLAMAPI_CELERY_WORKER_NUM}@%h
