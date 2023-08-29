@@ -311,7 +311,7 @@ class EmbeddingManager:
 
     def get_embedding(
         self, content: str, model_name: Optional[str] = None
-    ) -> np.ndarray:
+    ) -> List[float]:
         if model_name is None:
             model_name = default_embedding_name()
 
@@ -321,11 +321,11 @@ class EmbeddingManager:
         )
         result = cursor.fetchone()
         if result:
-            return np.frombuffer(result[0], dtype=np.float32)
+            return np.frombuffer(result[0], dtype=np.float32).tolist()
         else:
-            computed_embedding = generate_embedding(content, model=model_name)
+            computed_embedding = np.array(generate_embedding(content, model=model_name))
             self._store_embedding(key, computed_embedding)
-            return computed_embedding
+            return computed_embedding.tolist()
 
     def _store_embedding(self, key: str, embedding) -> None:
         with self.conn:
