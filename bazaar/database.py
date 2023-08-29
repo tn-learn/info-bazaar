@@ -336,6 +336,7 @@ class EmbeddingManager:
 
     def close(self):
         self.conn.close()
+        return self
 
     def build_index(
         self, texts: List[str], model_name: Optional[str] = None, use_tqdm: bool = False
@@ -346,3 +347,4 @@ class EmbeddingManager:
             texts = tqdm(texts)
         for text in texts:
             self.get_embedding(text, model_name=model_name)
+        return self
