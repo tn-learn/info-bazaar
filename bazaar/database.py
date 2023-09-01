@@ -206,7 +206,10 @@ class MIPS(Filter):
         query_embeddings = np.array(query_embeddings)
         # block_embeddings.shape = (num_blocks, embedding_dim)
         block_embeddings = np.array(
-            [scored_block.block.embedding for scored_block in scored_blocks]
+            [
+                scored_block.block.get_content_embedding()
+                for scored_block in scored_blocks
+            ]
         )
         # cosine_similarities.shape = (num_queries, num_blocks)
         cosine_similarities = cosine_similarity(query_embeddings, block_embeddings)

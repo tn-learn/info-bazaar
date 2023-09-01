@@ -317,6 +317,9 @@ class Block:
     content: str
     questions: List[str] = field(default_factory=list)
 
+    def __post_init__(self):
+        self._content_embedding_cache: Dict[Optional[str], List[float]] = {}
+
     def __repr__(self):
         return repr_factory(
             self,
@@ -352,6 +355,19 @@ class Block:
                 tuple(self.questions),
             )
         )
+
+    def get_content_embedding(
+        self, model: Optional[str] = None, **embedding_kwargs
+    ) -> List[float]:
+        if model is None:
+            model = default_embedding_name()
+        if model not in self._content_embedding_cache:
+            from bazaar.lem_utils import generate_embedding
+
+            self._content_embedding_cache[model] = generate_embedding(
+                self.content, model=model, **embedding_kwargs
+            )
+        return self._content_embedding_cache[model]
 
 
 @dataclass
