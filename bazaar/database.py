@@ -1,14 +1,11 @@
 from collections import defaultdict
-from typing import List, Optional, Tuple, Callable, Dict
+from typing import List, Optional, Dict
 
-import sqlite3
-import hashlib
 import numpy as np
 from rank_bm25 import BM25Okapi
 from nltk.tokenize import word_tokenize
 from sklearn.metrics.pairwise import cosine_similarity
 
-from bazaar.lem_utils import generate_embedding, default_embedding_name
 from bazaar.schema import Block, Query
 from dataclasses import dataclass, field
 
@@ -286,65 +283,3 @@ def build_retriever(
             )
         )
     return FilterChain(filters)
-
-
-class EmbeddingManager:
-    def __init__(self, db_path: str):
-        self.conn = sqlite3.connect(db_path)
-        self._create_table()
-
-    def _create_table(self) -> None:
-        with self.conn:
-            self.conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS embeddings (
-                    key TEXT PRIMARY KEY,
-                    embedding BLOB
-                )
-            """
-            )
-
-    def _create_key(self, text: str, model_name: Optional[str] = None) -> str:
-        if model_name is None:
-            model_name = default_embedding_name()
-        return hashlib.sha256((text + model_name).encode()).hexdigest()
-
-    def get_embedding(
-        self, content: str, model_name: Optional[str] = None
-    ) -> List[float]:
-        if model_name is None:
-            model_name = default_embedding_name()
-
-        key = self._create_key(content, model_name)
-        cursor = self.conn.execute(
-            "SELECT embedding FROM embeddings WHERE key = ?", (key,)
-        )
-        result = cursor.fetchone()
-        if result:
-            return np.frombuffer(result[0], dtype=np.float32).tolist()
-        else:
-            computed_embedding = np.array(generate_embedding(content, model=model_name))
-            self._store_embedding(key, computed_embedding)
-            return computed_embedding.tolist()
-
-    def _store_embedding(self, key: str, embedding) -> None:
-        with self.conn:
-            self.conn.execute(
-                "INSERT INTO embeddings (key, embedding) VALUES (?, ?)",
-                (key, embedding.tobytes()),
-            )
-
-    def close(self):
-        self.conn.close()
-        return self
-
-    def build_index(
-        self, texts: List[str], model_name: Optional[str] = None, use_tqdm: bool = False
-    ) -> None:
-        if use_tqdm:
-            from tqdm import tqdm
-
-            texts = tqdm(texts)
-        for text in texts:
-            self.get_embedding(text, model_name=model_name)
-        return self
