@@ -1,6 +1,9 @@
 import copy
+import hashlib
 import os
+import sqlite3
 
+import numpy as np
 import torch
 from collections import defaultdict
 from typing import (
@@ -44,6 +47,7 @@ OAI_EMBEDDINGS = ["text-embedding-ada-002"]
 DEFAULT_LLM_NAME = "RemoteLlama-2-70b-chat-hf"
 DEFAULT_RERANKER_NAME = "ms-marco-MiniLM-L-4-v2"
 DEFAULT_EMBEDDING_NAME = "text-embedding-ada-002"
+EMBEDDING_MANAGER = None
 
 
 def default_llm_name(set_to: Optional[str] = None) -> str:
@@ -364,10 +368,14 @@ class TransformersEmbedding:
         hf_auth_token = get_hf_auth_token(hf_auth_token)
         # Init the tokenizer and embedding
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model_id, cache_dir=hf_cache_directory, use_auth_token=hf_auth_token,
+            model_id,
+            cache_dir=hf_cache_directory,
+            use_auth_token=hf_auth_token,
         )
         self.model = transformers.AutoModel.from_pretrained(
-            model_id, cache_dir=hf_cache_directory, use_auth_token=hf_auth_token,
+            model_id,
+            cache_dir=hf_cache_directory,
+            use_auth_token=hf_auth_token,
         )
         # Manually ship to device
         self.model.to(self.device)
@@ -478,10 +486,14 @@ class LMReranker:
         hf_cache_directory = get_hf_cache_directory(hf_cache_directory)
         # Init the tokenizer and model
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model_id, cache_dir=hf_cache_directory, use_auth_token=hf_auth_token,
+            model_id,
+            cache_dir=hf_cache_directory,
+            use_auth_token=hf_auth_token,
         )
         self.model = transformers.AutoModelForSequenceClassification.from_pretrained(
-            model_id, cache_dir=hf_cache_directory, use_auth_token=hf_auth_token,
+            model_id,
+            cache_dir=hf_cache_directory,
+            use_auth_token=hf_auth_token,
         )
         self.model.to(self.device)
         self.model.eval()
@@ -575,6 +587,89 @@ def get_reranker(model_name: Optional[str] = None, **extra_kwargs):
         raise ValueError(f"Unknown model {model_name}")
 
 
+class EmbeddingManager:
+    def __init__(self, db_path: str):
+        self.conn = sqlite3.connect(db_path)
+        self._create_table()
+
+    def _create_table(self) -> None:
+        with self.conn:
+            self.conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS embeddings (
+                    key TEXT PRIMARY KEY,
+                    embedding BLOB
+                )
+            """
+            )
+
+    def _create_key(self, text: str, model_name: Optional[str] = None) -> str:
+        if model_name is None:
+            model_name = default_embedding_name()
+        return hashlib.sha256((text + model_name).encode()).hexdigest()
+
+    def get_embedding(
+        self,
+        content: str,
+        model_name: Optional[str] = None,
+        generate_if_missing: bool = True,
+    ) -> Optional[List[float]]:
+        if model_name is None:
+            model_name = default_embedding_name()
+
+        key = self._create_key(content, model_name)
+        cursor = self.conn.execute(
+            "SELECT embedding FROM embeddings WHERE key = ?", (key,)
+        )
+        result = cursor.fetchone()
+        if result:
+            return np.frombuffer(result[0], dtype=np.float32).tolist()
+        elif generate_if_missing:
+            return self.new_embedding(content, model_name, key)
+        else:
+            return None
+
+    def new_embedding(
+        self, content: str, model_name: str, key: Optional[str] = None
+    ) -> List[float]:
+        if key is None:
+            key = self._create_key(content, model_name)
+        computed_embedding = np.array(generate_embedding(content, model=model_name))
+        self._store_embedding(key, computed_embedding)
+        return computed_embedding.tolist()
+
+    def _store_embedding(self, key: str, embedding) -> None:
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO embeddings (key, embedding) VALUES (?, ?)",
+                (key, embedding.tobytes()),
+            )
+
+    def close(self):
+        self.conn.close()
+        return self
+
+    def build_index(
+        self, texts: List[str], model_name: Optional[str] = None, use_tqdm: bool = False
+    ) -> "EmbeddingManager":
+        if use_tqdm:
+            from tqdm import tqdm
+
+            texts = tqdm(texts)
+        for text in texts:
+            self.get_embedding(text, model_name=model_name)
+        return self
+
+
+def global_embedding_manager(init_from_path: Optional[str] = None) -> "EmbeddingManager":
+    global EMBEDDING_MANAGER
+    if init_from_path is not None:
+        EMBEDDING_MANAGER = EmbeddingManager(init_from_path)
+    if EMBEDDING_MANAGER is None:
+        raise ValueError("Embedding manager not initialized.")
+    return EMBEDDING_MANAGER
+
+
 def clean_program_string(program_string: str, indent: Optional[int] = None) -> str:
     lines = program_string.split("\n")
     if lines[0] == "":
@@ -658,7 +753,10 @@ def generate_hyde_passage(question: str, model: Optional[str] = None) -> str:
         program_string=program_string,
         llm=get_llm(model),
         silent=True,
-        inputs=dict(question=question, parse_answer=_parse_answer,),
+        inputs=dict(
+            question=question,
+            parse_answer=_parse_answer,
+        ),
         output_keys=["hyde_answer"],
     )
     return program_outputs["hyde_answer"]
@@ -699,19 +797,38 @@ def generate_keywords(text: str, model_name: Optional[str] = None) -> List[str]:
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def generate_embedding(
-    text: str, model: Optional[str] = None, as_query: bool = False, **embedder_kwargs
+    text: str,
+    model: Optional[str] = None,
+    as_query: bool = False,
+    embedding_manager: Optional["EmbeddingManager"] = None,
+    cache_if_embedding_manager_available: bool = False,
+    **embedder_kwargs,
 ) -> List[float]:
     if model is None:
         model = default_embedding_name()
+    if embedding_manager is None:
+        embedding_manager = EMBEDDING_MANAGER
+    # Check if we have a cached embedding
+    if embedding_manager is not None:
+        embedding = embedding_manager.get_embedding(
+            text, model_name=model, generate_if_missing=False
+        )
+        if embedding is not None:
+            return embedding
+    # We'll need to generate an embedding
     if model in OAI_EMBEDDINGS:
-        return openai.Embedding.create(input=[text], model=model, **embedder_kwargs)[
-            "data"
-        ][0]["embedding"]
+        embedding = openai.Embedding.create(
+            input=[text], model=model, **embedder_kwargs
+        )["data"][0]["embedding"]
     else:
         # Get huggingface embedder
         embedder = get_embedder(model, **embedder_kwargs)
         # Get the embedding
-        return embedder.encode(text, as_query=as_query)
+        embedding = embedder.encode(text, as_query=as_query)
+    # Cache the embedding to database if required
+    if embedding_manager is not None and cache_if_embedding_manager_available:
+        embedding_manager.new_embedding(text, model)
+    return embedding
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
@@ -725,7 +842,7 @@ def split_to_paragraphs(
         target_num_paragraphs = (block.num_tokens // 450) + 1
     if target_num_paragraphs == 1:
         return [block]
-    #TODO: fix the length issue then delete this.
+    # TODO: fix the length issue then delete this.
     if block.num_tokens > 450:
         block.content = block.content[:450]
         return [block]
@@ -777,7 +894,10 @@ def split_to_paragraphs(
         program_string=program_string,
         llm=get_llm(model_name=model_name),
         silent=True,
-        inputs=dict(sentences=sentences, num_para=target_num_paragraphs,),
+        inputs=dict(
+            sentences=sentences,
+            num_para=target_num_paragraphs,
+        ),
         output_keys=["parasplits"],
     )
     paragraph_indices = [int(x) - 1 for x in program_output["parasplits"]]
@@ -1098,7 +1218,11 @@ def select_quotes_with_debate(
         program_string=program_string,
         llm=get_llm(model_name=model_name),
         silent=True,
-        inputs=dict(question=question, options=options, balance=100,),
+        inputs=dict(
+            question=question,
+            options=options,
+            balance=100,
+        ),
         output_keys=["answer"],
     )
     answer = program_output["answer"]
@@ -1235,7 +1359,10 @@ def synthesize_answer(quotes: List["Quote"], model_name: Optional[str] = None) -
         program_string=program_string,
         llm=get_llm(model_name=model_name),
         silent=True,
-        inputs=dict(question=question, quotes=passages,),
+        inputs=dict(
+            question=question,
+            quotes=passages,
+        ),
         output_keys=["answer"],
     )
 

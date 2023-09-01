@@ -7,6 +7,7 @@ import numpy as np
 import random
 import datetime
 
+from bazaar.lem_utils import default_llm_name, default_embedding_name, global_embedding_manager
 from bazaar.sim_builder import load, SimulationConfig
 from bazaar.simulator import BazaarSimulator
 from bazaar.py_utils import dump_dict, root_dir_slash
@@ -26,6 +27,8 @@ def parse_to_slice(s: str) -> slice:
 
 
 def main(args: Optional[argparse.Namespace] = None):
+
+    # Parse args
     if args is None:
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
         # make argparser
@@ -51,6 +54,11 @@ def main(args: Optional[argparse.Namespace] = None):
             type=str,
             default=None,
         )
+        parser.add_argument(
+            "--embedding_manager_path",
+            type=str,
+            default=root_dir_slash("data/final_dataset_bge_large_en.db"),
+        )
         args = parser.parse_args()
     config = SimulationConfig(
         **yaml.load(open(args.config, "r"), Loader=yaml.FullLoader)
@@ -58,16 +66,25 @@ def main(args: Optional[argparse.Namespace] = None):
 
     # Set the seed
     set_seed(config.rng_seed)
+
+    # Set the LLM and embedding names
+    global_embedding_manager(init_from_path=args.embedding_manager_path)
+    default_llm_name(set_to=config.llm_name)
+    default_embedding_name(set_to=config.embedding_name)
+
     # Load the dataset
     results = load(
         path=args.dataset_path,
         config=config,
     )
     results["buyers"] = results["buyers"][parse_to_slice(args.query_range)]
+
     # Make a buyer agent for each principal
     buyer_principals = results["buyers"]
     vendor_principals = results["institutions"] + results["authors"]
     bulletin_board = results["bulletin_board"]
+
+    # Init the bazaar
     bazaar = BazaarSimulator(
         bulletin_board=bulletin_board,
         buyer_principals=buyer_principals,
@@ -76,6 +93,7 @@ def main(args: Optional[argparse.Namespace] = None):
         buyer_agent_kwargs=config.buyer_agent_kwargs,
         vendor_agent_kwargs=config.vendor_agent_kwargs,
     )
+
     # Run it for a week
     bazaar.run(168)
 

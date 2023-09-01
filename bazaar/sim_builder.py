@@ -43,6 +43,9 @@ class SimulationConfig:
     # Buyer agent kwargs
     buyer_agent_kwargs: dict
     vendor_agent_kwargs: dict
+    # LLMs and embeddings
+    llm_name: str
+    embedding_name: str
 
     def dump(self, path: PathType) -> "SimulationConfig":
         dump_dict(self.__dict__, path)
