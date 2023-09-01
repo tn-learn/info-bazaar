@@ -87,7 +87,7 @@ class Query:
 
         if self._text_embedding is None:
             self._text_embedding = generate_embedding(
-                self.text, model=self.embedding_model
+                self.text, model=self.embedding_model, as_query=True
             )
         return self._text_embedding
 
