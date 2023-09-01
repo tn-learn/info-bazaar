@@ -1,11 +1,9 @@
-import json
-import pickle
 from dataclasses import dataclass
 from typing import Tuple, List
 
 import numpy as np
 
-from bazaar.py_utils import dump_dict, PathType
+from bazaar.py_utils import dump_dict, PathType, load_dict, dataclass_from_dict
 from bazaar.schema import (
     Block,
     Query,
@@ -52,9 +50,7 @@ class SimulationConfig:
 
 
 def load(path: str, config: SimulationConfig):
-    with open(path, "rb") as f:
-        breakpoint()
-        dataset = pickle.load(f)
+    dataset = load_dict(path)
     rng = np.random.RandomState(config.rng_seed)
     buyers = build_buyers(dataset=dataset, config=config, rng=rng)
     authors, institutions = build_authors_and_institutions(
@@ -82,6 +78,7 @@ def build_buyers(
     buyers = []
     for arxiv_id, data in dataset.items():
         for block in data["blocks"]:
+            block = dataclass_from_dict(Block, block)
             for idx, question in enumerate(block.questions):
                 max_budget = np.random.lognormal(
                     mean=config.buyer_max_budget_mean,
@@ -103,7 +100,8 @@ def build_buyers(
                     _gold_block_id=block.block_id,
                 )
                 buyer = BuyerPrincipal(
-                    name=f"buyer-{block.block_id}-{idx}", query=query,
+                    name=f"buyer-{block.block_id}-{idx}",
+                    query=query,
                 )
                 buyers.append(buyer)
     return buyers
@@ -116,7 +114,9 @@ def sample_block_prices(mean: float, sigma: float, blocks: List["Block"]):
 def allocate_block_prices(entity, mean, sigma, rng):
     # Sample block prices from a log normal distribution
     block_prices = sample_block_prices(
-        mean=mean, sigma=sigma, blocks=entity.public_blocks.values(),
+        mean=mean,
+        sigma=sigma,
+        blocks=entity.public_blocks.values(),
     )
     for idx, block_id in enumerate(entity.public_blocks.keys()):
         entity.block_prices[block_id] = block_prices[idx]
@@ -175,24 +175,28 @@ def build_authors_and_institutions(
     authors = {}
     institutions = {}
 
-    for arxiv_id, data in dataset.items():
+    for arxiv_id in dataset:
+        data = dataset[arxiv_id]["metadata"]
         for authorship in data["authorships"]:
             for institution in authorship["institutions"]:
                 if institution["id"] not in institutions:
                     institution["name"] = institution["display_name"]
                     del institution["display_name"]
-                    institutions[institution["id"]] = Institution(**institution)
+                    institutions[institution["id"]] = dataclass_from_dict(
+                        Institution, institution
+                    )
             author = authorship["author"]
             author["name"] = author["display_name"]
             del author["display_name"]
-            author = Author(**author)
+            author = dataclass_from_dict(Author, author)
             if author not in authors:
                 authors[author.id] = author
 
     # Assign blocks to institutions and authors
-    for arxiv_id, data in dataset.items():
-        for block in data["blocks"]:
-            for authorship in data["authorships"]:
+    for arxiv_id in dataset:
+        for block in dataset[arxiv_id]["blocks"]:
+            block = dataclass_from_dict(Block, block)
+            for authorship in dataset[arxiv_id]["metadata"]["authorships"]:
                 if authorship.get("author_position") == "first":
                     institution = authorship.get("institutions", [])
                     if not institution:

@@ -1,5 +1,6 @@
 import json
 import os
+from dataclasses import fields, is_dataclass
 
 import diskcache
 import jsonpickle
@@ -98,3 +99,10 @@ class DiskCache(Cache):
 
     def clear(self):
         self._diskcache.clear()
+
+
+def dataclass_from_dict(cls: type, d: dict) -> Any:
+    assert is_dataclass(cls), f"{cls} is not a dataclass!"
+    field_names = [f.name for f in fields(cls)] # noqa
+    d = {k: v for k, v in d.items() if k in field_names}  # noqa
+    return cls(**d)

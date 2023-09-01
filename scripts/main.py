@@ -39,7 +39,7 @@ def main(args: Optional[argparse.Namespace] = None):
         parser.add_argument(
             "--dataset_path",
             type=str,
-            default=root_dir_slash("data/machine-learning/dataset_step_1.pkl"),
+            default=root_dir_slash("data/final_dataset_with_metadata.json"),
         )
         parser.add_argument(
             "--output_path",
