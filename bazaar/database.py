@@ -1,3 +1,4 @@
+import hashlib
 from collections import defaultdict
 from typing import List, Optional, Dict
 
@@ -39,7 +40,9 @@ class ScoredBlock:
         final_scores = {}
         for query, scores_for_query in self.scores_at_filters.items():
             scores_for_query = list(scores_for_query.values())
-            score_weights_for_query = list(self.score_weights_at_filters[query].values())
+            score_weights_for_query = list(
+                self.score_weights_at_filters[query].values()
+            )
 
             # No scores
             if len(scores_for_query) == 0:
@@ -52,9 +55,10 @@ class ScoredBlock:
                 continue
 
             # Weighted average for multiple scores
-            final_scores[query] = np.average(scores_for_query, weights=score_weights_for_query)
+            final_scores[query] = np.average(
+                scores_for_query, weights=score_weights_for_query
+            )
         return final_scores
-
 
     def as_retrieval_outputs(self) -> List["RetrievalOutput"]:
         # If there are multiple queries, it's possible we'll have multiple retrieval outputs
@@ -132,7 +136,9 @@ class BM25(Filter):
     def _get_bm25(self, scored_blocks: List["ScoredBlock"]) -> BM25Okapi:
         if not self.use_caching:
             return self._create_bm25(scored_blocks)
-        hash_value = hash(tuple([block.block.content for block in scored_blocks]))
+        hash_value = hashlib.sha256(
+            " +++ ".join([block.block.content for block in scored_blocks]).encode()
+        ).hexdigest()
         if hash_value not in self._cached_bm25:
             self._cached_bm25[hash_value] = self._create_bm25(scored_blocks)
         return self._cached_bm25[hash_value]

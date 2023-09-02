@@ -2,6 +2,7 @@ import copy
 import hashlib
 import os
 import sqlite3
+import pickle
 
 import numpy as np
 import torch
@@ -30,8 +31,7 @@ from llamapi.client import ask_for_guidance
 
 if TYPE_CHECKING:
     import torch
-    from bazaar.schema import Quote
-
+    from bazaar.schema import Quote, Query
 
 OAI_EXCEPTIONS = (
     openai.error.APIError,
@@ -623,7 +623,7 @@ class EmbeddingManager:
         )
         result = cursor.fetchone()
         if result:
-            return np.frombuffer(result[0], dtype=np.float32).tolist()
+            return self._bytes_to_embedding(result[0])
         elif generate_if_missing:
             return self.new_embedding(content, model_name, key)
         else:
@@ -634,16 +634,22 @@ class EmbeddingManager:
     ) -> List[float]:
         if key is None:
             key = self._create_key(content, model_name)
-        computed_embedding = np.array(generate_embedding(content, model=model_name))
+        computed_embedding = generate_embedding(content, model=model_name)
         self._store_embedding(key, computed_embedding)
-        return computed_embedding.tolist()
+        return computed_embedding
 
-    def _store_embedding(self, key: str, embedding) -> None:
+    def _store_embedding(self, key: str, embedding: List[float]) -> None:
         with self.conn:
             self.conn.execute(
                 "INSERT INTO embeddings (key, embedding) VALUES (?, ?)",
-                (key, embedding.tobytes()),
+                (key, self._embedding_to_bytes(embedding)),
             )
+
+    def _bytes_to_embedding(self, bytes_: bytes) -> List[float]:
+        return [float(e) for e in pickle.loads(bytes_)]
+
+    def _embedding_to_bytes(self, embedding: List[float]) -> bytes:
+        return pickle.dumps([float(e) for e in embedding])
 
     def close(self):
         self.conn.close()
@@ -661,7 +667,9 @@ class EmbeddingManager:
         return self
 
 
-def global_embedding_manager(init_from_path: Optional[str] = None) -> "EmbeddingManager":
+def global_embedding_manager(
+    init_from_path: Optional[str] = None,
+) -> "EmbeddingManager":
     global EMBEDDING_MANAGER
     if init_from_path is not None:
         EMBEDDING_MANAGER = EmbeddingManager(init_from_path)
@@ -1319,7 +1327,9 @@ def rerank_quotes(
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
-def synthesize_answer(query, quotes: List["Quote"], model_name: Optional[str] = None) -> str:
+def synthesize_answer(
+    query: "Query", quotes: List["Quote"], model_name: Optional[str] = None
+) -> str:
     question = query.text
     passages = [
         {
@@ -1394,6 +1404,7 @@ def synthesize_answer(query, quotes: List["Quote"], model_name: Optional[str] = 
                 ].strip()
 
         return parts
+
     answer = separate_text_to_dict_corrected(program_output["answer"])["answer"]
 
     return answer

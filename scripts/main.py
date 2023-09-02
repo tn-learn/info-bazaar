@@ -7,7 +7,11 @@ import numpy as np
 import random
 import datetime
 
-from bazaar.lem_utils import default_llm_name, default_embedding_name, global_embedding_manager
+from bazaar.lem_utils import (
+    default_llm_name,
+    default_embedding_name,
+    global_embedding_manager,
+)
 from bazaar.sim_builder import load, SimulationConfig
 from bazaar.simulator import BazaarSimulator
 from bazaar.py_utils import dump_dict, root_dir_slash
@@ -18,8 +22,9 @@ import logging
 logging.basicConfig(level=logging.INFO)
 handler = logging.StreamHandler()
 handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 handler.setFormatter(formatter)
+
 
 def set_seed(seed: int):
     random.seed(seed)
@@ -90,6 +95,14 @@ def main(args: Optional[argparse.Namespace] = None):
     # Make a buyer agent for each principal
     buyer_principals = results["buyers"]
     vendor_principals = results["institutions"] + results["authors"]
+    # Filter out the vendors that don't have a block to sell
+    vendor_principals = [
+        vendor_principal
+        for vendor_principal in vendor_principals
+        if vendor_principal.num_blocks_owned > 0
+    ]
+
+    # Build bulletin board
     bulletin_board = results["bulletin_board"]
 
     # Init the bazaar
@@ -113,7 +126,7 @@ def main(args: Optional[argparse.Namespace] = None):
             print("Answer: ", buyer.answer.text)
         except Exception:
             print("No answer found.")
-            
+
     dump_dict(
         bazaar.evaluation_summary(),
         str(Path(args.output_path) / "bazaar_summary.json"),
