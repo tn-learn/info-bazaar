@@ -37,17 +37,24 @@ class ScoredBlock:
 
     def get_final_scores(self) -> Dict[Query, float]:
         final_scores = {}
-        # The output is a list of scores, one for each query
         for query, scores_for_query in self.scores_at_filters.items():
             scores_for_query = list(scores_for_query.values())
-            score_weights_for_query = list(
-                self.score_weights_at_filters[query].values()
-            )
-            # Weighted average
-            final_scores[query] = np.average(
-                scores_for_query, weights=score_weights_for_query
-            )
+            score_weights_for_query = list(self.score_weights_at_filters[query].values())
+
+            # No scores
+            if len(scores_for_query) == 0:
+                final_scores[query] = None
+                continue
+
+            # Single score
+            if len(scores_for_query) == 1:
+                final_scores[query] = scores_for_query[0]
+                continue
+
+            # Weighted average for multiple scores
+            final_scores[query] = np.average(scores_for_query, weights=score_weights_for_query)
         return final_scores
+
 
     def as_retrieval_outputs(self) -> List["RetrievalOutput"]:
         # If there are multiple queries, it's possible we'll have multiple retrieval outputs

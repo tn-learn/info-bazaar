@@ -12,6 +12,14 @@ from bazaar.sim_builder import load, SimulationConfig
 from bazaar.simulator import BazaarSimulator
 from bazaar.py_utils import dump_dict, root_dir_slash
 
+import logging
+
+# Configure logging to display INFO level logs
+logging.basicConfig(level=logging.INFO)
+handler = logging.StreamHandler()
+handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
 
 def set_seed(seed: int):
     random.seed(seed)
@@ -95,17 +103,17 @@ def main(args: Optional[argparse.Namespace] = None):
     )
 
     # Run it for a week
-    bazaar.run(168)
+    bazaar.run(168, print_callback=logging.info)
 
     # Print the answer
     for buyer in results["buyers"]:
         print("-" * 80)
         print("Question: ", buyer.query.text)
-        if buyer.answer.success:
+        try:
             print("Answer: ", buyer.answer.text)
-        else:
+        except Exception:
             print("No answer found.")
-
+            
     dump_dict(
         bazaar.evaluation_summary(),
         str(Path(args.output_path) / "bazaar_summary.json"),
