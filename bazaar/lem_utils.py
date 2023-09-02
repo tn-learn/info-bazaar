@@ -188,6 +188,7 @@ class LLaMa2(guidance.llms.Transformers):
         hf_cache_directory: Optional[str] = None,
         guidance_cache_directory: Optional[str] = None,
         size: str = "70b",
+        rope_scaling: str = "dynamic",
         monitor_model: bool = False,
         **super_kwargs,
     ):
@@ -196,6 +197,7 @@ class LLaMa2(guidance.llms.Transformers):
             hf_auth_token=hf_auth_token,
             hf_cache_directory=hf_cache_directory,
             size=size,
+            rope_scaling=rope_scaling,
             monitor_model=monitor_model,
         )
         super().__init__(model=self.model, tokenizer=self.tokenizer, **super_kwargs)
@@ -215,6 +217,7 @@ class LLaMa2(guidance.llms.Transformers):
         hf_auth_token: str,
         hf_cache_directory: str,
         size: str,
+        rope_scaling: str,
         monitor_model: bool,
     ):
         import transformers
@@ -236,9 +239,23 @@ class LLaMa2(guidance.llms.Transformers):
         assert size in ["7b", "13b", "70b"]
         self.model_id = f"meta-llama/Llama-2-{size}-chat-hf"
 
+        # Configure the model
         model_id = resolve_model_id(self.model_id)
+        extra_config = {}
+
+        if rope_scaling == "none":
+            pass
+        elif rope_scaling == "dynamic":
+            extra_config["rope_scaling"] = {"type": "dynamic"}
+        else:
+            raise ValueError(f"Unknown rope scaling {rope_scaling}")
+
+        # Build
         model_config = transformers.AutoConfig.from_pretrained(
-            model_id, use_auth_token=hf_auth_token, cache_dir=hf_cache_directory
+            model_id,
+            use_auth_token=hf_auth_token,
+            cache_dir=hf_cache_directory,
+            **extra_config,
         )
         self.model = transformers.AutoModelForCausalLM.from_pretrained(
             model_id,
