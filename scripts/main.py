@@ -70,7 +70,7 @@ def main(args: Optional[argparse.Namespace] = None):
         parser.add_argument(
             "--embedding_manager_path",
             type=str,
-            default=root_dir_slash("data/final_dataset_bge_large_en.db"),
+            default=root_dir_slash("data/final_dataset_embeddings.db"),
         )
         args = parser.parse_args()
     config = SimulationConfig(
