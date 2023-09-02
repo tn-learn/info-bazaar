@@ -188,7 +188,7 @@ class LLaMa2(guidance.llms.Transformers):
         hf_cache_directory: Optional[str] = None,
         guidance_cache_directory: Optional[str] = None,
         size: str = "70b",
-        rope_scaling: str = "dynamic",
+        rope_scaling: str = "dynamic:2.0",
         monitor_model: bool = False,
         **super_kwargs,
     ):
@@ -245,8 +245,9 @@ class LLaMa2(guidance.llms.Transformers):
 
         if rope_scaling == "none":
             pass
-        elif rope_scaling == "dynamic":
-            extra_config["rope_scaling"] = {"type": "dynamic"}
+        elif rope_scaling.startswith("dynamic"):
+            factor = float(rope_scaling.split(":")[-1])
+            extra_config["rope_scaling"] = {"type": "dynamic", "factor": factor}
         else:
             raise ValueError(f"Unknown rope scaling {rope_scaling}")
 
