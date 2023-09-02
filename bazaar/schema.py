@@ -381,6 +381,10 @@ class Institution(Principal):
     def __hash__(self):
         return hash(self.id)
 
+    @property
+    def num_blocks_owned(self):
+        return len(self.public_blocks) + len(self.private_blocks)
+
     def evaluation_summary(self) -> Dict[str, Any]:
         return dict(
             **super().evaluation_summary(),
@@ -410,6 +414,10 @@ class Author(Principal):
 
     def __hash__(self):
         return hash(self.id)
+
+    @property
+    def num_blocks_owned(self):
+        return len(self.public_blocks) + len(self.private_blocks)
 
     def evaluation_summary(self) -> Dict[str, Any]:
         return dict(
