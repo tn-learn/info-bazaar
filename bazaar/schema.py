@@ -74,7 +74,6 @@ class Query:
     @property
     def hyde_embedding(self):
         from bazaar.lem_utils import generate_embedding
-
         if self._hyde_embedding is None:
             self._hyde_embedding = generate_embedding(
                 self.hyde_text, model=self.embedding_model
@@ -84,7 +83,6 @@ class Query:
     @property
     def text_embedding(self):
         from bazaar.lem_utils import generate_embedding
-
         if self._text_embedding is None:
             self._text_embedding = generate_embedding(
                 self.text, model=self.embedding_model, as_query=True

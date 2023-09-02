@@ -1176,6 +1176,10 @@ def select_quotes_with_debate(
         }
         for quote in quotes
     ]
+    # TODO remove this
+    for option in options:
+        option["answer_block"] = option["answer_block"][:384]
+
     program_string = """
     {{#system~}}
     Bobby William and Michael Burry are employed by a company that specializes in acquiring information. They are trying to answer a question by purchasing information from an information market. In this market, vendors sell pieces of information at a price. 
@@ -1315,8 +1319,8 @@ def rerank_quotes(
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
-def synthesize_answer(quotes: List["Quote"], model_name: Optional[str] = None) -> str:
-    question = quotes[0].query.text
+def synthesize_answer(query, quotes: List["Quote"], model_name: Optional[str] = None) -> str:
+    question = query.text
     passages = [
         {
             "answer_block": " [...] ".join(
@@ -1390,8 +1394,7 @@ def synthesize_answer(quotes: List["Quote"], model_name: Optional[str] = None) -
                 ].strip()
 
         return parts
-
-    answer = separate_text_to_dict_corrected(program_output)["answer"]
+    answer = separate_text_to_dict_corrected(program_output["answer"])["answer"]
 
     return answer
 

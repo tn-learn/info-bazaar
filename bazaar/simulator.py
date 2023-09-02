@@ -352,14 +352,12 @@ class BuyerAgent(BazaarAgent):
           3. It should do nothing and wait for quotes to come in.
         """
         # TODO: implement multi-hop queries to acquire compound information; requires splitting a query into multiple simpler queries and posting these.
+        # TODO: fix this, it's a bleeding sharp edge if we have multi-query buyers
+        query = self.principal.query
         if self.response_submission_due_now:
-            # See if we can synthesize the answer given what we have
-            if len(self._accepted_quotes) > 0:
-                response = synthesize_answer(
-                    self._accepted_quotes, model_name=self.answer_synthesis_model_name
-                )
-            else:
-                response = None
+            response = synthesize_answer(
+                query, self._accepted_quotes, model_name=self.answer_synthesis_model_name
+            )
             self.submit_final_response(response)
             for quote in list(self._quote_inbox):
                 self.reject_quote(quote)
