@@ -116,9 +116,18 @@ def set_hf_cache_directory(hf_cache_directory: Optional[str] = None):
     return hf_cache_directory
 
 
-def resolve_model_id(model_id: str) -> str:
-    if os.environ.get("HF_MODEL_ID_OVERRIDE") is not None:
-        retval = os.environ["HF_MODEL_ID_OVERRIDE"]
+def resolve_llm_model_id(model_id: str) -> str:
+    if os.environ.get("HF_LLM_MODEL_ID_OVERRIDE") is not None:
+        retval = os.environ["HF_LLM_MODEL_ID_OVERRIDE"]
+        assert os.path.exists(retval), f"Model path {retval} does not exist"
+        return retval
+    else:
+        return model_id
+
+
+def resolve_embedding_model_id(model_id: str) -> str:
+    if os.environ.get("HF_EMBEDDING_MODEL_ID_OVERRIDE") is not None:
+        retval = os.environ["HF_EMBEDDING_MODEL_ID_OVERRIDE"]
         assert os.path.exists(retval), f"Model path {retval} does not exist"
         return retval
     else:
@@ -240,7 +249,7 @@ class LLaMa2(guidance.llms.Transformers):
         self.model_id = f"meta-llama/Llama-2-{size}-chat-hf"
 
         # Configure the model
-        model_id = resolve_model_id(self.model_id)
+        model_id = resolve_llm_model_id(self.model_id)
         extra_config = {}
 
         if rope_scaling == "none":
@@ -385,6 +394,8 @@ class TransformersEmbedding:
         hf_cache_directory = get_hf_cache_directory(hf_cache_directory)
         hf_auth_token = get_hf_auth_token(hf_auth_token)
         # Init the tokenizer and embedding
+        # Resolve model id
+        model_id = resolve_embedding_model_id(model_id)
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(
             model_id,
             cache_dir=hf_cache_directory,
@@ -1202,9 +1213,6 @@ def select_quotes_with_debate(
         }
         for quote in quotes
     ]
-    # TODO remove this
-    for option in options:
-        option["answer_block"] = option["answer_block"][:384]
 
     program_string = """
     {{#system~}}
