@@ -1430,9 +1430,7 @@ def synthesize_answer(
                 ].strip()
 
         return parts
-
     answer = separate_text_to_dict_corrected(program_output["answer"])["answer"]
-
     return answer
 
 
