@@ -358,6 +358,9 @@ class BuyerAgent(BazaarAgent):
             response = synthesize_answer(
                 query, self._accepted_quotes, model_name=self.answer_synthesis_model_name
             )
+            print(response)
+            if response is None:
+                breakpoint()
             self.submit_final_response(response)
             for quote in list(self._quote_inbox):
                 self.reject_quote(quote)

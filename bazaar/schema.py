@@ -139,6 +139,7 @@ class Query:
             issued_by=(
                 self.issued_by.unique_id if self.issued_by is not None else None
             ),
+            gold_block=self._gold_block.evaluation_summary(),
             gold_block_id=self._gold_block_id,
             hyde_text=self._hyde_text,
             keywords=self._keywords,

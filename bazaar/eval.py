@@ -34,8 +34,8 @@ class BlockWareSpec:
     vendor_index: int
     vendor_name: str
     block_type: str
-    block_price: float
     block_index: int
+    block_price: Optional[float] = None
 
     def summary(self):
         return dict(
@@ -151,16 +151,38 @@ class Evaluator:
                                 block_index=block_index,
                             )
                         )
+        
+                        
+        for buyer_agent_idx, buyer_agent_summary in enumerate(self.evaluation_summary["buyer_agents"]):
+            block_summary = buyer_agent_summary["principal"]["query"]["gold"]
+            if block_summary["block_id"] == block_id:
+                self._block_index[block_id].append(
+                    BlockWareSpec(
+                        block_id=block_id,
+                        vendor_index=buyer_agent_idx,
+                        vendor_name=buyer_agent_summary["principal"]["name"],
+                        block_type="gold",
+                        block_index=block_index,
+                    )
+                )
+
         if block_id not in self._block_index:
             raise ValueError(f"Block {block_id} not found.")
         return self._block_index[block_id]
 
     def get_block_content(self, block_ware_spec: BlockWareSpec) -> str:
-        return self.evaluation_summary["vendor_agents"][block_ware_spec.vendor_index][
-            "principal"
-        ][f"{block_ware_spec.block_type}_blocks"][block_ware_spec.block_index][
-            "content"
-        ]
+        if block_ware_spec.block_type == "gold":
+            breakpoint()
+            return self.evaluation_summary["buyer_agents"][block_ware_spec.vendor_index][
+                "principal"
+            ]["query"]["gold_block"]["content"]
+        else:
+            return self.evaluation_summary["vendor_agents"][block_ware_spec.vendor_index][
+                "principal"
+            ][f"{block_ware_spec.block_type}_blocks"][block_ware_spec.block_index][
+                "content"
+            ]
+
 
     @staticmethod
     def evaluate_answer_quality(
@@ -268,8 +290,4 @@ def main(args: Optional[argparse.Namespace] = None):
 
 
 if __name__ == "__main__":
-    main(
-        args=argparse.Namespace(
-            run_directory=root_dir_slash("runs/2023-08-18-14-43-30")
-        )
-    )
+    main()
