@@ -74,6 +74,7 @@ class Query:
     @property
     def hyde_embedding(self):
         from bazaar.lem_utils import generate_embedding
+
         if self._hyde_embedding is None:
             self._hyde_embedding = generate_embedding(
                 self.hyde_text, model=self.embedding_model
@@ -83,6 +84,7 @@ class Query:
     @property
     def text_embedding(self):
         from bazaar.lem_utils import generate_embedding
+
         if self._text_embedding is None:
             self._text_embedding = generate_embedding(
                 self.text, model=self.embedding_model, as_query=True
@@ -354,8 +356,21 @@ class Block:
             )
         )
 
+    @property
+    def content_with_metadata(self) -> str:
+        content = (
+            f"Paper Title: {self.document_title}\n"
+            f"Section Title: {self.section_title}\n"
+            f"---\n"
+            f"Content: {self.content}"
+        )
+        return content
+
     def get_content_embedding(
-        self, model: Optional[str] = None, **embedding_kwargs
+        self,
+        model: Optional[str] = None,
+        embed_metadata: bool = False,
+        **embedding_kwargs,
     ) -> List[float]:
         if model is None:
             model = default_embedding_name()
@@ -363,7 +378,9 @@ class Block:
             from bazaar.lem_utils import generate_embedding
 
             self._content_embedding_cache[model] = generate_embedding(
-                self.content, model=model, **embedding_kwargs
+                self.content_with_metadata if embed_metadata else self.content,
+                model=model,
+                **embedding_kwargs,
             )
         return self._content_embedding_cache[model]
 

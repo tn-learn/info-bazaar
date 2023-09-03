@@ -195,12 +195,14 @@ class MIPS(Filter):
         top_k: Optional[int] = None,
         score_threshold: Optional[float] = None,
         half_sphere: bool = True,
+        embed_block_content_with_metadata: bool = False,
         weight: float = 1.0,
     ):
         self.use_hyde = use_hyde
         self.top_k = top_k
         self.score_threshold = score_threshold
         self.half_sphere = half_sphere
+        self.embed_block_content_with_metadata = embed_block_content_with_metadata
         self.weight = weight
 
     def apply(
@@ -220,7 +222,9 @@ class MIPS(Filter):
         # block_embeddings.shape = (num_blocks, embedding_dim)
         block_embeddings = np.array(
             [
-                scored_block.block.get_content_embedding()
+                scored_block.block.get_content_embedding(
+                    embed_metadata=self.embed_block_content_with_metadata
+                )
                 for scored_block in scored_blocks
             ]
         )
@@ -276,6 +280,7 @@ def build_retriever(
     mips_top_k: Optional[int] = None,
     mips_score_threshold: Optional[float] = None,
     mips_half_sphere: bool = True,
+    mips_embed_block_content_with_metadata: bool = False,
     mips_weight: float = 1.0,
 ) -> "Filter":
     filters = []
@@ -295,6 +300,7 @@ def build_retriever(
                 top_k=mips_top_k,
                 score_threshold=mips_score_threshold,
                 half_sphere=mips_half_sphere,
+                embed_block_content_with_metadata=mips_embed_block_content_with_metadata,
                 weight=mips_weight,
             )
         )
