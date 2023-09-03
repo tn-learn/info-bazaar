@@ -101,6 +101,7 @@ def build_buyers(
                     urgency=urgency,
                     created_at_time=created_at_time,
                     _gold_block_id=block.block_id,
+                    _gold_block=block,
                 )
                 buyer = BuyerPrincipal(
                     name=f"buyer-{block.block_id}-{idx}",

@@ -35,6 +35,7 @@ class Query:
     _hyde_embedding: Optional[List[float]] = None
     _keywords: Optional[List[str]] = None
     _gold_block_id: Optional[str] = None
+    _gold_block: Optional["Block"] = None
 
     def __post_init__(self):
         self.max_budget = ensure_number(self.max_budget)
