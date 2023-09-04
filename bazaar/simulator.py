@@ -26,6 +26,7 @@ from bazaar.schema import (
 class BazaarAgentContext:
     BAZAAR_SIMULATOR: Optional["BazaarSimulator"] = None
     UNIQUE_ID_COUNTER: Optional[int] = None
+    PRINTER = print
 
     @classmethod
     @contextmanager
@@ -53,6 +54,13 @@ class BazaarAgentContext:
             "unique_id": cls.get_unique_id(increment=True),
             "model": cls.get_model(),
         }
+
+    @classmethod
+    def bind_printer(cls, printer: Callable[[str], Any]):
+        cls.PRINTER = printer
+
+    def print(cls, *args, **kwargs):
+        cls.PRINTER(*args, **kwargs)
 
 
 class BazaarAgent(mesa.Agent):
@@ -118,6 +126,10 @@ class BazaarAgent(mesa.Agent):
                 self.prepare()
             self.forward()
             self.called_count += 1
+
+    @staticmethod
+    def print(*args, **kwargs):
+        BazaarAgentContext.print(*args, **kwargs)
 
     def evaluation_summary(self) -> Dict[str, Any]:
         summary = dict(
@@ -249,7 +261,7 @@ class BuyerAgent(BazaarAgent):
     def submit_final_response(self, response: Optional[str]) -> "BuyerAgent":
         self.principal: "BuyerPrincipal"
         self._final_response = response
-        print(f"Buyer {self.principal.name} submitted final response: {type(response)}")
+        self.print(f"Buyer {self.principal.name} submitted final response: {type(response)}")
 
         self.principal.submit_final_response(
             answer=response,
@@ -478,7 +490,9 @@ class BazaarSimulator(mesa.Model):
         print_callback: Optional[Callable[[str], Any]] = None,
     ):
         if print_callback is None:
-            print_callback = lambda x: None
+            print_callback = lambda *args, **kwargs: None
+        else:
+            BazaarAgentContext.bind_printer(print_callback)
 
         if max_num_steps is None:
             while not self.all_buyer_agents_terminated:
