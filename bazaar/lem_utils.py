@@ -1619,6 +1619,8 @@ def evaluate_answer_with_debate(
         "James": "closed_book",
         "Robert": "retrieved",
     }
+    # TODO: assert only names in name_map present
+    score_dict.pop('None', None)
     score_dict = {name_map[name]: scores for name, scores in score_dict.items()}
     return score_dict
 

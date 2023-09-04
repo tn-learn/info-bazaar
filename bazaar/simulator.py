@@ -249,6 +249,8 @@ class BuyerAgent(BazaarAgent):
     def submit_final_response(self, response: Optional[str]) -> "BuyerAgent":
         self.principal: "BuyerPrincipal"
         self._final_response = response
+        print(f"Buyer {self.principal.name} submitted final response: {type(response)}")
+
         self.principal.submit_final_response(
             answer=response,
             blocks=[
@@ -351,6 +353,7 @@ class BuyerAgent(BazaarAgent):
                are rejected.
           3. It should do nothing and wait for quotes to come in.
         """
+
         # TODO: implement multi-hop queries to acquire compound information; requires splitting a query into multiple simpler queries and posting these.
         # TODO: fix this, it's a bleeding sharp edge if we have multi-query buyers
         query = self.principal.query
@@ -358,9 +361,6 @@ class BuyerAgent(BazaarAgent):
             response = synthesize_answer(
                 query, self._accepted_quotes, model_name=self.answer_synthesis_model_name
             )
-            print(response)
-            if response is None:
-                breakpoint()
             self.submit_final_response(response)
             for quote in list(self._quote_inbox):
                 self.reject_quote(quote)
