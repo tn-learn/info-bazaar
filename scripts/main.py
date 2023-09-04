@@ -18,12 +18,23 @@ from bazaar.py_utils import dump_dict, root_dir_slash
 
 import logging
 
-# Configure logging to display INFO level logs
-logging.basicConfig(level=logging.INFO)
+# Create a root logger
+# Remove any default handlers if present
+for h in logging.root.handlers[:]:
+    logging.root.removeHandler(h)
+
+# Create a root logger
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
 handler = logging.StreamHandler()
 handler.setLevel(logging.INFO)
 formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 handler.setFormatter(formatter)
+
+# Add the handler only if no handlers are present
+if not logger.hasHandlers():
+    logger.addHandler(handler)
 
 
 def set_seed(seed: int):
@@ -35,8 +46,12 @@ def parse_to_slice(s: str) -> slice:
     if s is None:
         return slice(0, None)
     else:
-        start, stop = s.split(":")
-        return slice(int(start), int(stop))
+        start, stop, *step = s.split(":")
+        if len(step) > 0:
+            step = int(step[0])
+        else:
+            step = None
+        return slice(int(start), int(stop), step)
 
 
 def main(args: Optional[argparse.Namespace] = None):
@@ -79,11 +94,17 @@ def main(args: Optional[argparse.Namespace] = None):
 
     # Set the seed
     set_seed(config.rng_seed)
+    logging.info(f"Seed set to {config.rng_seed}.")
 
     # Set the LLM and embedding names
     global_embedding_manager(init_from_path=args.embedding_manager_path)
+    logging.info(
+        f"Initialized embedding manager from path {args.embedding_manager_path}"
+    )
     default_llm_name(set_to=config.llm_name)
+    logging.info(f"Using LLM: {config.llm_name}")
     default_embedding_name(set_to=config.embedding_name)
+    logging.info(f"Using embedding: {config.embedding_name}")
 
     # Load the dataset
     results = load(
@@ -91,6 +112,7 @@ def main(args: Optional[argparse.Namespace] = None):
         config=config,
     )
     results["buyers"] = results["buyers"][parse_to_slice(args.query_range)]
+    logging.info(f"Prepared simulation for {len(results['buyers'])} queries.")
 
     # Make a buyer agent for each principal
     buyer_principals = results["buyers"]
@@ -124,6 +146,8 @@ def main(args: Optional[argparse.Namespace] = None):
         print("Question: ", buyer.query.text)
         try:
             print("Answer: ", buyer.answer.text)
+            for block_idx, block in enumerate(buyer.answer.blocks):
+                print(f"[Ref {block_idx + 1}] ", block.document_title)
         except Exception:
             print("No answer found.")
 

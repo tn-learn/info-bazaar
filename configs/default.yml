@@ -13,6 +13,7 @@ buyer_urgency_min: 1
 buyer_urgency_max: 10
 buyer_agent_kwargs:
   quote_review_top_k: 3
+  quote_review_use_block_metadata: true
   num_quote_gathering_steps: 2
   use_reranker: true
 vendor_agent_kwargs:
@@ -27,7 +28,7 @@ vendor_agent_kwargs:
     mips_top_k: 10
     mips_score_threshold: 0.7
     mips_half_sphere: true
-    mips_embed_block_content_with_metadata: false
+    mips_embed_block_content_with_metadata: true
     mips_weight: 1.0
 query_creation_time_start: 0
 query_creation_time_end: 168
