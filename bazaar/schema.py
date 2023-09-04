@@ -301,10 +301,11 @@ class BuyerPrincipal(Principal):
 
     def evaluation_summary(self) -> Dict[str, Any]:
         super_summary = super().evaluation_summary()
+        answer = self.answer.evaluation_summary() if self.answer is not None else None
         return dict(
             **super_summary,
             query=self.query.evaluation_summary(),
-            answer=self.answer.evaluation_summary(),
+            answer=answer,
         )
 
 

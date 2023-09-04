@@ -154,7 +154,7 @@ class Evaluator:
         
                         
         for buyer_agent_idx, buyer_agent_summary in enumerate(self.evaluation_summary["buyer_agents"]):
-            block_summary = buyer_agent_summary["principal"]["query"]["gold"]
+            block_summary = buyer_agent_summary["principal"]["query"]["gold_block"]
             if block_summary["block_id"] == block_id:
                 self._block_index[block_id].append(
                     BlockWareSpec(
@@ -172,7 +172,6 @@ class Evaluator:
 
     def get_block_content(self, block_ware_spec: BlockWareSpec) -> str:
         if block_ware_spec.block_type == "gold":
-            breakpoint()
             return self.evaluation_summary["buyer_agents"][block_ware_spec.vendor_index][
                 "principal"
             ]["query"]["gold_block"]["content"]
@@ -229,6 +228,11 @@ class Evaluator:
                 raise ValueError(f"Gold block {gold_block_id} not found.")
             gold_block_content = self.get_block_content(gold_block_ware_specs[0])
             # Evaluate the buyer agent
+            # TODO: debug this - answer should never be empty
+            try:
+                buyer_agent_summary["principal"]["answer"]["success"]
+            except Exception:
+                continue
 
             if buyer_agent_summary["principal"]["answer"]["success"]:
                 answer_text = buyer_agent_summary["principal"]["answer"]["text"]
@@ -267,6 +271,8 @@ class Evaluator:
                 closed_book_answer=answers.get("closed_book"),
             )
             evaluation.append(result)
+            print(result)
+            print("-----")
         return EvaluationResult(buyer_agents=evaluation)
 
 
