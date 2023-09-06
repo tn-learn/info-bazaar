@@ -178,12 +178,11 @@ def build_authors_and_institutions(
     # Build authors and institutions
     authors = {}
     institutions = {}
-
     for arxiv_id in dataset:
         data = dataset[arxiv_id]["metadata"]
         for authorship in data["authorships"]:
             for institution in authorship["institutions"]:
-                if institution["id"] not in institutions:
+                if institution is not None and institution["id"] not in institutions:
                     institution["name"] = institution["display_name"]
                     del institution["display_name"]
                     institutions[institution["id"]] = dataclass_from_dict(
