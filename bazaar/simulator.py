@@ -6,12 +6,11 @@ import mesa
 from bazaar.database import build_retriever
 from bazaar.lem_utils import (
     select_quotes_with_debate,
-    synthesize_answer,
     rerank_quotes,
     default_llm_name,
     default_reranker_name,
-    synthesize_compound_answer,
 )
+from bazaar.qa_engine import QueryManager
 from bazaar.schema import (
     Principal,
     BulletinBoard,
@@ -233,9 +232,8 @@ class BuyerAgent(BazaarAgent):
         self._submitted_queries: List[Query] = []
         self._quote_inbox: List[Quote] = []
         self._accepted_quotes: List[Quote] = []
-        self._processed_quotes: List[Quote] = []
         self._rejected_quotes: List[Quote] = []
-        self._intermediate_responses: Dict[Query, Answer] = {}
+        self._query_manager: QueryManager = QueryManager()
         # Publics
         self.quote_review_top_k = quote_review_top_k
         self.quote_review_use_block_metadata = quote_review_use_block_metadata
@@ -254,6 +252,7 @@ class BuyerAgent(BazaarAgent):
         """
         self.principal: BuyerPrincipal
         self._query_queue.append(self.principal.query)
+        self._query_manager.add_query(self.principal.query)
         self.credit_to_account(self.principal.budget)
 
     def receive_quote(self, quote: Quote):
@@ -347,107 +346,24 @@ class BuyerAgent(BazaarAgent):
                 # Reject the rest of the quotes for this query
                 self.reject_all_quotes_for_query(query)
 
-    def generate_follow_up_query(self) -> Optional[Query]:
-        """
-        This function checks if there are accepted quotes that have not been processed to answers.
-        """
-        # TODO
-        return None
-
-    def synthesize_responses(self) -> "BuyerAgent":
-        """
-        This function checks if there are accepted quotes that have not been processed to answers.
-        If yes, it synthesizes answers for them, and adds them to the intermediate responses.
-        """
-        unprocessed_accepted_quotes = [
-            quote
-            for quote in self._accepted_quotes
-            if quote not in self._processed_quotes
-        ]
-        # Sort the unprocessed quotes by queries
-        unprocessed_accepted_quotes_by_query = defaultdict(list)
-        for quote in unprocessed_accepted_quotes:
-            unprocessed_accepted_quotes_by_query[quote.query].append(quote)
-        # For all unprocessed queries, we want to make sure that they really are unprocessed.
-        # If they're processed, they'll already be in the intermediate responses.
-        for query, quotes in unprocessed_accepted_quotes_by_query.items():
-            if query in self._intermediate_responses:
-                raise ValueError(
-                    f"Trying to process a query ({query}) that has already been processed."
-                )
-            # If the query is not processed, we synthesize an answer for it.
-            response_text = synthesize_answer(
-                query,
-                quotes,
-                model_name=self.answer_synthesis_model_name,
-            )
-            self._intermediate_responses[query] = Answer(
-                text=response_text,
-                blocks=[block for quote in quotes for block in quote.answer_blocks],
-                relevance_scores=[
-                    relevance_score
-                    for quote in quotes
-                    for relevance_score in quote.relevance_scores
-                ],
-                success=True,
-            )
-            # Mark the quotes as processed
-            for quote in quotes:
-                self._processed_quotes.append(quote)
-
-        return self
-
     def synthesize_final_response(self) -> Answer:
-        """
-        This function looks at the intermediate responses and synthesizes a final answer.
-        """
-        # First step is to synthesize answers for all the accepted quotes.
-        self.synthesize_responses()
+        return self._query_manager.answer_root(self._accepted_quotes)
 
-        # If there are no intermediate responses, we return a failure answer.
-        if len(self._intermediate_responses) == 0:
-            return Answer(success=False)
-
-        # If there is only one intermediate response, we return that.
-        if len(self._intermediate_responses) == 1:
-            query = list(self._intermediate_responses.keys())[0]
-            assert query.compare_content(self.principal.query), (
-                f"Query in intermediate responses ({query}) does not match "
-                f"principal query ({self.principal.query})."
-            )
-            return list(self._intermediate_responses.values())[0]
-
-        # If there are multiple responses, we'll need to synthesize a final response.
-        response_text = synthesize_compound_answer(
-            query_answer_pairs=list(self._intermediate_responses.items()),
-            model_name=self.answer_synthesis_model_name,
+    def enqueue_follow_up_queries(self):
+        follow_up_queries = self._query_manager.generate_follow_up_queries(
+            self._accepted_quotes
         )
-        response = Answer(
-            text=response_text,
-            blocks=[
-                block
-                for query, answer in self._intermediate_responses.items()
-                for block in answer.blocks
-            ],
-            relevance_scores=[
-                relevance_score
-                for query, answer in self._intermediate_responses.items()
-                for relevance_score in answer.relevance_scores
-            ],
-            success=True,
-        )
-        return response
+        for follow_up_query, parent_query in follow_up_queries:
+            self._query_queue.append(follow_up_query)
+            self._query_manager.add_query(follow_up_query, parent_query)
 
     def finalize_step(self):
         """
-        This is where the big decisions happen.
-        Based on the accepted quotes, the agent decides if:
-          1. It should submit a follow-up query to the bulletin board to gather more quotes. This is done
-               by adding the query to the query queue.
-          2. It should submit a final response and terminate. This happens when the agent has enough quotes
-               to generate a response, or it's out of time. If it is to terminate, all outstanding quotes
-               are rejected.
-          3. It should do nothing and wait for quotes to come in.
+        This is where we decide how to conclude the step. There are two possibilities:
+            1. The time is up, and we need to synthesize the final response.
+            2. There is time to dig deeper.
+
+        # If the time is up, we synthesize the response.
         """
         if self.response_submission_due_now:
             # If this happens, we need to submit a final response.
@@ -455,44 +371,7 @@ class BuyerAgent(BazaarAgent):
             self.submit_final_response(final_response)
         else:
             # If there are accepted quotes, we synthesize an answer with them.
-            self.synthesize_responses()
-            # Check if there's a follow-up query to submit
-            follow_up_query = self.generate_follow_up_query()
-            if follow_up_query is not None:
-                self._query_queue.append(follow_up_query)
-            else:
-                # There's no follow-up query to submit, so we submit a final response and call it quits.
-                final_response = self.synthesize_final_response()
-                self.submit_final_response(final_response)
-
-    def _finalize_step(self):
-        """
-        This is where the big decisions happen.
-        Based on the accepted quotes, the agent decides if:
-          1. It should submit a follow-up query to the bulletin board to gather more quotes. This is done
-               by adding the query to the query queue.
-          2. It should submit a final response and terminate. This happens when the agent has enough quotes
-               to generate a response, or it's out of time. If it is to terminate, all outstanding quotes
-               are rejected.
-          3. It should do nothing and wait for quotes to come in.
-        """
-
-        # TODO: implement multi-hop queries to acquire compound information; requires splitting a query into multiple simpler queries and posting these.
-        # TODO: fix this, it's a bleeding sharp edge if we have multi-query buyers
-        query = self.principal.query
-        if self.response_submission_due_now:
-            if len(self._accepted_quotes) > 0:
-                response = synthesize_answer(
-                    query,
-                    self._accepted_quotes,
-                    model_name=self.answer_synthesis_model_name,
-                )
-            else:
-                # No quotes were accepted.
-                response = None
-            self.submit_final_response(response)
-            for quote in list(self._quote_inbox):
-                self.reject_quote(quote)
+            self.enqueue_follow_up_queries()
 
     def select_quote(self, candidate_quotes: List[Quote]) -> List[Quote]:
         # The condition for calling this function is that all candidate_quotes have
