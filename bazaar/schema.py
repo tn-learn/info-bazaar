@@ -29,6 +29,7 @@ class Query:
     required_by_time: Optional[int] = None
     processor_model: Optional[str] = None
     embedding_model: Optional[str] = None
+    follow_up_of: Optional["Query"] = None
     # Containers for hyde and text
     _text_embedding: Optional[List[float]] = None
     _hyde_text: Optional[str] = None
@@ -108,6 +109,13 @@ class Query:
             ensure_number(self.issued_by.unique_id),
             ensure_number(self.urgency),
             ensure_number(self.required_by_time),
+            self.processor_model,
+            self.embedding_model,
+            (
+                self.follow_up_of.get_content_prehash()
+                if self.follow_up_of is not None
+                else None
+            ),
         )
 
     def __hash__(self):
@@ -278,25 +286,8 @@ class BuyerPrincipal(Principal):
             return float("inf")
         return self.query.required_by_time - now
 
-    def submit_final_response(
-        self,
-        answer: Optional[str] = None,
-        success: Optional[bool] = None,
-        blocks: Optional[List] = None,
-        relevance_scores: Optional[List] = None,
-    ) -> "BuyerPrincipal":
-        if success is None:
-            success = answer is not None
-        if blocks is None:
-            blocks = []
-        if relevance_scores is None:
-            relevance_scores = []
-        self.answer = Answer(
-            success=success,
-            text=answer,
-            blocks=blocks,
-            relevance_scores=relevance_scores,
-        )
+    def submit_final_response(self, answer: Answer) -> "BuyerPrincipal":
+        self.answer = answer
         return self
 
     def evaluation_summary(self) -> Dict[str, Any]:

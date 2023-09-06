@@ -15,6 +15,7 @@ from typing import (
     Any,
     Union,
     TYPE_CHECKING,
+    Tuple,
 )
 from collections.abc import Mapping, Sequence
 
@@ -31,7 +32,7 @@ from llamapi.client import ask_for_guidance
 
 if TYPE_CHECKING:
     import torch
-    from bazaar.schema import Quote, Query
+    from bazaar.schema import Quote, Query, Answer
 
 OAI_EXCEPTIONS = (
     openai.error.APIError,
@@ -617,7 +618,8 @@ def get_reranker(model_name: Optional[str] = None, **extra_kwargs):
 
 
 class EmbeddingManager:
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: str, raise_if_cache_miss: bool = False):
+        self.raise_if_cache_miss = raise_if_cache_miss
         self.conn = sqlite3.connect(db_path)
         self._create_table()
 
@@ -655,6 +657,10 @@ class EmbeddingManager:
             return self._bytes_to_embedding(result[0])
         elif generate_if_missing:
             return self.new_embedding(content, model_name, key)
+        elif self.raise_if_cache_miss:
+            raise ValueError(
+                f"Embedding not found with model {model_name} and content:\n{content}"
+            )
         else:
             return None
 
@@ -697,11 +703,11 @@ class EmbeddingManager:
 
 
 def global_embedding_manager(
-    init_from_path: Optional[str] = None,
+    init_from_path: Optional[str] = None, **embedding_manager_kwargs
 ) -> "EmbeddingManager":
     global EMBEDDING_MANAGER
     if init_from_path is not None:
-        EMBEDDING_MANAGER = EmbeddingManager(init_from_path)
+        EMBEDDING_MANAGER = EmbeddingManager(init_from_path, **embedding_manager_kwargs)
     if EMBEDDING_MANAGER is None:
         raise ValueError("Embedding manager not initialized.")
     return EMBEDDING_MANAGER
@@ -1365,6 +1371,10 @@ def synthesize_answer(
     query: "Query", quotes: List["Quote"], model_name: Optional[str] = None
 ) -> str:
     question = query.text
+    # Make sure all quotes have the same query
+    assert all(
+        [query.compare_content(quote.query) for quote in quotes]
+    ), "All quotes must have the same query."
 
     if len(quotes) == 0:
         raise ValueError("No quotes provided to synthesize answers from.")
@@ -1474,6 +1484,13 @@ def get_closed_book_answer(question: str, model_name: Optional[str] = None) -> s
     answer = program_output["answer"]
     # Done
     return answer
+
+
+def synthesize_compound_answer(
+    query_answer_pairs: List[Tuple["Query", "Answer"]], model_name: Optional[str] = None
+) -> str:
+    # TODO
+    pass
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
