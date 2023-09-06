@@ -29,7 +29,6 @@ class Query:
     required_by_time: Optional[int] = None
     processor_model: Optional[str] = None
     embedding_model: Optional[str] = None
-    follow_up_of: Optional["Query"] = None
     # Containers for hyde and text
     _text_embedding: Optional[List[float]] = None
     _hyde_text: Optional[str] = None
@@ -111,11 +110,6 @@ class Query:
             ensure_number(self.required_by_time),
             self.processor_model,
             self.embedding_model,
-            (
-                self.follow_up_of.get_content_prehash()
-                if self.follow_up_of is not None
-                else None
-            ),
         )
 
     def __hash__(self):
