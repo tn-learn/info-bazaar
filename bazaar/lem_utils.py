@@ -1185,6 +1185,7 @@ def select_quotes_with_debate(
     budget: Optional[SupportsFloat] = None,
     fraction_of_max_budget: Optional[float] = None,
     model_name: Optional[str] = None,
+    use_block_content_metadata: bool = False,
 ) -> List["Quote"]:
     assert all(
         [quotes[0].query.compare_content(quote.query) for quote in quotes[1:]]
@@ -1207,7 +1208,14 @@ def select_quotes_with_debate(
     options = [
         {
             "answer_block": " [...] ".join(
-                [block.content for block in quote.answer_blocks]
+                [
+                    (
+                        block.content_with_metadata
+                        if use_block_content_metadata
+                        else block.content
+                    )
+                    for block in quote.answer_blocks
+                ]
             ),
             "price": max(int(round(quote.price * scale_factor)), 1),
         }
@@ -1357,6 +1365,10 @@ def synthesize_answer(
     query: "Query", quotes: List["Quote"], model_name: Optional[str] = None
 ) -> str:
     question = query.text
+
+    if len(quotes) == 0:
+        raise ValueError("No quotes provided to synthesize answers from.")
+
     passages = [
         {
             "answer_block": " [...] ".join(
@@ -1430,6 +1442,7 @@ def synthesize_answer(
                 ].strip()
 
         return parts
+
     answer = separate_text_to_dict_corrected(program_output["answer"])["answer"]
     return answer
 
@@ -1494,6 +1507,57 @@ def get_open_book_answer(
     answer = program_output["answer"]
 
     return answer
+
+
+def select_follow_up_question(
+    question: str, current_answer: str, model_name: Optional[str] = None
+) -> Optional[str]:
+    program_string = """
+    {{#system~}}
+    Bobby and Michael are employed at a company that specializes in acquiring and verifying information.
+
+    Their supervisors have given them a question and an answer that their peers have produced. Their task is to decide if the provided answer adequately answers the question. If it doesn't, they must come up with a follow up question that would enrich the provided answer. 
+
+    Note that the follow up question should only be asked if there is a need for concrete information that is missing from the provided answer or if the provided answer is missing crucial details.
+    {{~/system}}
+
+    {{#user~}}
+    The question is: {{question}}
+
+    The currently available answer is: {{current_answer}}
+
+    Bobby and Michael will now argue about whether they should ask a follow-up question taking in to account the provided question and the currently available answer. 
+
+    If they decide to ask a follow up question, it should be printed as:
+    FOLLOW-UP QUESTION: <follow up question goes here>
+    {{~/user}}
+
+    {{#assistant~}}
+    {{gen "answer" temperature=0.0 max_tokens=512}}
+    {{~/assistant}}
+    """
+    program_string = clean_program_string(program_string)
+    # Run the program
+    program_output = ask_for_guidance(
+        program_string=program_string,
+        llm=get_llm(model_name=model_name),
+        silent=True,
+        inputs=dict(question=question, current_answer=current_answer),
+        output_keys=["answer"],
+    )
+    answer = program_output["answer"]
+
+    # Parse the answer
+    def extract_follow_up(text: str) -> Optional[str]:
+        # Define the pattern
+        pattern = r"FOLLOW-UP QUESTION: (.*?)(\n|$)"
+        # Search for the pattern
+        match = re.search(pattern, text)
+        # If found, return the matched question, else return None
+        return match.group(1).strip() if match else None
+
+    follow_up = extract_follow_up(answer)
+    return follow_up
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
@@ -1620,7 +1684,7 @@ def evaluate_answer_with_debate(
         "Robert": "retrieved",
     }
     # TODO: assert only names in name_map present
-    score_dict.pop('None', None)
+    score_dict.pop("None", None)
     score_dict = {name_map[name]: scores for name, scores in score_dict.items()}
     return score_dict
 

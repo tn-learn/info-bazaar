@@ -59,6 +59,7 @@ class BazaarAgentContext:
     def bind_printer(cls, printer: Callable[[str], Any]):
         cls.PRINTER = printer
 
+    @classmethod
     def print(cls, *args, **kwargs):
         cls.PRINTER(*args, **kwargs)
 
@@ -215,6 +216,7 @@ class BuyerAgent(BazaarAgent):
         self,
         principal: BuyerPrincipal,
         quote_review_top_k: Optional[int] = None,
+        quote_review_use_block_metadata: bool = False,
         num_quote_gathering_steps: int = 0,
         use_reranker: bool = False,
         quote_selection_model_name: Optional[str] = None,
@@ -231,6 +233,7 @@ class BuyerAgent(BazaarAgent):
         self._final_response: Optional[str] = None
         # Publics
         self.quote_review_top_k = quote_review_top_k
+        self.quote_review_use_block_metadata = quote_review_use_block_metadata
         self.num_quote_gathering_steps = num_quote_gathering_steps
         self.use_reranker = use_reranker
         self.quote_selection_model_name = self.get_llm_name(quote_selection_model_name)
@@ -261,7 +264,9 @@ class BuyerAgent(BazaarAgent):
     def submit_final_response(self, response: Optional[str]) -> "BuyerAgent":
         self.principal: "BuyerPrincipal"
         self._final_response = response
-        self.print(f"Buyer {self.principal.name} submitted final response: {type(response)}")
+        self.print(
+            f"Buyer {self.principal.name} submitted final response: {type(response)}"
+        )
 
         self.principal.submit_final_response(
             answer=response,
@@ -370,9 +375,15 @@ class BuyerAgent(BazaarAgent):
         # TODO: fix this, it's a bleeding sharp edge if we have multi-query buyers
         query = self.principal.query
         if self.response_submission_due_now:
-            response = synthesize_answer(
-                query, self._accepted_quotes, model_name=self.answer_synthesis_model_name
-            )
+            if len(self._accepted_quotes) > 0:
+                response = synthesize_answer(
+                    query,
+                    self._accepted_quotes,
+                    model_name=self.answer_synthesis_model_name,
+                )
+            else:
+                # No quotes were accepted.
+                response = None
             self.submit_final_response(response)
             for quote in list(self._quote_inbox):
                 self.reject_quote(quote)
@@ -404,13 +415,16 @@ class BuyerAgent(BazaarAgent):
                 )
             ][: self.quote_review_top_k]
         # Select the quotes
-        return list(
+        # TODO: Implement retry if no quotes are seleced
+        selected_quotes = list(
             select_quotes_with_debate(
                 candidate_quotes,
                 budget=self.credit,
                 model_name=self.quote_selection_model_name,
+                use_block_content_metadata=self.quote_review_use_block_metadata,
             )
         )
+        return selected_quotes
 
     def forward(self) -> None:
         # Step 1: Check if there are quotes in the inbox that need to be processed.
