@@ -1,3 +1,4 @@
+from collections import defaultdict
 from contextlib import contextmanager
 from typing import Optional, List, Dict, Union, Any, Callable
 import mesa
@@ -9,6 +10,7 @@ from bazaar.lem_utils import (
     rerank_quotes,
     default_llm_name,
     default_reranker_name,
+    synthesize_compound_answer,
 )
 from bazaar.schema import (
     Principal,
@@ -20,6 +22,7 @@ from bazaar.schema import (
     Institution,
     Author,
     QuoteStatus,
+    Answer,
 )
 
 
@@ -217,6 +220,7 @@ class BuyerAgent(BazaarAgent):
         principal: BuyerPrincipal,
         quote_review_top_k: Optional[int] = None,
         quote_review_use_block_metadata: bool = False,
+        quote_review_num_tries: int = 1,
         num_quote_gathering_steps: int = 0,
         use_reranker: bool = False,
         quote_selection_model_name: Optional[str] = None,
@@ -229,11 +233,13 @@ class BuyerAgent(BazaarAgent):
         self._submitted_queries: List[Query] = []
         self._quote_inbox: List[Quote] = []
         self._accepted_quotes: List[Quote] = []
+        self._processed_quotes: List[Quote] = []
         self._rejected_quotes: List[Quote] = []
-        self._final_response: Optional[str] = None
+        self._intermediate_responses: Dict[Query, Answer] = {}
         # Publics
         self.quote_review_top_k = quote_review_top_k
         self.quote_review_use_block_metadata = quote_review_use_block_metadata
+        self.quote_review_num_tries = quote_review_num_tries
         self.num_quote_gathering_steps = num_quote_gathering_steps
         self.use_reranker = use_reranker
         self.quote_selection_model_name = self.get_llm_name(quote_selection_model_name)
@@ -253,34 +259,17 @@ class BuyerAgent(BazaarAgent):
     def receive_quote(self, quote: Quote):
         self._quote_inbox.append(quote)
 
-    @property
-    def final_response(self) -> str:
-        return self._final_response
-
-    @property
-    def final_response_available(self):
-        return self._final_response is not None
-
-    def submit_final_response(self, response: Optional[str]) -> "BuyerAgent":
+    def submit_final_response(self, response: Answer) -> "BuyerAgent":
         self.principal: "BuyerPrincipal"
-        self._final_response = response
         self.print(
             f"Buyer {self.principal.name} submitted final response: {type(response)}"
         )
+        self.principal.submit_final_response(answer=response)
+        # Cancel all outstanding quotes
+        for quote in list(self._quote_inbox):
+            self.reject_quote(quote)
 
-        self.principal.submit_final_response(
-            answer=response,
-            blocks=[
-                block
-                for quote in self._accepted_quotes
-                for block in quote.answer_blocks
-            ],
-            relevance_scores=[
-                relevance_score
-                for quote in self._accepted_quotes
-                for relevance_score in quote.relevance_scores
-            ],
-        )
+        # Terminate the agent
         return self.terminate_agent()  # F
 
     @property
@@ -313,6 +302,12 @@ class BuyerAgent(BazaarAgent):
         self._quote_inbox.remove(quote)
         return self
 
+    def reject_all_quotes_for_query(self, query: Query) -> "BuyerAgent":
+        for quote in list(self._quote_inbox):
+            if quote.query.compare_content(query):
+                self.reject_quote(quote)
+        return self
+
     def process_quotes(self):
         """
         This function checks the quotes in the inbox and determines if they should be
@@ -333,33 +328,144 @@ class BuyerAgent(BazaarAgent):
             if (self.now - quote.query.created_at_time)
             >= min(quote.query.urgency, self.num_quote_gathering_steps)
         ]
+        # If we have pending quotes and the wait time is up, we need to process them
         if (
             len(valid_pending_quotes) > 0
             and pending_quotes[0].created_at_time + self.num_quote_gathering_steps
             <= self.now
         ):
-            quotes_to_accept = self.select_quote(valid_pending_quotes)
-            for quote_to_accept in quotes_to_accept:
-                self.accept_quote(quote_to_accept)
-            for quote in list(self._quote_inbox):
-                if (
-                    len(quotes_to_accept) == 0
-                    or quote.query == quotes_to_accept[0].query
-                ):
-                    self.reject_quote(quote)
+            # We need to separate quotes by queries and process them individually.
+            # This is how the infra in lem_utils is set up.
+            valid_pending_quotes_by_query = defaultdict(list)
+            for quote in valid_pending_quotes:
+                valid_pending_quotes_by_query[quote.query].append(quote)
+            for query, quotes in valid_pending_quotes_by_query.items():
+                # Select the quotes to accept
+                quotes_to_accept = self.select_quote(quotes)
+                for quote_to_accept in quotes_to_accept:
+                    self.accept_quote(quote_to_accept)
+                # Reject the rest of the quotes for this query
+                self.reject_all_quotes_for_query(query)
 
-    def gathered_quotes_are_good_enough(self) -> bool:
-        # TODO: LEM call - with the  quotes and query
-        pass
+    def generate_follow_up_query(self) -> Optional[Query]:
+        """
+        This function checks if there are accepted quotes that have not been processed to answers.
+        """
+        # TODO
+        return None
 
-    def generate_follow_up_query(self) -> Query:
-        pass
+    def synthesize_responses(self) -> "BuyerAgent":
+        """
+        This function checks if there are accepted quotes that have not been processed to answers.
+        If yes, it synthesizes answers for them, and adds them to the intermediate responses.
+        """
+        unprocessed_accepted_quotes = [
+            quote
+            for quote in self._accepted_quotes
+            if quote not in self._processed_quotes
+        ]
+        # Sort the unprocessed quotes by queries
+        unprocessed_accepted_quotes_by_query = defaultdict(list)
+        for quote in unprocessed_accepted_quotes:
+            unprocessed_accepted_quotes_by_query[quote.query].append(quote)
+        # For all unprocessed queries, we want to make sure that they really are unprocessed.
+        # If they're processed, they'll already be in the intermediate responses.
+        for query, quotes in unprocessed_accepted_quotes_by_query.items():
+            if query in self._intermediate_responses:
+                raise ValueError(
+                    f"Trying to process a query ({query}) that has already been processed."
+                )
+            # If the query is not processed, we synthesize an answer for it.
+            response_text = synthesize_answer(
+                query,
+                quotes,
+                model_name=self.answer_synthesis_model_name,
+            )
+            self._intermediate_responses[query] = Answer(
+                text=response_text,
+                blocks=[block for quote in quotes for block in quote.answer_blocks],
+                relevance_scores=[
+                    relevance_score
+                    for quote in quotes
+                    for relevance_score in quote.relevance_scores
+                ],
+                success=True,
+            )
+            # Mark the quotes as processed
+            for quote in quotes:
+                self._processed_quotes.append(quote)
 
-    def needs_to_generate_follow_up_query(self) -> bool:
-        # TODO: implement this
-        return False
+        return self
+
+    def synthesize_final_response(self) -> Answer:
+        """
+        This function looks at the intermediate responses and synthesizes a final answer.
+        """
+        # First step is to synthesize answers for all the accepted quotes.
+        self.synthesize_responses()
+
+        # If there are no intermediate responses, we return a failure answer.
+        if len(self._intermediate_responses) == 0:
+            return Answer(success=False)
+
+        # If there is only one intermediate response, we return that.
+        if len(self._intermediate_responses) == 1:
+            query = list(self._intermediate_responses.keys())[0]
+            assert query.compare_content(self.principal.query), (
+                f"Query in intermediate responses ({query}) does not match "
+                f"principal query ({self.principal.query})."
+            )
+            return list(self._intermediate_responses.values())[0]
+
+        # If there are multiple responses, we'll need to synthesize a final response.
+        response_text = synthesize_compound_answer(
+            query_answer_pairs=list(self._intermediate_responses.items()),
+            model_name=self.answer_synthesis_model_name,
+        )
+        response = Answer(
+            text=response_text,
+            blocks=[
+                block
+                for query, answer in self._intermediate_responses.items()
+                for block in answer.blocks
+            ],
+            relevance_scores=[
+                relevance_score
+                for query, answer in self._intermediate_responses.items()
+                for relevance_score in answer.relevance_scores
+            ],
+            success=True,
+        )
+        return response
 
     def finalize_step(self):
+        """
+        This is where the big decisions happen.
+        Based on the accepted quotes, the agent decides if:
+          1. It should submit a follow-up query to the bulletin board to gather more quotes. This is done
+               by adding the query to the query queue.
+          2. It should submit a final response and terminate. This happens when the agent has enough quotes
+               to generate a response, or it's out of time. If it is to terminate, all outstanding quotes
+               are rejected.
+          3. It should do nothing and wait for quotes to come in.
+        """
+        if self.response_submission_due_now:
+            # If this happens, we need to submit a final response.
+            final_response = self.synthesize_final_response()
+            self.submit_final_response(final_response)
+        else:
+            # If there are accepted quotes, we synthesize an answer with them.
+            self.synthesize_responses()
+            # Check if there's a follow-up query to submit
+            follow_up_query = self.generate_follow_up_query()
+            if follow_up_query is not None:
+                self._query_queue.append(follow_up_query)
+            else:
+                # There's no follow-up query to submit, so we submit a final response and call it quits.
+                final_response = self.synthesize_final_response()
+                self.submit_final_response(final_response)
+
+    def _finalize_step(self):
         """
         This is where the big decisions happen.
         Based on the accepted quotes, the agent decides if:
@@ -388,11 +494,12 @@ class BuyerAgent(BazaarAgent):
             for quote in list(self._quote_inbox):
                 self.reject_quote(quote)
 
-        elif self.needs_to_generate_follow_up_query():
-            # Submit follow-up query
-            self._query_queue.append(self.generate_follow_up_query())
-
     def select_quote(self, candidate_quotes: List[Quote]) -> List[Quote]:
+        # The condition for calling this function is that all candidate_quotes have
+        # the same query
+        assert (
+            len(set([quote.query for quote in candidate_quotes])) == 1
+        ), "All candidate quotes must have the same query."
         # First we filter out all the quotes that are too expensive
         candidate_quotes = [
             quote for quote in candidate_quotes if quote.price <= self.credit
@@ -415,15 +522,20 @@ class BuyerAgent(BazaarAgent):
                 )
             ][: self.quote_review_top_k]
         # Select the quotes
-        # TODO: Implement retry if no quotes are seleced
-        selected_quotes = list(
-            select_quotes_with_debate(
-                candidate_quotes,
-                budget=self.credit,
-                model_name=self.quote_selection_model_name,
-                use_block_content_metadata=self.quote_review_use_block_metadata,
+        selected_quotes = []
+        for _ in range(self.quote_review_num_tries):
+            if len(selected_quotes) > 1:
+                break
+            selected_quotes.extend(
+                list(
+                    select_quotes_with_debate(
+                        candidate_quotes,
+                        budget=self.credit,
+                        model_name=self.quote_selection_model_name,
+                        use_block_content_metadata=self.quote_review_use_block_metadata,
+                    )
+                )
             )
-        )
         return selected_quotes
 
     def forward(self) -> None:
@@ -435,6 +547,7 @@ class BuyerAgent(BazaarAgent):
         self.finalize_step()
 
     def evaluation_summary(self) -> Dict[str, Any]:
+        # TODO Update this with the new variables
         summary = super().evaluation_summary()
         summary.update(
             dict(
