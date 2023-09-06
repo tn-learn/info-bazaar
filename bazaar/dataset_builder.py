@@ -44,8 +44,11 @@ def load_or_parse_file(path: str, parse_func: Callable, args: tuple):
 
 # PARSE ARXIV METADATA SNAPSHOT FOR CATEGORY
 # -----------------------------------------------------------
-def parse_arxiv_dump(relevant_category: str, min_year: int, data_root: str):
+def parse_arxiv_dump(relevant_category: str, min_year: int, data_root: str, keywords: List[str] = None):
     print("Parsing arxiv papers.")
+    if keywords is None:
+        keywords = []
+
     selected_metadata = {}
     with open(f"{data_root}/arxiv-metadata-oai-snapshot.json", "r") as f:
         for line in tqdm(f.readlines()):
@@ -56,7 +59,8 @@ def parse_arxiv_dump(relevant_category: str, min_year: int, data_root: str):
             year = parsed_date.year
             if year > min_year:
                 if relevant_category in metadata["categories"]:
-                    selected_metadata[metadata["id"]] = metadata
+                    if any(keyword in metadata["title"].lower() for keyword in keywords) or len(keywords) == 0 or any(keyword in metadata["abstract"].lower() for keyword in keywords):
+                        selected_metadata[metadata["id"]] = metadata
     return selected_metadata
 
 
@@ -131,14 +135,22 @@ def load_or_parse_arxiv_data(category: str, data_root: str):
     elif category == "llm":
         min_year = 2020
         relevant_category = "cs.LG"
-        breakpoint()
-        path = f"{data_root}/machine-learning/arxiv-meta-ml-2020-2023.json"
-        metadata = load_or_parse_file(
-            path, parse_arxiv_dump, [relevant_category, min_year, data_root]
+        path = f"{data_root}/machine-learning/arxiv-llm-2020-2023.json"
+        keywords = ["llm", "chatgpt", "alpaca", "bloom", "cerebras-gpt", "chatglm", "chinchilla", "codex", "codegen",
+                    "codegx", "dolly-v2", "eleuther-pythia", "falcon", "fastchat-t5", "gal",
+                    "gpt-3", "gpt-3.5", "gpt-4", "gpt4all", "gpt-neox", "gpt-j", "koala",
+                    "llama", "mpt", "oasst-pythia", "opt", "palm", "palm-coder",
+                    "replit-code-v1", "stablelm-base-alpha", "stablelm-tuned-alpha",
+                    "starcoder-base", "starcoder", "vicuna" "llama-2"
+                ]
+        keywords = [f" {keyword} " for keyword in keywords] + [f" {keyword}." for keyword in keywords]# + [f" {keyword}," for keyword in keywords]
+        arxiv_dump_metadata = load_or_parse_file(
+            path, parse_arxiv_dump, [relevant_category, min_year, data_root, keywords]
         )
+        breakpoint()
         path = f"{data_root}/llm/arxiv-meta-llm.json"
         metadata = load_or_parse_file(path, get_llm_metadata, [data_root,])
-
+        metadata = {**metadata, **arxiv_dump_metadata}
 
     else:
         raise ValueError("invalid category")

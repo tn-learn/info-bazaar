@@ -181,19 +181,20 @@ def build_authors_and_institutions(
     for arxiv_id in dataset:
         data = dataset[arxiv_id]["metadata"]
         for authorship in data["authorships"]:
-            for institution in authorship["institutions"]:
-                if institution is not None and institution["id"] not in institutions:
-                    institution["name"] = institution["display_name"]
-                    del institution["display_name"]
-                    institutions[institution["id"]] = dataclass_from_dict(
-                        Institution, institution
-                    )
-            author = authorship["author"]
-            author["name"] = author["display_name"]
-            del author["display_name"]
-            author = dataclass_from_dict(Author, author)
-            if author not in authors:
-                authors[author.id] = author
+            if authorship.get("author_position") == "first":
+                for institution in authorship["institutions"]:
+                    if institution is not None and institution["id"] not in institutions:
+                        institution["name"] = institution["display_name"]
+                        del institution["display_name"]
+                        institutions[institution["id"]] = dataclass_from_dict(
+                            Institution, institution
+                        )
+                author = authorship["author"]
+                author["name"] = author["display_name"]
+                del author["display_name"]
+                author = dataclass_from_dict(Author, author)
+                if author not in authors:
+                    authors[author.id] = author
 
     # Assign blocks to institutions and authors
     for arxiv_id in dataset:
@@ -202,7 +203,7 @@ def build_authors_and_institutions(
             for authorship in dataset[arxiv_id]["metadata"]["authorships"]:
                 if authorship.get("author_position") == "first":
                     institution = authorship.get("institutions", [])
-                    if not institution:
+                    if not institution or institution[0] is None:
                         continue
                     institutions[institution[0]["id"]].public_blocks[
                         block.block_id
