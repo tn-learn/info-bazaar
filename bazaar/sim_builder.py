@@ -134,8 +134,8 @@ def build_authors_and_institutions(
         data = dataset[arxiv_id]["metadata"]
         for authorship in data["authorships"]:
             if authorship.get("author_position") == "first":
-                paper_prices[arxiv_id].append(author['author'].get('cited_by_count', 0) / (
-                        author['author'].get('works_count', 1) + 1))
+                paper_prices[arxiv_id] = (authorship['author'].get('cited_by_count', 0) / (
+                        authorship['author'].get('works_count', 1) + 1))
 
                 for institution in authorship["institutions"]:
                     if institution is not None and institution["id"] not in institutions:
