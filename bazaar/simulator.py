@@ -233,7 +233,9 @@ class BuyerAgent(BazaarAgent):
         self._quote_inbox: List[Quote] = []
         self._accepted_quotes: List[Quote] = []
         self._rejected_quotes: List[Quote] = []
-        self._query_manager: QueryManager = QueryManager()
+        self._query_manager: QueryManager = QueryManager(
+            answer_synthesis_model_name=self.get_llm_name(answer_synthesis_model_name)
+        )
         # Publics
         self.quote_review_top_k = quote_review_top_k
         self.quote_review_use_block_metadata = quote_review_use_block_metadata
@@ -241,9 +243,6 @@ class BuyerAgent(BazaarAgent):
         self.num_quote_gathering_steps = num_quote_gathering_steps
         self.use_reranker = use_reranker
         self.quote_selection_model_name = self.get_llm_name(quote_selection_model_name)
-        self.answer_synthesis_model_name = self.get_llm_name(
-            answer_synthesis_model_name
-        )
         self.reranking_model_name = self.get_reranker_name(reranking_model_name)
 
     def prepare(self):
@@ -351,11 +350,10 @@ class BuyerAgent(BazaarAgent):
 
     def enqueue_follow_up_queries(self):
         follow_up_queries = self._query_manager.generate_follow_up_queries(
-            self._accepted_quotes
+            self._accepted_quotes, commit=True
         )
-        for follow_up_query, parent_query in follow_up_queries:
+        for follow_up_query, _ in follow_up_queries:
             self._query_queue.append(follow_up_query)
-            self._query_manager.add_query(follow_up_query, parent_query)
 
     def finalize_step(self):
         """
