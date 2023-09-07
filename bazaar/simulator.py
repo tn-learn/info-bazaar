@@ -234,7 +234,8 @@ class BuyerAgent(BazaarAgent):
         self._accepted_quotes: List[Quote] = []
         self._rejected_quotes: List[Quote] = []
         self._query_manager: QueryManager = QueryManager(
-            answer_synthesis_model_name=self.get_llm_name(answer_synthesis_model_name)
+            agent=self,
+            answer_synthesis_model_name=self.get_llm_name(answer_synthesis_model_name),
         )
         # Publics
         self.quote_review_top_k = quote_review_top_k

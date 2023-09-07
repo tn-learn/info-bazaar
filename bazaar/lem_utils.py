@@ -1528,14 +1528,16 @@ def get_open_book_answer(
 
 def select_follow_up_question(
     question: str, current_answer: str, model_name: Optional[str] = None
-) -> Optional[str]:
+) -> List[str]:
     program_string = """
     {{#system~}}
     Bobby and Michael are employed at a company that specializes in acquiring and verifying information.
 
-    Their supervisors have given them a question and an answer that their peers have produced. Their task is to decide if the provided answer adequately answers the question. If it doesn't, they must come up with a follow up question that would enrich the provided answer. 
+    Their supervisors have given them a question and an answer that their peers have produced. Their task is to decide if the provided answer adequately answers the question. If it doesn't, they must come up with follow up questions that would enrich the provided answer. The follow up questions must be to the-point.   
+    
+    Bobby wants the answer to be as comprehensive as possible, but Michael is mindful about the time cost of asking follow up questions, because it would delay the delivery of an answer to the client.
 
-    Note that the follow up question should only be asked if there is a need for concrete information that is missing from the provided answer or if the provided answer is missing crucial details.
+    Note that follow up questions should only be asked if there is a need for concrete information that is missing from the provided answer or if the provided answer is missing crucial details. In other words, Bobby and Michael are not necessarily required to ask a follow up question.
     {{~/system}}
 
     {{#user~}}
@@ -1543,14 +1545,16 @@ def select_follow_up_question(
 
     The currently available answer is: {{current_answer}}
 
-    Bobby and Michael will now argue about whether they should ask a follow-up question taking in to account the provided question and the currently available answer. 
+    Bobby and Michael will now argue about whether they should ask follow-up questions taking in to account the provided question and the currently available answer. 
 
-    If they decide to ask a follow up question, it should be printed as:
+    If they decide to ask follow up questions, they should be printed as:
     FOLLOW-UP QUESTION: <follow up question goes here>
+    FOLLOW-UP QUESTION: <follow up question goes here>
+    ... and so on.
     {{~/user}}
 
     {{#assistant~}}
-    {{gen "answer" temperature=0.0 max_tokens=512}}
+    {{gen "answer" temperature=0.0 max_tokens=1024}}
     {{~/assistant}}
     """
     program_string = clean_program_string(program_string)
@@ -1565,13 +1569,13 @@ def select_follow_up_question(
     answer = program_output["answer"]
 
     # Parse the answer
-    def extract_follow_up(text: str) -> Optional[str]:
-        # Define the pattern
-        pattern = r"FOLLOW-UP QUESTION: (.*?)(\n|$)"
-        # Search for the pattern
-        match = re.search(pattern, text)
-        # If found, return the matched question, else return None
-        return match.group(1).strip() if match else None
+    def extract_follow_up(text: str) -> List[str]:
+        lines = text.splitlines()
+        follow_ups = []
+        for line in lines:
+            if line.lower().startswith("follow-up question:"):
+                follow_ups.append(line[len("follow-up question:") :].strip())
+        return follow_ups
 
     follow_up = extract_follow_up(answer)
     return follow_up
