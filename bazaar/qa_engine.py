@@ -1,11 +1,14 @@
 from dataclasses import dataclass
 from enum import auto, IntEnum
-from typing import Optional, List, Tuple, Union
+from typing import TYPE_CHECKING, Optional, List, Tuple, Union, Any, Dict
 
 from networkx import DiGraph
 
-from bazaar.lem_utils import synthesize_answer
+from bazaar.lem_utils import synthesize_answer, select_follow_up_question
 from bazaar.schema import Query, Answer, Quote
+
+if TYPE_CHECKING:
+    from bazaar.simulator import BuyerAgent
 
 
 class AnswerStatus(IntEnum):
@@ -40,7 +43,10 @@ class QANode:
 
 
 class QueryManager:
-    def __init__(self, answer_synthesis_model_name: str):
+    def __init__(self, agent: "BuyerAgent", answer_synthesis_model_name: str):
+        # Private
+        self._agent = agent
+        # Public
         self.answer_synthesis_model_name = answer_synthesis_model_name
         self.question_graph = DiGraph()
 
@@ -89,7 +95,7 @@ class QueryManager:
             node: QANode
             # If node has no answer, we try to generate one.
             if node.status == AnswerStatus.UNANSWERED:
-                self.synthesize_answer_for_query(node, quotes, bind=True)
+                self.synthesize_answer_for_query(node, quotes, commit=True)
             # Check if node has an answer. If it does, then we can generate a
             # follow-up question.
             if node.status == AnswerStatus.ANSWERED:
@@ -102,7 +108,10 @@ class QueryManager:
         return follow_up_queries
 
     def synthesize_answer_for_query(
-        self, node_or_query: Union[QANode, Query], quotes: List[Quote], bind: bool = True
+        self,
+        node_or_query: Union[QANode, Query],
+        quotes: List[Quote],
+        commit: bool = True,
     ) -> Optional[Answer]:
 
         if isinstance(node_or_query, QANode):
@@ -133,7 +142,7 @@ class QueryManager:
                     score for quote in quotes for score in quote.relevance_scores
                 ],
             )
-            if bind:
+            if commit:
                 node.bind_answer(answer)
         else:
             answer = None
@@ -163,7 +172,7 @@ class QueryManager:
 
             # If successor is unanswered, try synthesizing an answer
             if succ.status == AnswerStatus.UNANSWERED:
-                answer = self.synthesize_answer_for_query(succ, quotes, bind=True)
+                answer = self.synthesize_answer_for_query(succ, quotes, commit=True)
                 if answer is not None:
                     valid_successors.append(succ)
             elif succ.status in [AnswerStatus.ANSWERED, AnswerStatus.REFINED]:
@@ -192,8 +201,37 @@ class QueryManager:
         return answer
 
     def synthesize_follow_up_queries(self, node: QANode) -> List[Query]:
-        # TODO: Implement this
-        pass
+        # Select the follow-up questions
+        follow_up_questions = select_follow_up_question(
+            question=node.query.text,
+            current_answer=node.answer.text,
+            model_name="gpt-3.5-turbo",
+        )
+
+        # Get the root query from which we inherit some query properties
+        root_node = [
+            node
+            for node in self.question_graph.nodes
+            if self.question_graph.in_degree(node) == 0
+        ]
+        assert len(root_node) == 1, "Only a single root node supported for now."
+        root_query = root_node[0].query
+
+        # Make a query out of the follow up questions
+        follow_up_queries = []
+        for follow_up_question in follow_up_questions:
+            query = Query(
+                text=follow_up_question,
+                max_budget=self._agent.credit,
+                created_at_time=self._agent.now,
+                issued_by=self._agent,
+                required_by_time=root_query.required_by_time,
+                processor_model=root_query.processor_model,
+                embedding_model=root_query.embedding_model,
+            )
+            follow_up_queries.append(query)
+
+        return follow_up_queries
 
     def apply_refinement(
         self, node: QANode, successors: List[QANode]
@@ -206,5 +244,9 @@ class QueryManager:
         if len(successors) == 0:
             return None
         # There's some refinement to do
+        # TODO: Implement this
+        pass
+
+    def evaluation_summary(self) -> Dict[str, Any]:
         # TODO: Implement this
         pass
