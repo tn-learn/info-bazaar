@@ -194,9 +194,11 @@ def load_or_scrape_openalex_works(
                     print(result.text)
                     continue
                 for oa_work in result:
-                    arxiv_id = oa_work["doi"].split("arxiv.")[1]
-                    oa_works[arxiv_id] = oa_work
-        breakpoint()
+                    try:
+                        arxiv_id = oa_work["doi"].split("arxiv.")[1]
+                        oa_works[arxiv_id] = oa_work
+                    except:
+                        breakpoint()
 
         with open(pickle_path, "wb") as f:
             pickle.dump(oa_works, f)
