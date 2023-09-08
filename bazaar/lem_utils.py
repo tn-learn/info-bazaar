@@ -1535,7 +1535,7 @@ def select_follow_up_question(
 
     Their supervisors have given them a question and an answer that their peers have produced. Their task is to decide if the provided answer adequately answers the question. If it doesn't, they must come up with follow up questions that would enrich the provided answer. The follow up questions must be to the-point.   
     
-    Bobby wants the answer to be as comprehensive as possible, but Michael is mindful about the time cost of asking follow up questions, because it would delay the delivery of an answer to the client.
+    Bobby wants the answer to cover enough ground to satisfy the client. Michael is mindful about the risk of confusing the client by providing information that is not highly relevant to the question. Michael is also worried about the time it would take to answer the follow up questions, which would delay the delivery of the answer to the client.  
 
     Note that follow up questions should only be asked if there is a need for concrete information that is missing from the provided answer or if the provided answer is missing crucial details. In other words, Bobby and Michael are not necessarily required to ask a follow up question.
     {{~/system}}
@@ -1579,6 +1579,79 @@ def select_follow_up_question(
 
     follow_up = extract_follow_up(answer)
     return follow_up
+
+
+def refine_answer(
+    question: str,
+    original_answer: str,
+    follow_up_questions: List[str],
+    answers_to_follow_up_questions: List[str],
+    model_name: Optional[str] = None,
+) -> str:
+    assert len(follow_up_questions) == len(answers_to_follow_up_questions)
+    assert len(follow_up_questions) > 0
+
+    follow_up_qa = [
+        dict(question=q, answer=a)
+        for q, a in zip(follow_up_questions, answers_to_follow_up_questions)
+    ]
+
+    program_string = """
+    {{#system~}}
+    You are an Answer Refinement AI. You will be given a question, and an initial answer. The initial answer was not clear in some aspect, so follow up questions were asked to clarify. 
+    
+    Your task is to refine the initial answer by incorporating the extra insights obtained from the answers to the follow up questions. But be mindful to only include the insights that make the original answer better, and ignore the rest. The refined answer should answer the original question with simplicity and precision. 
+    {{~/system}}
+
+    {{#user~}}
+    The original question is: {{question}}
+    
+    The initial answer is: {{original_answer}}
+    
+    Here are the follow up questions that were asked, and the corresponding answers.
+    ---
+    {{#each follow_up_questions~}}
+    Question {{add @index 1}}: {{this.question}}
+    Answer: {{this.answer}}
+    {{~/each}}
+    --- 
+    
+    Given these follow up questions, your task is to refine the initial answer. Begin by thinking out loud about what you need to do. Then print "REFINED ANSWER: <your answer>"
+    
+    Let's go. 
+    {{~/user}}
+    
+    {{#assistant~}}
+    {{gen "answer" temperature=0.0 max_tokens=1024}}
+    {{~/assistant}}
+    """
+    program_string = clean_program_string(program_string)
+    # Run the program
+    program_output = ask_for_guidance(
+        program_string=program_string,
+        llm=get_llm(model_name=model_name),
+        silent=True,
+        inputs=dict(
+            question=question,
+            original_answer=original_answer,
+            follow_up_questions=follow_up_qa,
+        ),
+        output_keys=["answer"],
+    )
+    answer = program_output["answer"]
+
+    # Parse the answer
+    def extract_answer(text):
+        pattern = r"(?i)REFINED ANSWER:([\s\S]*?)(?=\n\n[^ \t\n\r\f\v]*$|$)"
+        match = re.search(pattern, text)
+        if match:
+            # Strip the leading whitespace and return the extracted text.
+            return match.group(1).strip()
+        else:
+            return None
+
+    answer = extract_answer(answer)
+    return answer
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)

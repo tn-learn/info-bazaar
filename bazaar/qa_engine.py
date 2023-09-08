@@ -2,9 +2,10 @@ from dataclasses import dataclass
 from enum import auto, IntEnum
 from typing import TYPE_CHECKING, Optional, List, Tuple, Union, Any, Dict
 
+import networkx as nx
 from networkx import DiGraph
 
-from bazaar.lem_utils import synthesize_answer, select_follow_up_question
+from bazaar.lem_utils import synthesize_answer, select_follow_up_question, refine_answer
 from bazaar.schema import Query, Answer, Quote
 
 if TYPE_CHECKING:
@@ -78,6 +79,11 @@ class QueryManager:
             # We mark all upstream queries in the graph as pending follow up
             node = self.find_node(parent_query)
             self.mark_all_predecessors_with_status(node, AnswerStatus.PENDING_FOLLOW_UP)
+            # Make sure the graph is acyclic
+            assert nx.is_directed_acyclic_graph(self.question_graph), (
+                f"Graph is not acyclic after adding query {query}. "
+                f"Parent query: {parent_query}."
+            )
         return self
 
     def generate_follow_up_queries(
@@ -181,11 +187,7 @@ class QueryManager:
 
         # Now, use the apply_refinement function to update the answer of
         # the current node
-        refined_answer = self.apply_refinement(node, valid_successors)
-
-        if refined_answer:
-            node.bind_answer(refined_answer).mark_as_refined()
-
+        refined_answer = self.apply_refinement(node, valid_successors, commit=True)
         return refined_answer
 
     def answer_root(self, quotes: List[Quote]) -> Optional[Answer]:
@@ -234,7 +236,10 @@ class QueryManager:
         return follow_up_queries
 
     def apply_refinement(
-        self, node: QANode, successors: List[QANode]
+        self,
+        node: QANode,
+        successors: List[QANode],
+        commit: bool = True,
     ) -> Optional[Answer]:
         successors = [
             node
@@ -244,8 +249,27 @@ class QueryManager:
         if len(successors) == 0:
             return None
         # There's some refinement to do
-        # TODO: Implement this
-        pass
+        refined_answer = refine_answer(
+            question=node.query.text,
+            original_answer=node.answer.text,
+            follow_up_questions=[succ.query.text for succ in successors],
+            answers_to_follow_up_questions=[succ.answer.text for succ in successors],
+            model_name=self.answer_synthesis_model_name,
+        )
+        # Construct a new answer object
+        answer = Answer(
+            success=True,
+            text=refined_answer,
+            blocks=[block for succ in successors for block in succ.answer.blocks],
+            relevance_scores=[
+                score for succ in successors for score in succ.answer.relevance_scores
+            ],
+        )
+
+        if answer is not None and commit:
+            node.bind_answer(answer).mark_as_refined()
+
+        return answer
 
     def evaluation_summary(self) -> Dict[str, Any]:
         # TODO: Implement this
