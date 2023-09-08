@@ -17,11 +17,6 @@ from bazaar.schema import (
 @dataclass
 class SimulationConfig:
     rng_seed: int
-    # Block price statistics
-    author_block_price_mean: float
-    author_block_price_sigma: float
-    institution_block_price_mean: float
-    institution_block_price_sigma: float
     # Fraction of blocks to keep
     author_fraction_of_private_blocks: float
     institution_num_blocks: int
@@ -111,20 +106,6 @@ def build_buyers(
     return buyers
 
 
-def sample_block_prices(mean: float, sigma: float, blocks: List["Block"]):
-    return np.random.lognormal(mean=mean, sigma=sigma, size=len(blocks))
-
-
-def allocate_block_prices(entity, mean, sigma, rng):
-    # Sample block prices from a log normal distribution
-    block_prices = sample_block_prices(
-        mean=mean,
-        sigma=sigma,
-        blocks=entity.public_blocks.values(),
-    )
-    for idx, block_id in enumerate(entity.public_blocks.keys()):
-        entity.block_prices[block_id] = block_prices[idx]
-    return entity
 
 
 def shuffle_blocks(entity, fraction_to_move, rng):
@@ -141,11 +122,55 @@ def shuffle_blocks(entity, fraction_to_move, rng):
     return entity
 
 
-def distribute_blocks(authors, institutions, config, rng):
+def build_authors_and_institutions(
+    dataset: dict, config: SimulationConfig, rng: np.random.RandomState
+) -> Tuple[List[Author], List[Institution]]:
+    # Build authors and institutions
+    authors = {}
+    institutions = {}
+    paper_prices = {}
+
+    for arxiv_id in dataset:
+        data = dataset[arxiv_id]["metadata"]
+        for authorship in data["authorships"]:
+            if authorship.get("author_position") == "first":
+                paper_prices[arxiv_id] = (authorship['author'].get('cited_by_count', 0) / (
+                        authorship['author'].get('works_count', 1) + 1))
+
+                for institution in authorship["institutions"]:
+                    if institution is not None and institution["id"] not in institutions:
+                        institution["name"] = institution["display_name"]
+                        del institution["display_name"]
+                        institutions[institution["id"]] = dataclass_from_dict(
+                            Institution, institution
+                        )
+                author = authorship["author"]
+                author["name"] = author["display_name"]
+                del author["display_name"]
+                author = dataclass_from_dict(Author, author)
+                if author not in authors:
+                    authors[author.id] = author
+
+    # Assign blocks to institutions and authors
+    for arxiv_id in dataset:
+        for block in dataset[arxiv_id]["blocks"]:
+            block = dataclass_from_dict(Block, block)
+            for authorship in dataset[arxiv_id]["metadata"]["authorships"]:
+                if authorship.get("author_position") == "first":
+                    institution = authorship.get("institutions", [])
+                    if not institution or institution[0] is None:
+                        continue
+                    institutions[institution[0]["id"]].public_blocks[
+                        block.block_id
+                    ] = block
+                    institutions[institution[0]["id"]].block_prices[block.block_id] = paper_prices[arxiv_id]
+                    authors[authorship["author"]["id"]].public_blocks[
+                        block.block_id
+                    ] = block
+                    authors[authorship["author"]["id"]].block_prices[block.block_id] = paper_prices[arxiv_id]
+
+    # Distribute blocks in authors and institutions
     for author in authors.values():
-        author = allocate_block_prices(
-            author, config.author_block_price_mean, config.author_block_price_sigma, rng
-        )
         author = shuffle_blocks(author, config.author_fraction_of_private_blocks, rng)
         # Sample response time from a log normal distribution
         author.mean_response_time = rng.lognormal(
@@ -155,12 +180,6 @@ def distribute_blocks(authors, institutions, config, rng):
         )
 
     for institution in institutions.values():
-        institution = allocate_block_prices(
-            institution,
-            config.author_block_price_mean,
-            config.author_block_price_sigma,
-            rng,
-        )
         institution = shuffle_blocks(
             institution, config.author_fraction_of_private_blocks, rng
         )
@@ -169,50 +188,5 @@ def distribute_blocks(authors, institutions, config, rng):
             sigma=config.author_response_time_sigma,
             size=1,
         )
-    return authors, institutions
-
-
-def build_authors_and_institutions(
-    dataset: dict, config: SimulationConfig, rng: np.random.RandomState
-) -> Tuple[List[Author], List[Institution]]:
-    # Build authors and institutions
-    authors = {}
-    institutions = {}
-
-    for arxiv_id in dataset:
-        data = dataset[arxiv_id]["metadata"]
-        for authorship in data["authorships"]:
-            for institution in authorship["institutions"]:
-                if institution["id"] not in institutions:
-                    institution["name"] = institution["display_name"]
-                    del institution["display_name"]
-                    institutions[institution["id"]] = dataclass_from_dict(
-                        Institution, institution
-                    )
-            author = authorship["author"]
-            author["name"] = author["display_name"]
-            del author["display_name"]
-            author = dataclass_from_dict(Author, author)
-            if author not in authors:
-                authors[author.id] = author
-
-    # Assign blocks to institutions and authors
-    for arxiv_id in dataset:
-        for block in dataset[arxiv_id]["blocks"]:
-            block = dataclass_from_dict(Block, block)
-            for authorship in dataset[arxiv_id]["metadata"]["authorships"]:
-                if authorship.get("author_position") == "first":
-                    institution = authorship.get("institutions", [])
-                    if not institution:
-                        continue
-                    institutions[institution[0]["id"]].public_blocks[
-                        block.block_id
-                    ] = block
-                    authors[authorship["author"]["id"]].public_blocks[
-                        block.block_id
-                    ] = block
-
-    # Distribute blocks in authors and institutions
-    authors, institutions = distribute_blocks(authors, institutions, config, rng)
     # Done
     return list(authors.values()), list(institutions.values())

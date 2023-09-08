@@ -438,7 +438,7 @@ class Author(Principal):
             **super().evaluation_summary(),
             id=self.id,
             last_known_institution=(
-                self.last_known_institution.id
+                self.last_known_institution.get("id")
                 if self.last_known_institution is not None
                 else None
             ),

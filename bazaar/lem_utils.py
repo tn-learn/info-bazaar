@@ -354,7 +354,11 @@ def get_llm(model_name: Optional[str] = None, **extra_kwargs):
         model_name = default_llm_name()
     name_to_cls_kwargs_mapping = {
         "Llama-2-70b-chat-hf": (LLaMa2, {"size": "70b"}),
+        "Llama-2-13b-chat-hf": (LLaMa2, {"size": "13b"}),
+        "Llama-2-7b-chat-hf": (LLaMa2, {"size": "7b"}),
         "RemoteLlama-2-70b-chat-hf": (RemoteLlaMa2, {"size": "70b"}),
+        "RemoteLlama-2-13b-chat-hf": (RemoteLlaMa2, {"size": "13b"}),
+        "RemoteLlama-2-7b-chat-hf": (RemoteLlaMa2, {"size": "7b"}),
     }
     if model_name in OAI_MODELS:
         llm = guidance.llms.OpenAI(model_name, **extra_kwargs)

@@ -151,21 +151,6 @@ class Evaluator:
                                 block_index=block_index,
                             )
                         )
-        
-                        
-        for buyer_agent_idx, buyer_agent_summary in enumerate(self.evaluation_summary["buyer_agents"]):
-            block_summary = buyer_agent_summary["principal"]["query"]["gold_block"]
-            if block_summary["block_id"] == block_id:
-                self._block_index[block_id].append(
-                    BlockWareSpec(
-                        block_id=block_id,
-                        vendor_index=buyer_agent_idx,
-                        vendor_name=buyer_agent_summary["principal"]["name"],
-                        block_type="gold",
-                        block_index=block_index,
-                    )
-                )
-
         if block_id not in self._block_index:
             raise ValueError(f"Block {block_id} not found.")
         return self._block_index[block_id]
@@ -232,6 +217,7 @@ class Evaluator:
             try:
                 buyer_agent_summary["principal"]["answer"]["success"]
             except Exception:
+                breakpoint()
                 continue
 
             if buyer_agent_summary["principal"]["answer"]["success"]:

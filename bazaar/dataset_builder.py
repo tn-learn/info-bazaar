@@ -23,7 +23,7 @@ import tiktoken
 from bazaar.schema import Block
 
 
-def chunks(data: List[Dict], size: int = 50):
+def chunks(data: List[Dict], size: int = 10):
     it = iter(data)
     for i in range(0, len(data), size):
         yield {k: data[k] for k in islice(it, size)}
@@ -44,8 +44,11 @@ def load_or_parse_file(path: str, parse_func: Callable, args: tuple):
 
 # PARSE ARXIV METADATA SNAPSHOT FOR CATEGORY
 # -----------------------------------------------------------
-def parse_arxiv_dump(relevant_category: str, min_year: int, data_root: str):
+def parse_arxiv_dump(relevant_category: str, min_year: int, data_root: str, keywords: List[str] = None):
     print("Parsing arxiv papers.")
+    if keywords is None:
+        keywords = []
+
     selected_metadata = {}
     with open(f"{data_root}/arxiv-metadata-oai-snapshot.json", "r") as f:
         for line in tqdm(f.readlines()):
@@ -56,7 +59,8 @@ def parse_arxiv_dump(relevant_category: str, min_year: int, data_root: str):
             year = parsed_date.year
             if year > min_year:
                 if relevant_category in metadata["categories"]:
-                    selected_metadata[metadata["id"]] = metadata
+                    if any(keyword in metadata["title"].lower() for keyword in keywords) or len(keywords) == 0 or any(keyword in metadata["abstract"].lower() for keyword in keywords):
+                        selected_metadata[metadata["id"]] = metadata
     return selected_metadata
 
 
@@ -67,25 +71,17 @@ def get_llm_metadata(data_root: str):
     arxiv_links = re.findall(r"https://arxiv\.org/pdf/\d+\.\d+\.pdf", text)
     arxiv_abs = re.findall(r"https://arxiv\.org/abs/\d+\.\d+", text)
     arxiv_links += [f"{link.replace('abs', 'pdf')}.pdf" for link in arxiv_abs]
-
+    breakpoint()
     def fetch_arxiv_details(arxiv_link):
         arxiv_id = arxiv_link.split("/")[-1].split(".pdf")[0]
-        paper_path = f"{data_root}/llm/papers/{arxiv_link.split('/')[-1]}"
 
         url = f"http://export.arxiv.org/api/query?id_list={arxiv_id}"
         feed = feedparser.parse(url)
         entry = feed.entries[0]
-        from urllib.parse import quote_plus
-
-        encoded_title = quote_plus(entry.title)
-        url = f"https://api.crossref.org/works?query.title={encoded_title}"
-        x = requests.get(url)
-        try:
-            doi = x.json()["message"]["items"][0]["DOI"]
-        except Exception as e:
-            doi = None
+        arxiv_id = entry.id.split("/abs/")[-1]
+        doi = f"https://doi.org/10.48550/arXiv.{arxiv_id[:-2]}"
         details = {
-            "id": entry.id.split("/abs/")[-1],
+            "id": arxiv_id,
             "submitter": getattr(entry, "author", None),
             "authors": ", ".join(author.name for author in entry.authors),
             "title": entry.title,
@@ -108,17 +104,7 @@ def get_llm_metadata(data_root: str):
                 for author in entry.authors
             ],
         }
-
-        if not os.path.exists(paper_path):
-            try:
-                r = requests.get(arxiv_link, allow_redirects=True)
-                r.raise_for_status()  # Will raise an HTTPError if the HTTP request returned an unsuccessful status code
-                os.makedirs(f"{data_root}/llm/papers/", exist_ok=True)
-                open(paper_path, "wb").write(r.content)
-            except requests.exceptions.RequestException as e:
-                # Handle exception, e.g., log the error, retry, or ignore
-                print(f"An error occurred while fetching {arxiv_link}: {str(e)}")
-
+        time.sleep(0.1)
         return arxiv_id, details
 
     metadata = {}
@@ -147,8 +133,25 @@ def load_or_parse_arxiv_data(category: str, data_root: str):
             path, parse_arxiv_dump, [relevant_category, min_year, data_root]
         )
     elif category == "llm":
+        min_year = 2020
+        relevant_category = "cs.LG"
+        path = f"{data_root}/machine-learning/arxiv-llm-2020-2023.json"
+        keywords = ["llm", "chatgpt", "alpaca", "bloom", "cerebras-gpt", "chatglm", "chinchilla", "codex", "codegen",
+                    "codegx", "dolly-v2", "eleuther-pythia", "falcon", "fastchat-t5", "gal",
+                    "gpt-3", "gpt-3.5", "gpt-4", "gpt4all", "gpt-neox", "gpt-j", "koala",
+                    "llama", "mpt", "oasst-pythia", "opt", "palm", "palm-coder",
+                    "replit-code-v1", "stablelm-base-alpha", "stablelm-tuned-alpha",
+                    "starcoder-base", "starcoder", "vicuna" "llama-2"
+                ]
+        keywords = [f" {keyword} " for keyword in keywords] + [f" {keyword}." for keyword in keywords]# + [f" {keyword}," for keyword in keywords]
+        arxiv_dump_metadata = load_or_parse_file(
+            path, parse_arxiv_dump, [relevant_category, min_year, data_root, keywords]
+        )
+        breakpoint()
         path = f"{data_root}/llm/arxiv-meta-llm.json"
         metadata = load_or_parse_file(path, get_llm_metadata, [data_root,])
+        metadata = {**metadata, **arxiv_dump_metadata}
+
     else:
         raise ValueError("invalid category")
     return metadata
@@ -160,7 +163,7 @@ def fetch_works(chunk):
     dois = "|".join(
         metadata.get("doi") for metadata in chunk.values() if metadata.get("doi")
     )
-    time.sleep(0.25)
+    time.sleep(0.50)
     result = requests.get(
         f"https://api.openalex.org/works?mailto=weissmar@mila.quebec&filter=doi:{dois}"
     )
@@ -191,11 +194,11 @@ def load_or_scrape_openalex_works(
                     print(result.text)
                     continue
                 for oa_work in result:
-                    for arxiv_id, data in metadata.items():
-                        if data["doi"] == oa_work["doi"].replace(
-                            "https://doi.org/", ""
-                        ):
-                            oa_works[arxiv_id] = oa_work
+                    try:
+                        arxiv_id = oa_work["doi"].split("arxiv.")[1]
+                        oa_works[arxiv_id] = oa_work
+                    except:
+                        breakpoint()
 
         with open(pickle_path, "wb") as f:
             pickle.dump(oa_works, f)
@@ -205,7 +208,7 @@ def load_or_scrape_openalex_works(
 
 # DOWNLOAD ARXIV PAPERS
 # -----------------------------------------------------------
-def download_pdf(arxiv_id: str, category: str, data_root: str) -> None:
+def download_arxiv_source(arxiv_id: str, category: str, data_root: str) -> None:
     url = f"https://arxiv.org/e-print/{arxiv_id}"
     response = requests.get(url, stream=True)
     time.sleep(0.025)
@@ -218,7 +221,7 @@ def download_pdf(arxiv_id: str, category: str, data_root: str) -> None:
         print(f"Error downloading file, status code: {response.status_code}")
 
 
-def download_arxiv_papers(category: str, oa_works: dict, data_root: str):
+def download_arxiv_sources(category: str, oa_works: dict, data_root: str):
     papers_dir = f"{data_root}/{category}/papers"
     if os.path.isdir(papers_dir):
         print("We already have the Arxiv paper source files.")
@@ -229,7 +232,7 @@ def download_arxiv_papers(category: str, oa_works: dict, data_root: str):
             futures = []
             for arxiv_id, oa_work in tqdm(oa_works.items()):
                 futures.append(
-                    executor.submit(download_pdf, arxiv_id, category, data_root)
+                    executor.submit(download_arxiv_source, arxiv_id, category, data_root)
                 )
             for future in tqdm(as_completed(futures), total=len(futures)):
                 pass

@@ -12,6 +12,8 @@ buyer_agent_kwargs:
   quote_review_use_block_metadata: true
   num_quote_gathering_steps: 2
   use_reranker: true
+  quote_selection_model_name: "RemoteLlama-2-13b-chat-hf"
+  answer_synthesis_model_name: "RemoteLlama-2-13b-chat-hf"
 vendor_agent_kwargs:
   retriever_config:
     filter_with_bm25: true
@@ -30,5 +32,5 @@ query_creation_time_start: 0
 query_creation_time_end: 168
 bulletin_board_retrieval_top_k: 1
 bulletin_board_retrieval_score_threshold: 0.7
-llm_name: "RemoteLlama-2-70b-chat-hf" 
+llm_name: "RemoteLlama-2-13b-chat-hf" 
 embedding_name: "bge-large-en"

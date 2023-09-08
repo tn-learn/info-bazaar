@@ -150,7 +150,6 @@ def main(args: Optional[argparse.Namespace] = None):
                 print(f"[Ref {block_idx + 1}] ", block.document_title)
         except Exception:
             print("No answer found.")
-
     dump_dict(
         bazaar.evaluation_summary(),
         str(Path(args.output_path) / "bazaar_summary.json"),

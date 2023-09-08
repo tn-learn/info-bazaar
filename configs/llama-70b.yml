@@ -12,6 +12,8 @@ buyer_agent_kwargs:
   quote_review_use_block_metadata: true
   num_quote_gathering_steps: 2
   use_reranker: true
+  quote_selection_model_name: "RemoteLlama-2-70b-chat-hf"
+  answer_synthesis_model_name: "RemoteLlama-2-70b-chat-hf"
 vendor_agent_kwargs:
   retriever_config:
     filter_with_bm25: true
