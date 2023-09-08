@@ -1,8 +1,4 @@
 rng_seed: 0
-author_block_price_mean: 5
-author_block_price_sigma: 3
-institution_block_price_mean: 5
-institution_block_price_sigma: 3
 author_fraction_of_private_blocks: 0.5
 institution_num_blocks: 10
 author_response_time_mean: 5
@@ -34,5 +30,5 @@ query_creation_time_start: 0
 query_creation_time_end: 168
 bulletin_board_retrieval_top_k: 1
 bulletin_board_retrieval_score_threshold: 0.7
-llm_name: "gpt-3.5-turbo-16k"
+llm_name: "RemoteLlama-2-70b-chat-hf" #"gpt-3.5-turbo-16k"
 embedding_name: "bge-large-en"
