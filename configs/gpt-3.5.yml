@@ -12,6 +12,9 @@ buyer_agent_kwargs:
   quote_review_use_block_metadata: true
   num_quote_gathering_steps: 2
   use_reranker: true
+  quote_selection_model_name: "gpt-3.5-turbo-16k"
+  answer_synthesis_model_name: "gpt-3.5-turbo-16k"
+
 vendor_agent_kwargs:
   retriever_config:
     filter_with_bm25: true
