@@ -30,5 +30,5 @@ query_creation_time_start: 0
 query_creation_time_end: 168
 bulletin_board_retrieval_top_k: 1
 bulletin_board_retrieval_score_threshold: 0.7
-llm_name: "RemoteLlama-2-70b-chat-hf" 
+llm_name: "gpt-3.5-turbo-16k"
 embedding_name: "bge-large-en"
