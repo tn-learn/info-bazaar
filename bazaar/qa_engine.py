@@ -1,23 +1,28 @@
 from dataclasses import dataclass
-from enum import auto, IntEnum
+from enum import auto, Enum
 from typing import TYPE_CHECKING, Optional, List, Tuple, Union, Any, Dict
 
 import networkx as nx
 from networkx import DiGraph
 
-from bazaar.lem_utils import synthesize_answer, select_follow_up_question, refine_answer
+from bazaar.lem_utils import (
+    synthesize_answer,
+    select_follow_up_question,
+    refine_answer,
+    get_closed_book_answer,
+)
 from bazaar.schema import Query, Answer, Quote
 
 if TYPE_CHECKING:
     from bazaar.simulator import BuyerAgent
 
 
-class AnswerStatus(IntEnum):
-    FAILED = auto()
-    UNANSWERED = auto()
-    PENDING_FOLLOW_UP = auto()
-    ANSWERED = auto()
-    REFINED = auto()
+class AnswerStatus(Enum):
+    FAILED = "failed"
+    UNANSWERED = "unanswered"
+    PENDING_FOLLOW_UP = "pending_follow_up"
+    ANSWERED = "answered"
+    REFINED = "refined"
 
 
 @dataclass
@@ -42,13 +47,38 @@ class QANode:
         self.status = AnswerStatus.REFINED
         return self
 
+    def evaluation_summary(self) -> Dict[str, Any]:
+        return dict(
+            query=self.query.evaluation_summary(),
+            answer=self.answer.evaluation_summary(),
+            status=str(self.status),
+        )
+
+    def get_content_prehash(self):
+        return (
+            self.query.get_content_prehash(),
+            self.answer.get_content_prehash(),
+            str(self.status),
+        )
+
+    def __hash__(self):
+        return hash(self.get_content_prehash())
+
 
 class QueryManager:
-    def __init__(self, agent: "BuyerAgent", answer_synthesis_model_name: str):
+    def __init__(
+        self,
+        agent: "BuyerAgent",
+        answer_synthesis_model_name: str,
+        max_query_depth: int = 3,
+        allow_closed_book_answers: bool = False,
+    ):
         # Private
         self._agent = agent
         # Public
         self.answer_synthesis_model_name = answer_synthesis_model_name
+        self.max_query_depth = max_query_depth
+        self.allow_closed_book_answers = allow_closed_book_answers
         self.question_graph = DiGraph()
 
     def find_node(self, query: Query) -> QANode:
@@ -67,18 +97,45 @@ class QueryManager:
 
         return self
 
+    def get_node_depth(self, node: QANode) -> int:
+        # Assumes the root node is the only node with in-degree of 0
+        root_node = [n for n, d in self.question_graph.in_degree() if d == 0][0]
+        lengths = nx.single_source_shortest_path_length(self.question_graph, root_node)
+        return lengths[node]
+
     def add_query(
-        self, query: Query, parent_query: Optional[Query] = None
+        self,
+        query: Query,
+        parent_query: Optional[Query] = None,
+        if_depth_exceeds: str = "raise",
     ) -> "QueryManager":
+        new_node = QANode(query=query)
+
         if parent_query is None:
-            self.question_graph.add_node(QANode(query=query))
+            self.question_graph.add_node(new_node)
         else:
-            self.question_graph.add_edge(
-                QANode(query=parent_query), QANode(query=query)
-            )
+            parent_node = self.find_node(parent_query)
+            potential_depth = self.get_node_depth(parent_node) + 1
+
+            if potential_depth > self.max_query_depth:
+                if if_depth_exceeds == "raise":
+                    raise ValueError(
+                        f"Adding the query {query} would exceed the maximum allowed depth of {self.max_query_depth}."
+                    )
+                elif if_depth_exceeds == "ignore":
+                    return self
+                else:
+                    raise ValueError(
+                        f"Invalid value for if_depth_exceeds: {if_depth_exceeds}"
+                    )
+
+            self.question_graph.add_edge(parent_node, new_node)
+
             # We mark all upstream queries in the graph as pending follow up
-            node = self.find_node(parent_query)
-            self.mark_all_predecessors_with_status(node, AnswerStatus.PENDING_FOLLOW_UP)
+            self.mark_all_predecessors_with_status(
+                parent_node, AnswerStatus.PENDING_FOLLOW_UP
+            )
+
             # Make sure the graph is acyclic
             assert nx.is_directed_acyclic_graph(self.question_graph), (
                 f"Graph is not acyclic after adding query {query}. "
@@ -99,6 +156,10 @@ class QueryManager:
         follow_up_queries = []
         for node in leaf_nodes:
             node: QANode
+            # If the depth of the node exceeds the maximum allowed depth, we
+            # skip it.
+            if self.get_node_depth(node) + 1 > self.max_query_depth:
+                continue
             # If node has no answer, we try to generate one.
             if node.status == AnswerStatus.UNANSWERED:
                 self.synthesize_answer_for_query(node, quotes, commit=True)
@@ -147,6 +208,19 @@ class QueryManager:
                 relevance_scores=[
                     score for quote in quotes for score in quote.relevance_scores
                 ],
+            )
+            if commit:
+                node.bind_answer(answer)
+        elif self.allow_closed_book_answers:
+            answer_text = get_closed_book_answer(
+                question=query.text,
+                model_name=self.answer_synthesis_model_name,
+            )
+            answer = Answer(
+                success=True,
+                text=answer_text,
+                blocks=[],
+                relevance_scores=[],
             )
             if commit:
                 node.bind_answer(answer)
@@ -272,5 +346,12 @@ class QueryManager:
         return answer
 
     def evaluation_summary(self) -> Dict[str, Any]:
-        # TODO: Implement this
-        pass
+        node_summaries = [
+            node.evaluation_summary() for node in self.question_graph.nodes
+        ]
+        # Get the edges of the graph
+        adjacency_matrix = nx.adjacency_matrix(self.question_graph).todense().tolist()
+        return dict(
+            node_summaries=node_summaries,
+            adjacency_matrix=adjacency_matrix,
+        )
