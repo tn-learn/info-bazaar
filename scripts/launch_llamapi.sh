@@ -20,6 +20,7 @@ echo "LLAMAPI_NUM_CELERY_WORKERS=${LLAMAPI_NUM_CELERY_WORKERS}"
 
 # GPU type parameter (default to rtx8000 if not specified)
 GPU_TYPE=${1:-rtx8000}
+RUN_SERVER=${2:-true}
 
 # Temporary file to store cluster IDs (with a unique timestamp)
 CLUSTER_ID_FILE="/tmp/llamapi_cluster_ids_$(date +%s).txt"
@@ -41,21 +42,21 @@ cleanup() {
     exit
 }
 
-# Trap the SIGINT signal (Ctrl+C) and call the cleanup function
- trap cleanup SIGINT
+if [ "$RUN_SERVER" = "true" ]; then
+    trap cleanup SIGINT
 
-# Start Redis server without protection
-redis-server --protected-mode no &
+    # Start Redis server without protection
+    redis-server --protected-mode no &
 
-# Give Redis some time to initialize
-sleep 5
+    # Give Redis some time to initialize
+    sleep 5
 
-# Launch FastAPI server in the background
-python -m llamapi.server &
+    # Launch FastAPI server in the background
+    python3 -m llamapi.server &
 
-# Give the server some time to initialize
-sleep 5
-
+    # Give the server some time to initialize
+    sleep 5
+fi
 JOB_ID_FILE="/tmp/llamapi_job_ids_$(date +%s).txt"
 touch $JOB_ID_FILE
 echo $JOB_ID_FILE
