@@ -221,6 +221,8 @@ class BuyerAgent(BazaarAgent):
         quote_review_use_block_metadata: bool = False,
         quote_review_num_tries: int = 1,
         num_quote_gathering_steps: int = 0,
+        max_query_depth: int = 2,
+        allow_closed_book_answers: bool = False,
         use_reranker: bool = False,
         quote_selection_model_name: Optional[str] = None,
         answer_synthesis_model_name: Optional[str] = None,
@@ -235,6 +237,8 @@ class BuyerAgent(BazaarAgent):
         self._rejected_quotes: List[Quote] = []
         self._query_manager: QueryManager = QueryManager(
             agent=self,
+            max_query_depth=max_query_depth,
+            allow_closed_book_answers=allow_closed_book_answers,
             answer_synthesis_model_name=self.get_llm_name(answer_synthesis_model_name),
         )
         # Publics
@@ -425,7 +429,6 @@ class BuyerAgent(BazaarAgent):
         self.finalize_step()
 
     def evaluation_summary(self) -> Dict[str, Any]:
-        # TODO Update this with the new variables
         summary = super().evaluation_summary()
         summary.update(
             dict(
@@ -439,6 +442,7 @@ class BuyerAgent(BazaarAgent):
                     query.evaluation_summary() for query in self._submitted_queries
                 ],
                 quote_inbox=[quote.evaluation_summary() for quote in self._quote_inbox],
+                query_manager=self._query_manager.evaluation_summary(),
             )
         )
         return summary

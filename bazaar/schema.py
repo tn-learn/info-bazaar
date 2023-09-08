@@ -253,6 +253,14 @@ class Answer:
             self.relevance_scores
         ), "Must have same number of blocks and relevance scores."
 
+    def get_content_prehash(self):
+        return (
+            self.success,
+            self.text,
+            tuple([b.get_content_prehash() for b in self.blocks]),
+            tuple(self.relevance_scores),
+        )
+
     def evaluation_summary(self) -> Dict[str, Any]:
         return dict(
             success=self.success,
@@ -332,17 +340,18 @@ class Block:
     def num_tokens(self) -> int:
         return self.num_tokens_in_content(self.content)
 
-    def __hash__(self):
-        return hash(
-            (
-                self.document_id,
-                self.document_title,
-                self.publication_date,
-                self.block_id,
-                self.content,
-                tuple(self.questions),
-            )
+    def get_content_prehash(self):
+        return (
+            self.document_id,
+            self.document_title,
+            self.publication_date,
+            self.block_id,
+            self.content,
+            tuple(self.questions),
         )
+
+    def __hash__(self):
+        return hash(self.get_content_prehash())
 
     @property
     def content_with_metadata(self) -> str:
