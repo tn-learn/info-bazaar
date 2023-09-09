@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+import uuid
+from dataclasses import dataclass, field
 from enum import auto, Enum
 from typing import TYPE_CHECKING, Optional, List, Tuple, Union, Any, Dict
 
@@ -30,6 +31,8 @@ class QANode:
     query: Query
     answer: Optional[Answer] = None
     status: AnswerStatus = AnswerStatus.UNANSWERED
+    is_followed_up: bool = False
+    uuid: str = field(default_factory=lambda: str(uuid.uuid4()))
 
     def bind_answer(self, answer: Answer) -> "QANode":
         if not answer.success:
@@ -47,22 +50,29 @@ class QANode:
         self.status = AnswerStatus.REFINED
         return self
 
+    def mark_as_followed_up(self, is_followed_up: bool = True) -> "QANode":
+        self.is_followed_up = True
+        return self
+
     def evaluation_summary(self) -> Dict[str, Any]:
         return dict(
             query=self.query.evaluation_summary(),
-            answer=self.answer.evaluation_summary(),
+            answer=(
+                self.answer.evaluation_summary() if self.answer is not None else None
+            ),
             status=str(self.status),
         )
 
     def get_content_prehash(self):
-        return (
-            self.query.get_content_prehash(),
-            self.answer.get_content_prehash(),
-            str(self.status),
-        )
+        return self.uuid
 
     def __hash__(self):
         return hash(self.get_content_prehash())
+
+    def __eq__(self, other):
+        if not isinstance(other, QANode):
+            return False
+        return self.get_content_prehash() == other.get_content_prehash()
 
 
 class QueryManager:
@@ -71,14 +81,13 @@ class QueryManager:
         agent: "BuyerAgent",
         answer_synthesis_model_name: str,
         max_query_depth: int = 3,
-        allow_closed_book_answers: bool = False,
     ):
         # Private
         self._agent = agent
+        self._allow_closed_book_answers = False
         # Public
         self.answer_synthesis_model_name = answer_synthesis_model_name
         self.max_query_depth = max_query_depth
-        self.allow_closed_book_answers = allow_closed_book_answers
         self.question_graph = DiGraph()
 
     def find_node(self, query: Query) -> QANode:
@@ -156,6 +165,9 @@ class QueryManager:
         follow_up_queries = []
         for node in leaf_nodes:
             node: QANode
+            # Skip if the node has been followed up already
+            if node.is_followed_up:
+                continue
             # If the depth of the node exceeds the maximum allowed depth, we
             # skip it.
             if self.get_node_depth(node) + 1 > self.max_query_depth:
@@ -169,6 +181,8 @@ class QueryManager:
                 follow_ups = self.synthesize_follow_up_queries(node)
                 for follow_up_query in follow_ups:
                     follow_up_queries.append((follow_up_query, node.query))
+                if commit:
+                    node.mark_as_followed_up()
         if commit:
             for follow_up_query, parent_query in follow_up_queries:
                 self.add_query(follow_up_query, parent_query)
@@ -211,7 +225,7 @@ class QueryManager:
             )
             if commit:
                 node.bind_answer(answer)
-        elif self.allow_closed_book_answers:
+        elif self._allow_closed_book_answers:
             answer_text = get_closed_book_answer(
                 question=query.text,
                 model_name=self.answer_synthesis_model_name,

@@ -1,3 +1,4 @@
+import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, List, Union, Optional, Dict, Any
@@ -40,11 +41,16 @@ class Query:
     def __post_init__(self):
         self.max_budget = ensure_number(self.max_budget)
         self.created_at_time = ensure_number(self.created_at_time)
-        self.urgency = ensure_number(self.urgency)
+        self.urgency = ensure_number(self.urgency, allow_none=True)
         self.required_by_time = ensure_number(self.required_by_time, allow_none=True)
         if self.urgency is not None:
             assert self.required_by_time is None
             self.required_by_time = self.created_at_time + self.urgency
+        elif self.required_by_time is not None:
+            assert self.urgency is None
+            self.urgency = self.required_by_time - self.created_at_time
+        else:
+            raise ValueError("Must specify either urgency or required_by_time.")
         if self.processor_model is None:
             self.processor_model = default_llm_name()
         if self.embedding_model is None:
@@ -60,6 +66,13 @@ class Query:
     def register_issuer(self, issuer: "BuyerAgent") -> "Query":
         assert self.issued_by is None, "Cannot overwrite issuer."
         self.issued_by = issuer
+        return self
+
+    def ensure_issued_by(self, issuer: "BuyerAgent") -> "Query":
+        if self.issued_by is None:
+            self.register_issuer(issuer)
+        else:
+            assert self.issued_by is issuer
         return self
 
     @property
@@ -141,7 +154,11 @@ class Query:
             issued_by=(
                 self.issued_by.unique_id if self.issued_by is not None else None
             ),
-            gold_block=self._gold_block.evaluation_summary(),
+            gold_block=(
+                self._gold_block.evaluation_summary()
+                if self._gold_block is not None
+                else None
+            ),
             gold_block_id=self._gold_block_id,
             hyde_text=self._hyde_text,
             keywords=self._keywords,
@@ -167,6 +184,7 @@ class Quote:
     answer_blocks: List["Block"] = field(default_factory=list)
     eta: Union[int, None] = None
     quote_status: QuoteStatus = QuoteStatus.NOT_ISSUED
+    uuid: str = field(default_factory=lambda: str(uuid.uuid4()))
 
     def authorize_quote(self) -> "Quote":
         self.quote_status = QuoteStatus.AUTHORIZED
@@ -213,6 +231,15 @@ class Quote:
             quote_status=str(self.quote_status),
         )
 
+    def get_content_prehash(self):
+        return (
+            self.query.get_content_prehash(),
+            self.uuid,
+        )
+
+    def __hash__(self):
+        return hash(self.get_content_prehash())
+
 
 @dataclass
 class BulletinBoard:
@@ -231,6 +258,11 @@ class BulletinBoard:
 
     def new_queries_since(self, time):
         return [query for query in self.queries if query.created_at_time >= time]
+
+    def mark_query_as_processed(self, query: Query) -> "BulletinBoard":
+        while query in self.queries:
+            self.queries.remove(query)
+        return self
 
 
 @dataclass

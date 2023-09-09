@@ -106,8 +106,6 @@ def build_buyers(
     return buyers
 
 
-
-
 def shuffle_blocks(entity, fraction_to_move, rng):
     num_blocks = len(entity.public_blocks)
     num_blocks_to_move = round(num_blocks * fraction_to_move)
@@ -134,11 +132,15 @@ def build_authors_and_institutions(
         data = dataset[arxiv_id]["metadata"]
         for authorship in data["authorships"]:
             if authorship.get("author_position") == "first":
-                paper_prices[arxiv_id] = (authorship['author'].get('cited_by_count', 0) / (
-                        authorship['author'].get('works_count', 1) + 1))
+                paper_prices[arxiv_id] = authorship["author"].get(
+                    "cited_by_count", 0
+                ) / (authorship["author"].get("works_count", 1) + 1)
 
                 for institution in authorship["institutions"]:
-                    if institution is not None and institution["id"] not in institutions:
+                    if (
+                        institution is not None
+                        and institution["id"] not in institutions
+                    ):
                         institution["name"] = institution["display_name"]
                         del institution["display_name"]
                         institutions[institution["id"]] = dataclass_from_dict(
@@ -163,11 +165,15 @@ def build_authors_and_institutions(
                     institutions[institution[0]["id"]].public_blocks[
                         block.block_id
                     ] = block
-                    institutions[institution[0]["id"]].block_prices[block.block_id] = paper_prices[arxiv_id]
+                    institutions[institution[0]["id"]].block_prices[
+                        block.block_id
+                    ] = paper_prices[arxiv_id]
                     authors[authorship["author"]["id"]].public_blocks[
                         block.block_id
                     ] = block
-                    authors[authorship["author"]["id"]].block_prices[block.block_id] = paper_prices[arxiv_id]
+                    authors[authorship["author"]["id"]].block_prices[
+                        block.block_id
+                    ] = paper_prices[arxiv_id]
 
     # Distribute blocks in authors and institutions
     for author in authors.values():

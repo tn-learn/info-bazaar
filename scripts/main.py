@@ -87,6 +87,11 @@ def main(args: Optional[argparse.Namespace] = None):
             type=str,
             default=root_dir_slash("data/final_dataset_embeddings.db"),
         )
+        parser.add_argument(
+            "--ensure_no_embedding_cache_misses",
+            action="store_true",
+            default=False,
+        )
         args = parser.parse_args()
     config = SimulationConfig(
         **yaml.load(open(args.config, "r"), Loader=yaml.FullLoader)
@@ -97,7 +102,10 @@ def main(args: Optional[argparse.Namespace] = None):
     logging.info(f"Seed set to {config.rng_seed}.")
 
     # Set the LLM and embedding names
-    global_embedding_manager(init_from_path=args.embedding_manager_path)
+    global_embedding_manager(
+        init_from_path=args.embedding_manager_path,
+        raise_if_cache_miss=args.ensure_no_embedding_cache_misses,
+    )
     logging.info(
         f"Initialized embedding manager from path {args.embedding_manager_path}"
     )
