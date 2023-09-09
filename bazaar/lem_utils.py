@@ -1395,8 +1395,6 @@ def synthesize_answer(
     program_string = """
     {{#system~}}
     You are an AnswerSynthesisBot. Your task is to synthesize an answer to a question given some passages that should contain the answer. You will combine and synthesize the information provided to you. Your answer should be understandable and to the point. 
-
-    Your answer must include citations from the passages like you would find in a Wikipedia article. You must cite by putting the passage numbers in square brackets, e.g. "<some text> [<source passage number>] <some more text> [<more passage numbers>]".
     {{~/system}}
     
     {{#user~}}

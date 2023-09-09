@@ -2,6 +2,7 @@ from collections import defaultdict
 from contextlib import contextmanager
 from typing import Optional, List, Dict, Union, Any, Callable
 import mesa
+import numpy as np
 
 from bazaar.database import build_retriever
 from bazaar.lem_utils import (
@@ -222,8 +223,8 @@ class BuyerAgent(BazaarAgent):
         quote_review_num_tries: int = 1,
         num_quote_gathering_steps: int = 0,
         max_query_depth: int = 2,
-        allow_closed_book_answers: bool = False,
         use_reranker: bool = False,
+        reranker_max_num_quotes: Optional[int] = None,
         quote_selection_model_name: Optional[str] = None,
         answer_synthesis_model_name: Optional[str] = None,
         reranking_model_name: Optional[str] = None,
@@ -238,7 +239,6 @@ class BuyerAgent(BazaarAgent):
         self._query_manager: QueryManager = QueryManager(
             agent=self,
             max_query_depth=max_query_depth,
-            allow_closed_book_answers=allow_closed_book_answers,
             answer_synthesis_model_name=self.get_llm_name(answer_synthesis_model_name),
         )
         # Publics
@@ -247,6 +247,7 @@ class BuyerAgent(BazaarAgent):
         self.quote_review_num_tries = quote_review_num_tries
         self.num_quote_gathering_steps = num_quote_gathering_steps
         self.use_reranker = use_reranker
+        self.reranker_max_num_quotes = reranker_max_num_quotes
         self.quote_selection_model_name = self.get_llm_name(quote_selection_model_name)
         self.reranking_model_name = self.get_reranker_name(reranking_model_name)
 
@@ -255,7 +256,7 @@ class BuyerAgent(BazaarAgent):
         Initialize the agent's query queue from the principal's query.
         """
         self.principal: BuyerPrincipal
-        self._query_queue.append(self.principal.query)
+        self._query_queue.append(self.principal.query.ensure_issued_by(self))
         self._query_manager.add_query(self.principal.query)
         self.credit_to_account(self.principal.budget)
 
@@ -286,8 +287,8 @@ class BuyerAgent(BazaarAgent):
         """
         self.model: "BazaarSimulator"
         for query in list(self._query_queue):
-            if query.created_at_time == self.now:
-                query.issued_by = self
+            if query.created_at_time <= self.now:
+                query.ensure_issued_by(self)
                 self.model.bulletin_board.post(query)
                 self._query_queue.remove(query)
                 self._submitted_queries.append(query)
@@ -346,9 +347,14 @@ class BuyerAgent(BazaarAgent):
                 # Select the quotes to accept
                 quotes_to_accept = self.select_quote(quotes)
                 for quote_to_accept in quotes_to_accept:
+                    # FIXME: It can be that the quote we're about to accept is for a block that we
+                    #  have already procured. One way to fix this would be when selecting quotes.
+                    #  The other way to fix it would be to use the same block again.
                     self.accept_quote(quote_to_accept)
                 # Reject the rest of the quotes for this query
                 self.reject_all_quotes_for_query(query)
+                # Remove from bulletin board
+                self.bulletin_board.mark_query_as_processed(query)
 
     def synthesize_final_response(self) -> Answer:
         return self._query_manager.answer_root(self._accepted_quotes)
@@ -388,6 +394,22 @@ class BuyerAgent(BazaarAgent):
         ]
         # Apply reranker if required
         if len(candidate_quotes) > 0 and self.use_reranker:
+            # Before applying the reranker, we want to make sure that we don't have
+            # too many quotes. We only want to rerank the top k quotes as specified
+            # by self.reranker_max_num_quotes.
+            if self.reranker_max_num_quotes is not None:
+                threshold_quantile = 1 - (
+                    self.reranker_max_num_quotes / len(candidate_quotes)
+                )
+                threshold_score = np.quantile(
+                    [max(quote.relevance_scores) for quote in candidate_quotes],
+                    threshold_quantile,
+                )
+                candidate_quotes = [
+                    quote
+                    for quote in candidate_quotes
+                    if max(quote.relevance_scores) >= threshold_score
+                ]
             scores = rerank_quotes(
                 candidate_quotes, model_name=self.reranking_model_name
             )
@@ -408,7 +430,7 @@ class BuyerAgent(BazaarAgent):
         for _ in range(self.quote_review_num_tries):
             if len(selected_quotes) > 1:
                 break
-            selected_quotes.extend(
+            selected_quotes.extend(     # FIXME: This doesn't do what it needs to do
                 list(
                     select_quotes_with_debate(
                         candidate_quotes,

@@ -178,12 +178,10 @@ class BM25(Filter):
                 sorted_blocks = sorted_blocks[: self.top_k]
                 sorted_scores = sorted_scores[: self.top_k]
             # Record the scores
-            output_blocks.extend(
-                [
-                    block.record_score(self, query, score, weight=self.weight)
-                    for block, score in zip(sorted_blocks, sorted_scores)
-                ]
-            )
+            for block, score in zip(sorted_blocks, sorted_scores):
+                block.record_score(self, query, score, weight=self.weight)
+                if block not in output_blocks:
+                    output_blocks.append(block)
         # Done
         return output_blocks
 
@@ -257,12 +255,10 @@ class MIPS(Filter):
                 sorted_blocks = sorted_blocks[: self.top_k]
                 sorted_scores = sorted_scores[: self.top_k]
             # Record the scores
-            output_blocks.extend(
-                [
-                    block.record_score(self, query, score, weight=self.weight)
-                    for block, score in zip(sorted_blocks, sorted_scores)
-                ]
-            )
+            for block, score in zip(sorted_blocks, sorted_scores):
+                block.record_score(self, query, score, weight=self.weight)
+                if block not in output_blocks:
+                    output_blocks.append(block)
         # Done
         return output_blocks
 
