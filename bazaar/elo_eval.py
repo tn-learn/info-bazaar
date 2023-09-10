@@ -5,7 +5,6 @@ import argparse
 from collections import defaultdict
 from pathlib import Path
 from typing import Optional, Dict, List, Tuple
-from tqdm import tqdm
 import pandas as pd
 from concurrent.futures import ProcessPoolExecutor
 from tqdm import tqdm
@@ -138,7 +137,8 @@ class EloEvaluator:
                 model_name=eval_with_model,
             )
             all_answer_qualities.append(answer_qualities)
-
+        dump_dict(all_answer_qualities, f"{self.exp_root}/evaluation.json")
+        return all_answer_qualities
 
 def main(args: Optional[argparse.Namespace] = None):
     if args is None:
@@ -158,7 +158,6 @@ def main(args: Optional[argparse.Namespace] = None):
     print("Running evaluation...")
     evaluation = evaluator.run(eval_with_model=args.evaluator_model)
     # Done
-    dump_dict(evaluation.summary(), Path(args.run_directory) / "elo_evaluation.json")
     print("Done.")
 
 
