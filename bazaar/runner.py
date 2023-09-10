@@ -11,7 +11,7 @@ from bazaar.lem_utils import (
     global_embedding_manager,
     default_embedding_name,
 )
-from bazaar.py_utils import dump_dict, load_dict
+from bazaar.py_utils import dump_dict, load_dict, root_dir_slash
 from bazaar.schema import BulletinBoard
 from bazaar.sim_builder import (
     build_buyers,
@@ -42,12 +42,12 @@ class SimulationRunner(BaseExperiment, IOMixin):
     def _build(self):
         set_seed(self.get("rng_seed"))
         # Set the LLM and embedding names
-        global_embedding_manager(init_from_path=self.get("embedding_manager_path"))
+        global_embedding_manager(init_from_path=root_dir_slash(self.get("embedding_manager_path")))
         default_llm_name(set_to=self.get("llm_name"))
         default_embedding_name(set_to=self.get("embedding_name"))
 
         # Load the dataset
-        dataset = load_dict(self.get("dataset_path"))
+        dataset = load_dict(root_dir_slash(self.get("dataset_path")))
         rng = np.random.RandomState(self.get("rng_seed"))
         buyers = build_buyers(
             dataset=dataset,
@@ -70,34 +70,19 @@ class SimulationRunner(BaseExperiment, IOMixin):
             rng=rng,
         )
         bulletin_board = BulletinBoard()
+        buyers = buyers[parse_to_slice(self.get("query_range"))]
 
-        results = {
-            "buyers": buyers,
-            "authors": authors,
-            "institutions": institutions,
-            "bulletin_board": bulletin_board,
-        }
-
-        results["buyers"] = results["buyers"][parse_to_slice(self.get("query_range"))]
-        logging.info(f"Prepared simulation for {len(results['buyers'])} queries.")
-
-        # Make a buyer agent for each principal
-        buyer_principals = results["buyers"]
-        vendor_principals = results["institutions"] + results["authors"]
         # Filter out the vendors that don't have a block to sell
         vendor_principals = [
             vendor_principal
-            for vendor_principal in vendor_principals
+            for vendor_principal in (institutions + authors)
             if vendor_principal.num_blocks_owned > 0
         ]
-
-        # Build bulletin board
-        bulletin_board = results["bulletin_board"]
 
         # Init the bazaar
         self.bazaar = BazaarSimulator(
             bulletin_board=bulletin_board,
-            buyer_principals=buyer_principals,
+            buyer_principals=buyers,
             vendor_principals=vendor_principals,
             seed=self.get("rng_seed"),
             buyer_agent_kwargs=self.get("buyer_agent_kwargs"),
@@ -136,6 +121,5 @@ class SimulationRunner(BaseExperiment, IOMixin):
 
 
 if __name__ == '__main__':
-    breakpoint()
     runner = SimulationRunner()
     runner.simulate()

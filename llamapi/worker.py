@@ -22,6 +22,8 @@ celery_app = Celery(__name__, broker=REDIS_BROKER_URL, backend=REDIS_BACKEND_URL
 
 
 MODEL_DIRECTORIES = {
+    "Llama-2-7b-chat-hf": "models--meta-llama--Llama-2-7b-chat-hf",
+    "Llama-2-13b-chat-hf": "models--meta-llama--Llama-2-13b-chat-hf",
     "Llama-2-70b-chat-hf": "models--meta-llama--Llama-2-70b-chat-hf",
 }
 
