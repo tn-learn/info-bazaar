@@ -106,7 +106,7 @@ class EloEvaluator:
                     try:
                         if b["principal"]["answer"]["success"]:
                             rows[question].append((b, experiment_name, seed, model_name))
-                    except KeyError:
+                    except (KeyError, TypeError):
                         continue
         flattened_rows = [item for sublist in rows.values() for item in sublist]
         with ProcessPoolExecutor(max_workers=self.n_jobs) as executor:
