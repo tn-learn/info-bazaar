@@ -113,13 +113,11 @@ class EloEvaluator:
                 with Pool(processes=self.n_jobs) as pool:
                     all_data = pool.map(
                         process_b,
-                        [
-                            summary["buyer_agents"],
-                            itertools.repeat(experiment_name),
-                            itertools.repeat(seed),
-                            itertools.repeat(config),
-                            itertools.repeat(num_blocks),
-                        ],
+                        summary["buyer_agents"],
+                        itertools.repeat(experiment_name),
+                        itertools.repeat(seed),
+                        itertools.repeat(config),
+                        itertools.repeat(num_blocks),
                     )
         self.df = pd.DataFrame(all_data)
         self.df.to_csv(self.output_path)
@@ -171,7 +169,9 @@ def main(args: Optional[argparse.Namespace] = None):
         args = parser.parse_args()
 
     print("Loading evaluator...")
-    evaluator = EloEvaluator(exp_root=args.exp_root, n_jobs=args.n_jobs, cache=args.cache)
+    evaluator = EloEvaluator(
+        exp_root=args.exp_root, n_jobs=args.n_jobs, cache=args.cache
+    )
     print("Running evaluation...")
     evaluation = evaluator.run(eval_with_model=args.evaluator_model)
     # Done
