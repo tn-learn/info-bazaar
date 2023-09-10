@@ -809,10 +809,12 @@ def generate_hyde_passage(question: str, model: Optional[str] = None) -> str:
     return program_outputs["hyde_answer"]
 
 
-def generate_keywords(text: str, model_name: Optional[str] = None) -> List[str]:
+def generate_keywords(
+    text: str, model_name: Optional[str] = None, num_keywords: int = 3
+) -> List[str]:
     program_string = """
     {{#system~}}
-    You will be given some text, which may be a passage or a question. Your task is to extract keywords that can be useful for search. 
+    You will be given some text, which may be a passage or a question. Your task is to extract {{num_keywords}} most important keywords that can be useful for search.
 
     The output must be comma separated keywords, as in: "first keyword, second keyword, ..."
     {{~/system}}
@@ -830,7 +832,7 @@ def generate_keywords(text: str, model_name: Optional[str] = None) -> List[str]:
         program_string=program_string,
         llm=get_llm(model_name),
         silent=True,
-        inputs=dict(text_to_keywordify=text),
+        inputs=dict(text_to_keywordify=text, num_keywords=num_keywords),
         output_keys=["keywords"],
     )
     # Split keywords by comma
@@ -1394,23 +1396,25 @@ def synthesize_answer(
 
     program_string = """
     {{#system~}}
-    You are an AnswerSynthesisBot. Your task is to synthesize an answer to a question given some passages that should contain the answer. You will combine and synthesize the information provided to you. Your answer should be understandable and to the point. 
+    You are a Question Answering Bot. Your task is to answer a question to the best of your ability. To help you in that task, you will be given some passages that might contain the answer.  
+    
+    It is important that your answer is formulated in a simple and understandable way. 
     {{~/system}}
     
     {{#user~}}
     The question is "{{question}}?"
     
-    Here are the passages that contain the answer.
+    Here are some passages that you might find helpful.
     
     ---{{#each quotes}}
     {{add @index 1}}. {{this.answer_block}}
     {{/each}}---
     
-    Please strategize about answering the question. Start with "STRATEGY: <your strategy>"
+    Please start by summarizing what you know about the answer, and what you don't know or what you are not confident about. Also discuss what's in the passages, and to what extent they help you towards answering the question. Don't be afraid of not knowing things, but be honest about what you don't know. When writing these down, start with "THOUGHTS: <your thoughts>".
 
-    Once you're done, begin your answer with "ANSWER: <your answer>"
+    Once you're done, begin your answer with "ANSWER: <your answer>".
     
-    Let's go.
+    Let's begin.
     {{~/user}}
     
     {{#assistant~}}
@@ -1435,7 +1439,7 @@ def synthesize_answer(
         Splits the provided text into sections based on the given keywords and returns a dictionary.
         """
         # Split the text by the keywords "STRATEGY:" and "ANSWER:"
-        sections = ["STRATEGY:", "ANSWER:"]
+        sections = ["THOUGHTS:", "ANSWER:"]
         parts = {}
 
         for idx, section in enumerate(sections):
@@ -1535,9 +1539,9 @@ def select_follow_up_question(
     {{#system~}}
     Bobby and Michael are employed at a company that specializes in acquiring and verifying information.
 
-    Their supervisors have given them a question and an answer that their peers have produced. Their task is to decide if the provided answer adequately answers the question. If it doesn't, they must come up with follow up questions that would enrich the provided answer. The follow up questions must be to the-point.   
+    Their supervisors have given them a question and an answer that their peers have produced. Their task is to decide if the provided answer adequately answers the question or whether things are still unclear. If the provided answer does not conclusively answer the question, they must come up with follow up questions that would enrich the answer. The follow up questions must be to the-point.   
     
-    Bobby wants the answer to cover enough ground to satisfy the client. Michael is mindful about the risk of confusing the client by providing information that is not highly relevant to the question. Michael is also worried about the time it would take to answer the follow up questions, which would delay the delivery of the answer to the client.  
+    Bobby wants the answer to cover enough ground to satisfy the client's curiosity. Michael is mindful about the risk of confusing the client by providing information that is not highly relevant to the question.  
 
     Note that follow up questions should only be asked if there is a need for concrete information that is missing from the provided answer or if the provided answer is missing crucial details. In other words, Bobby and Michael are not necessarily required to ask a follow up question.
     {{~/system}}

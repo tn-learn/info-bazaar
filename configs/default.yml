@@ -3,8 +3,8 @@ author_fraction_of_private_blocks: 0.0
 institution_num_blocks: 10
 author_response_time_mean: 5
 author_response_time_sigma: 3
-buyer_max_budget_mean: 5
-buyer_max_budget_sigma: 3
+buyer_max_budget_mean: 8
+buyer_max_budget_sigma: 0
 buyer_urgency_min: 20
 buyer_urgency_max: 21
 buyer_agent_kwargs:
@@ -21,7 +21,7 @@ vendor_agent_kwargs:
     bm25_use_caching: true
     bm25_weight: 0.0
     filter_with_mips: true
-    mips_use_hyde: false
+    mips_use_hyde: true
     mips_top_k: 10
     mips_score_threshold: 0.8
     mips_half_sphere: true

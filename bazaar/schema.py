@@ -110,7 +110,7 @@ class Query:
         from bazaar.lem_utils import generate_keywords
 
         if self._keywords is None:
-            self._keywords = generate_keywords(self.text)
+            self._keywords = generate_keywords(self.text, num_keywords=3)
         return self._keywords
 
     def get_content_prehash(self):
@@ -184,6 +184,7 @@ class Quote:
     answer_blocks: List["Block"] = field(default_factory=list)
     eta: Union[int, None] = None
     quote_status: QuoteStatus = QuoteStatus.NOT_ISSUED
+    quote_progression: int = 0
 
     def claim_quote(self) -> "Quote":
         self.quote_status = QuoteStatus.CLAIMED
@@ -201,6 +202,10 @@ class Quote:
         self.quote_status = QuoteStatus.PENDING
         return self
 
+    def progress_quote(self) -> "Quote":
+        self.quote_progression += 1
+        return self
+
     def __repr__(self):
         return repr_factory(
             self,
@@ -214,6 +219,7 @@ class Quote:
             ),
             eta=self.eta,
             quote_status=self.quote_status,
+            quote_progression=self.quote_progression,
         )
 
     def evaluation_summary(self) -> Dict[str, Any]:
@@ -228,13 +234,13 @@ class Quote:
             ),
             eta=self.eta,
             quote_status=str(self.quote_status),
+            quote_progression=self.quote_progression,
         )
 
     def get_content_prehash(self):
         return (
             self.query.get_content_prehash(),
             tuple(block.get_content_prehash() for block in self.answer_blocks),
-            tuple(self.relevance_scores),
             self.created_at_time,
             self.issued_by.unique_id,
             self.eta,
