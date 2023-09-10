@@ -43,8 +43,9 @@ def evaluate_answer_quality_binary(
     )
     return answer_qualities
 
+def process_b(args_tuple):
+    b, experiment_name, seed, llm_name = args_tuple
 
-def process_b(b: Dict, experiment_name: str, seed: str, llm_name: str):
     closed_book_answer = get_closed_book_answer(
         question=b["principal"]["query"]["text"], model_name=llm_name,
     )
@@ -105,10 +106,12 @@ class EloEvaluator:
                     question = b["principal"]["query"]["text"]
                     try:
                         if b["principal"]["answer"]["success"]:
+                            del b['rejected_quotes']
                             rows[question].append((b, experiment_name, seed, model_name))
-                    except KeyError:
+                    except (KeyError, TypeError):
                         continue
         flattened_rows = [item for sublist in rows.values() for item in sublist]
+        breakpoint()
         with ProcessPoolExecutor(max_workers=self.n_jobs) as executor:
             results = list(tqdm(executor.map(process_b, flattened_rows), total=len(flattened_rows)))
         self.df = pd.DataFrame(results)
