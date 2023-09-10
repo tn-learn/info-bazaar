@@ -103,7 +103,7 @@ class EloEvaluator:
                 for b in summary["buyer_agents"]:
                     model_name = config["llm_name"]
                     question = b["principal"]["query"]["text"]
-                    if b["successfully_answered"]:
+                    if b["principal"]["answer"]["success"]:
                         rows[question].append((b, experiment_name, seed, model_name))
 
         flattened_rows = [item for sublist in rows.values() for item in sublist]
