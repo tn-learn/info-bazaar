@@ -1,5 +1,5 @@
 rng_seed: 0
-author_fraction_of_private_blocks: 0.5
+author_fraction_of_private_blocks: 0.0
 institution_num_blocks: 10
 author_response_time_mean: 5
 author_response_time_sigma: 3
@@ -22,13 +22,18 @@ vendor_agent_kwargs:
     filter_with_mips: true
     mips_use_hyde: false
     mips_top_k: 10
-    mips_score_threshold: 0.7
+    mips_score_threshold: 0.8
     mips_half_sphere: true
     mips_embed_block_content_with_metadata: true
     mips_weight: 1.0
 query_creation_time_start: 0
-query_creation_time_end: 168
+query_creation_time_end: 1
 bulletin_board_retrieval_top_k: 1
 bulletin_board_retrieval_score_threshold: 0.7
 llm_name: "RemoteLlama-2-70b-chat-hf" 
 embedding_name: "bge-large-en"
+
+LLAMAPI_API_PORT: 8911
+LLAMAPI_API_HOST: "http://login-1:8911"
+embedding_manager_path: "/home/mila/w/weissmar/scratch/tn/info-bazaar/data/final_dataset_embeddings.db"
+dataset_path: "/home/mila/w/weissmar/scratch/tn/info-bazaar/data/final_dataset_with_metadata.json"
