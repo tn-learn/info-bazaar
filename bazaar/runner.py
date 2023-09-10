@@ -91,7 +91,7 @@ class SimulationRunner(BaseExperiment, IOMixin):
 
     def print_results(self) -> "SimulationRunner":
         # Get the buyer principals
-        buyer_principals = [agent.principal for agent in self.sim.buyer_agents]
+        buyer_principals = [agent.principal for agent in self.bazaar.buyer_agents]
         for buyer_principal in buyer_principals:
             self.print("-" * 80)
             self.print(f"Question: {buyer_principal.query.text}")
