@@ -103,9 +103,11 @@ class EloEvaluator:
                 for b in summary["buyer_agents"]:
                     model_name = config["llm_name"]
                     question = b["principal"]["query"]["text"]
-                    if b["principal"]["answer"]["success"]:
-                        rows[question].append((b, experiment_name, seed, model_name))
-
+                    try:
+                        if b["principal"]["answer"]["success"]:
+                            rows[question].append((b, experiment_name, seed, model_name))
+                    except KeyError:
+                        continue
         flattened_rows = [item for sublist in rows.values() for item in sublist]
         with ProcessPoolExecutor(max_workers=self.n_jobs) as executor:
             results = list(tqdm(executor.map(process_b, flattened_rows), total=len(flattened_rows)))
