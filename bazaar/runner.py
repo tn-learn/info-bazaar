@@ -14,7 +14,6 @@ from bazaar.lem_utils import (
 from bazaar.py_utils import dump_dict, load_dict
 from bazaar.schema import BulletinBoard
 from bazaar.sim_builder import (
-    load,
     build_buyers,
     build_authors_and_institutions,
 )
@@ -137,3 +136,9 @@ class SimulationRunner(BaseExperiment, IOMixin):
         # Done
         self.print("Done.")
         return self
+
+
+if __name__ == '__main__':
+    breakpoint()
+    runner = SimulationRunner()
+    runner()
