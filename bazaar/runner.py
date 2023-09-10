@@ -34,15 +34,13 @@ def parse_to_slice(s: str) -> slice:
 
 
 class SimulationRunner(BaseExperiment, IOMixin):
-    def __init__(self, experiment_directory: Optional[str] = None):
-        super().__init__(experiment_directory)
-        self.auto_setup()
+    def __init__(self, skip_setup: bool = False):
+        super(SimulationRunner, self).__init__()
+        if not skip_setup:
+            self.auto_setup()
 
     def _build(self):
         set_seed(self.get("rng_seed"))
-        self._build_simulation()
-
-    def _build_simulation(self):
         # Set the LLM and embedding names
         global_embedding_manager(init_from_path=self.get("embedding_manager_path"))
         default_llm_name(set_to=self.get("llm_name"))
@@ -80,7 +78,6 @@ class SimulationRunner(BaseExperiment, IOMixin):
             "bulletin_board": bulletin_board,
         }
 
-        # results = load(path=self.get("dataset_path"), config=config)
         results["buyers"] = results["buyers"][parse_to_slice(self.get("query_range"))]
         logging.info(f"Prepared simulation for {len(results['buyers'])} queries.")
 
@@ -128,7 +125,7 @@ class SimulationRunner(BaseExperiment, IOMixin):
 
     @register_default_dispatch
     def simulate(self) -> "SimulationRunner":
-        self._build_simulation()
+        self._build()
         # Run the sim
         self.bazaar.run(self.get("runner/duration", 168))
         # Print the results and dump summary
@@ -141,4 +138,4 @@ class SimulationRunner(BaseExperiment, IOMixin):
 if __name__ == '__main__':
     breakpoint()
     runner = SimulationRunner()
-    runner()
+    runner.simulate()
