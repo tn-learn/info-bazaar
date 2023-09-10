@@ -111,13 +111,15 @@ class EloEvaluator:
                 }
 
                 with Pool(processes=self.n_jobs) as pool:
-                    all_data = pool.map(
+                    all_data = pool.starmap(
                         process_b,
-                        summary["buyer_agents"],
-                        itertools.repeat(experiment_name),
-                        itertools.repeat(seed),
-                        itertools.repeat(config),
-                        itertools.repeat(num_blocks),
+                        itertools.product(
+                            summary["buyer_agents"],
+                            [experiment_name],
+                            [seed],
+                            [config],
+                            [num_blocks]
+                        )
                     )
         self.df = pd.DataFrame(all_data)
         self.df.to_csv(self.output_path)
