@@ -120,7 +120,9 @@ def main(args: Optional[argparse.Namespace] = None):
         config=config,
     )
     results["buyers"] = results["buyers"][parse_to_slice(args.query_range)]
-    logging.info(f"Prepared simulation for {len(results['buyers'])} queries.")
+    logging.info(f"Prepared simulation for {len(results['buyers'])} queries:")
+    for idx, buyer in enumerate(results["buyers"]):
+        logging.info(f"Q{idx}: {buyer.query.text}")
 
     # Make a buyer agent for each principal
     buyer_principals = results["buyers"]

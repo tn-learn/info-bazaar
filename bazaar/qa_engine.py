@@ -118,7 +118,10 @@ class QueryManager:
         raise ValueError(f"Could not find node for query {query}")
 
     def mark_all_predecessors_with_status(
-        self, node: QANode, status: AnswerStatus, include_self: bool = True,
+        self,
+        node: QANode,
+        status: AnswerStatus,
+        include_self: bool = True,
     ) -> "QueryManager":
         if include_self:
             node.status = status
@@ -129,7 +132,10 @@ class QueryManager:
         return self
 
     def mark_all_successors_with_status(
-        self, node: QANode, status: AnswerStatus, include_self: bool = True,
+        self,
+        node: QANode,
+        status: AnswerStatus,
+        include_self: bool = True,
     ) -> "QueryManager":
         if include_self:
             node.status = status
@@ -374,15 +380,29 @@ class QueryManager:
         if len(successors) == 0:
             # If we're here, then we tried to apply refinement but failed.
             # In this case, we should mark all successors as failed, and change
-            # the status back to answered.
+            # the status back to answered if possible
             if commit:
-                assert node.status == AnswerStatus.PENDING_FOLLOW_UP
-                # Change the status back to answered, so the existing answers can be used by
-                # upstream questions
-                node.mark_as_answered()
-                # Mark all successors as failed
-                self.mark_all_successors_with_status(node, AnswerStatus.FAILED, include_self=False)
-            return None
+                if node.status in [
+                    AnswerStatus.PENDING_FOLLOW_UP,
+                    AnswerStatus.ANSWERED,
+                ]:
+                    # Change the status back to answered, so the existing answers can be used by
+                    # upstream questions
+                    node.mark_as_answered()
+                    # Mark all successors as failed
+                    self.mark_all_successors_with_status(
+                        node, AnswerStatus.FAILED, include_self=False
+                    )
+                elif node.status == AnswerStatus.FAILED:
+                    # If we're here, then we tried to apply refinement to a node that failed
+                    # to have an answer. Obviously we won't try to refine it.
+                    pass
+                else:
+                    raise ValueError(
+                        f"Something went wrong, was expecting node status to be "
+                        f"PENDING_FOLLOW_UP, ANSWERED, or FAILED, got {node.status}"
+                    )
+            return node.answer
         # There's some refinement to do
         refined_answer = refine_answer(
             question=node.query.text,

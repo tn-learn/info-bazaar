@@ -157,7 +157,11 @@ class BM25(Filter):
         for query in queries:
             # Get the scores
             if self.use_query_keywords:
-                query_tokens = query.keywords
+                query_tokens = [
+                    sub_keyword
+                    for keyword in query.keywords
+                    for sub_keyword in word_tokenize(keyword)
+                ]
             else:
                 query_tokens = word_tokenize(query.text)
             scores = bm25.get_scores(query_tokens)
@@ -266,6 +270,7 @@ class MIPS(Filter):
 def build_retriever(
     # BM25
     filter_with_bm25: bool = True,
+    use_query_keywords: bool = True,
     bm25_top_k: Optional[int] = None,
     bm25_score_threshold: Optional[float] = None,
     bm25_use_caching: bool = True,
@@ -283,6 +288,7 @@ def build_retriever(
     if filter_with_bm25:
         filters.append(
             BM25(
+                use_query_keywords=use_query_keywords,
                 top_k=bm25_top_k,
                 score_threshold=bm25_score_threshold,
                 use_caching=bm25_use_caching,

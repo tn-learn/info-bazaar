@@ -418,7 +418,7 @@ class BuyerAgent(BazaarAgent):
                     threshold_quantile,
                 )
                 candidate_quotes = [
-                    quote
+                    quote.progress_quote()
                     for quote in candidate_quotes
                     if max(quote.relevance_scores) >= threshold_score
                 ]
@@ -438,6 +438,7 @@ class BuyerAgent(BazaarAgent):
                     reverse=True,
                 )
             ][:num_candidate_quotes]
+            candidate_quotes = [quote.progress_quote() for quote in candidate_quotes]
         # Select the quotes
         selected_quotes = []
         for try_count in range(self.quote_review_num_tries):
@@ -458,6 +459,7 @@ class BuyerAgent(BazaarAgent):
                     )
                 )
             )
+        selected_quotes = [quote.progress_quote() for quote in selected_quotes]
         return selected_quotes
 
     def forward(self) -> None:
