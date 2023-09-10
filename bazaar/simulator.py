@@ -293,11 +293,23 @@ class BuyerAgent(BazaarAgent):
                 self._query_queue.remove(query)
                 self._submitted_queries.append(query)
 
-    def accept_quote(self, quote: Quote) -> "BuyerAgent":
-        quote.accept_quote()
-        self.transfer_to_agent(quote.price, quote.issued_by)
-        self._accepted_quotes.append(quote)
-        self._quote_inbox.remove(quote)
+    def accept_or_claim_quote(self, quote: Quote) -> "BuyerAgent":
+        # If the block content in the quote is already available, we don't need to buy it again.
+        for accepted_quote in self._accepted_quotes:
+            if (
+                accepted_quote.compare_block_content(quote)
+                and accepted_quote.issued_by.unique_id == quote.issued_by.unique_id
+            ):
+                # Move to accepted quotes and remove from inbox, but don't pay for it.
+                quote.claim_quote()
+                self._accepted_quotes.append(quote)
+                self._quote_inbox.remove(quote)
+                break
+        else:
+            quote.accept_quote()
+            self.transfer_to_agent(quote.price, quote.issued_by)
+            self._accepted_quotes.append(quote)
+            self._quote_inbox.remove(quote)
         return self
 
     def reject_quote(self, quote: Quote) -> "BuyerAgent":
@@ -347,10 +359,7 @@ class BuyerAgent(BazaarAgent):
                 # Select the quotes to accept
                 quotes_to_accept = self.select_quote(quotes)
                 for quote_to_accept in quotes_to_accept:
-                    # FIXME: It can be that the quote we're about to accept is for a block that we
-                    #  have already procured. One way to fix this would be when selecting quotes.
-                    #  The other way to fix it would be to use the same block again.
-                    self.accept_quote(quote_to_accept)
+                    self.accept_or_claim_quote(quote_to_accept)
                 # Reject the rest of the quotes for this query
                 self.reject_all_quotes_for_query(query)
                 # Remove from bulletin board
@@ -397,7 +406,10 @@ class BuyerAgent(BazaarAgent):
             # Before applying the reranker, we want to make sure that we don't have
             # too many quotes. We only want to rerank the top k quotes as specified
             # by self.reranker_max_num_quotes.
-            if self.reranker_max_num_quotes is not None:
+            if (
+                self.reranker_max_num_quotes is not None
+                and len(candidate_quotes) > self.reranker_max_num_quotes
+            ):
                 threshold_quantile = 1 - (
                     self.reranker_max_num_quotes / len(candidate_quotes)
                 )
@@ -417,6 +429,7 @@ class BuyerAgent(BazaarAgent):
             scores = [max(quote.relevance_scores) for quote in candidate_quotes]
         if len(candidate_quotes) > 0 and self.quote_review_top_k is not None:
             # Keep the top_k quotes as ranked by their scores
+            num_candidate_quotes = self.quote_review_top_k * self.quote_review_num_tries
             candidate_quotes = [
                 quote
                 for _, quote in sorted(
@@ -424,16 +437,21 @@ class BuyerAgent(BazaarAgent):
                     key=lambda pair: pair[0],
                     reverse=True,
                 )
-            ][: self.quote_review_top_k]
+            ][:num_candidate_quotes]
         # Select the quotes
         selected_quotes = []
-        for _ in range(self.quote_review_num_tries):
+        for try_count in range(self.quote_review_num_tries):
             if len(selected_quotes) > 1:
                 break
-            selected_quotes.extend(     # FIXME: This doesn't do what it needs to do
+            # Figure out which slice to select over this try
+            index_start = try_count * self.quote_review_top_k
+            index_end = (try_count + 1) * self.quote_review_top_k
+            candidate_quotes_this_try = candidate_quotes[index_start:index_end]
+            # Select the quotes
+            selected_quotes.extend(
                 list(
                     select_quotes_with_debate(
-                        candidate_quotes,
+                        candidate_quotes_this_try,
                         budget=self.credit,
                         model_name=self.quote_selection_model_name,
                         use_block_content_metadata=self.quote_review_use_block_metadata,

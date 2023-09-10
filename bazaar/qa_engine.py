@@ -32,6 +32,7 @@ class QANode:
     answer: Optional[Answer] = None
     status: AnswerStatus = AnswerStatus.UNANSWERED
     is_followed_up: bool = False
+    pre_refinement_answer: Optional[Answer] = None
     uuid: str = field(default_factory=lambda: str(uuid.uuid4()))
 
     def bind_answer(self, answer: Answer) -> "QANode":
@@ -40,6 +41,21 @@ class QANode:
         else:
             self.status = AnswerStatus.ANSWERED
         self.answer = answer
+        return self
+
+    def bind_refined_answer(self, answer: Answer) -> "QANode":
+        if answer.success:
+            self.pre_refinement_answer = self.answer
+            self.answer = answer
+            self.status = AnswerStatus.REFINED
+        return self
+
+    def mark_as_failed(self) -> "QANode":
+        self.status = AnswerStatus.FAILED
+        return self
+
+    def mark_as_answered(self) -> "QANode":
+        self.status = AnswerStatus.ANSWERED
         return self
 
     def mark_as_pending_follow_up(self) -> "QANode":
@@ -59,6 +75,11 @@ class QANode:
             query=self.query.evaluation_summary(),
             answer=(
                 self.answer.evaluation_summary() if self.answer is not None else None
+            ),
+            pre_refinement_answer=(
+                self.pre_refinement_answer.evaluation_summary()
+                if self.pre_refinement_answer is not None
+                else None
             ),
             status=str(self.status),
         )
@@ -97,12 +118,24 @@ class QueryManager:
         raise ValueError(f"Could not find node for query {query}")
 
     def mark_all_predecessors_with_status(
-        self, node: QANode, status: AnswerStatus
+        self, node: QANode, status: AnswerStatus, include_self: bool = True,
     ) -> "QueryManager":
-        node.status = status
+        if include_self:
+            node.status = status
 
         for pred in self.question_graph.predecessors(node):
             self.mark_all_predecessors_with_status(pred, status)
+
+        return self
+
+    def mark_all_successors_with_status(
+        self, node: QANode, status: AnswerStatus, include_self: bool = True,
+    ) -> "QueryManager":
+        if include_self:
+            node.status = status
+
+        for succ in self.question_graph.successors(node):
+            self.mark_all_successors_with_status(succ, status)
 
         return self
 
@@ -168,13 +201,13 @@ class QueryManager:
             # Skip if the node has been followed up already
             if node.is_followed_up:
                 continue
+            # If node has no answer, we try to generate one.
+            if node.status in [AnswerStatus.UNANSWERED, AnswerStatus.FAILED]:
+                self.synthesize_answer_for_query(node, quotes, commit=True)
             # If the depth of the node exceeds the maximum allowed depth, we
             # skip it.
             if self.get_node_depth(node) + 1 > self.max_query_depth:
                 continue
-            # If node has no answer, we try to generate one.
-            if node.status == AnswerStatus.UNANSWERED:
-                self.synthesize_answer_for_query(node, quotes, commit=True)
             # Check if node has an answer. If it does, then we can generate a
             # follow-up question.
             if node.status == AnswerStatus.ANSWERED:
@@ -240,6 +273,8 @@ class QueryManager:
                 node.bind_answer(answer)
         else:
             answer = None
+            if commit:
+                node.mark_as_failed()
         return answer
 
     def refine_answer_for_query(
@@ -264,8 +299,10 @@ class QueryManager:
             if succ.status == AnswerStatus.PENDING_FOLLOW_UP:
                 self.refine_answer_for_query(succ, quotes)
 
-            # If successor is unanswered, try synthesizing an answer
-            if succ.status == AnswerStatus.UNANSWERED:
+            # If successor is unanswered, try synthesizing an answer.
+            # Note that we also try if it has failed, because we might be able to
+            # synthesize an answer from the new quotes that might have come in the meantime.
+            if succ.status in [AnswerStatus.UNANSWERED, AnswerStatus.FAILED]:
                 answer = self.synthesize_answer_for_query(succ, quotes, commit=True)
                 if answer is not None:
                     valid_successors.append(succ)
@@ -335,6 +372,16 @@ class QueryManager:
             if node.status in [AnswerStatus.ANSWERED, AnswerStatus.REFINED]
         ]
         if len(successors) == 0:
+            # If we're here, then we tried to apply refinement but failed.
+            # In this case, we should mark all successors as failed, and change
+            # the status back to answered.
+            if commit:
+                assert node.status == AnswerStatus.PENDING_FOLLOW_UP
+                # Change the status back to answered, so the existing answers can be used by
+                # upstream questions
+                node.mark_as_answered()
+                # Mark all successors as failed
+                self.mark_all_successors_with_status(node, AnswerStatus.FAILED, include_self=False)
             return None
         # There's some refinement to do
         refined_answer = refine_answer(
@@ -355,7 +402,7 @@ class QueryManager:
         )
 
         if answer is not None and commit:
-            node.bind_answer(answer).mark_as_refined()
+            node.bind_refined_answer(answer)
 
         return answer
 

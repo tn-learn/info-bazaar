@@ -169,7 +169,7 @@ class QuoteStatus(Enum):
     NOT_ISSUED = "not_issued"
     WAITING = "waiting"
     PENDING = "pending"
-    AUTHORIZED = "authorized"
+    CLAIMED = "claimed"
     ACCEPTED = "accepted"
     REJECTED = "rejected"
 
@@ -184,10 +184,9 @@ class Quote:
     answer_blocks: List["Block"] = field(default_factory=list)
     eta: Union[int, None] = None
     quote_status: QuoteStatus = QuoteStatus.NOT_ISSUED
-    uuid: str = field(default_factory=lambda: str(uuid.uuid4()))
 
-    def authorize_quote(self) -> "Quote":
-        self.quote_status = QuoteStatus.AUTHORIZED
+    def claim_quote(self) -> "Quote":
+        self.quote_status = QuoteStatus.CLAIMED
         return self
 
     def accept_quote(self) -> "Quote":
@@ -234,11 +233,25 @@ class Quote:
     def get_content_prehash(self):
         return (
             self.query.get_content_prehash(),
-            self.uuid,
+            tuple(block.get_content_prehash() for block in self.answer_blocks),
+            tuple(self.relevance_scores),
+            self.created_at_time,
+            self.issued_by.unique_id,
+            self.eta,
         )
 
     def __hash__(self):
         return hash(self.get_content_prehash())
+
+    def compare_block_content(self, other: "Quote") -> bool:
+        if len(self.answer_blocks) != len(other.answer_blocks):
+            return False
+        return all(
+            [
+                block1.compare_content(block2)
+                for block1, block2 in zip(self.answer_blocks, other.answer_blocks)
+            ]
+        )
 
 
 @dataclass
@@ -354,6 +367,25 @@ class Block:
             document_id=self.document_id,
             document_title=self.document_title,
             block_id=self.block_id,
+        )
+
+    def compare_content(self, other: "Block") -> bool:
+        return (
+            self.document_id,
+            self.document_title,
+            self.section_title,
+            self.publication_date,
+            self.token_start,
+            self.token_end,
+            self.content,
+        ) == (
+            other.document_id,
+            other.document_title,
+            other.section_title,
+            other.publication_date,
+            other.token_start,
+            other.token_end,
+            other.content,
         )
 
     def evaluation_summary(self) -> Dict[str, Any]:
