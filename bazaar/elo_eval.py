@@ -7,18 +7,17 @@ from pathlib import Path
 from typing import Optional, Dict, List, Tuple
 from tqdm import tqdm
 import pandas as pd
-from multiprocessing import Pool
+from concurrent.futures import ProcessPoolExecutor
+from tqdm import tqdm
 
 from bazaar.lem_utils import (
     evaluate_answer_with_debate_retrieved_closed,
     get_closed_book_answer,
 )
-from bazaar.py_utils import load_dict, dump_dict, root_dir_slash
+from bazaar.py_utils import dump_dict
 from bazaar.eval import (
     AnswerQuality,
-    BlockWareSpec,
     EvaluationResult,
-    BuyerAgentEvaluationResult,
 )
 
 
@@ -45,18 +44,17 @@ def evaluate_answer_quality_binary(
     return answer_qualities
 
 
-def process_b(
-    b: Dict, experiment_name: str, seed: str, config: Dict, num_blocks: Dict[str, int]
-):
+def process_b(b: Dict, experiment_name: str, seed: str, llm_name: str):
     closed_book_answer = get_closed_book_answer(
-        question=b["principal"]["query"]["text"], model_name=config["llm_name"],
+        question=b["principal"]["query"]["text"], model_name=llm_name,
     )
     flattened = {
         "experiment_name": experiment_name,
         "seed": seed,
         "closed_book_answer": closed_book_answer,
-        "model_name": config["llm_name"],
+        "llm_name": llm_name,
         "budget_used": b["max_budget"] - b["credit_left"],
+        "num_blocks": len(b["principal"]["answer"]["blocks"]),
     }
 
     for k, v in b.items():
@@ -65,7 +63,6 @@ def process_b(
                 flattened[f"{k}/{sub_k}"] = sub_v
         else:
             flattened[k] = v
-    flattened["num_block"] = num_blocks.get(b["name"], None)
     return flattened
 
 
@@ -83,7 +80,7 @@ class EloEvaluator:
             print(f"Creating new dataframe")
 
         print(f"Loading experiments: {os.listdir(exp_root)} from {exp_root}")
-        all_data = []
+        rows = defaultdict(list)
         for experiment_name in os.listdir(exp_root):
             exp_base_dir = os.path.join(exp_root, experiment_name)
             seed_dirs = [
@@ -103,43 +100,22 @@ class EloEvaluator:
                         config = json.load(f)
                 except FileNotFoundError:
                     continue
+                for b in summary["buyer_agents"]:
+                    model_name = config["llm_name"]
+                    question = b["principal"]["query"]["text"]
+                    if b["successfully_answered"]:
+                        rows[question].append((b, experiment_name, seed, model_name))
 
-                num_blocks = {
-                    b["principal"]["name"]: len(b["principal"]["answer"]["blocks"])
-                    for b in summary["buyer_agents"]
-                    if b["principal"]["answer"] is not None
-                }
-
-                with Pool(processes=self.n_jobs) as pool:
-                    all_data = pool.starmap(
-                        process_b,
-                        itertools.product(
-                            summary["buyer_agents"],
-                            [experiment_name],
-                            [seed],
-                            [config],
-                            [num_blocks]
-                        )
-                    )
-        self.df = pd.DataFrame(all_data)
+        flattened_rows = [item for sublist in rows.values() for item in sublist]
+        with ProcessPoolExecutor(max_workers=self.n_jobs) as executor:
+            results = list(tqdm(executor.map(process_b, flattened_rows), total=len(flattened_rows)))
+        self.df = pd.DataFrame(results)
         self.df.to_csv(self.output_path)
         print(f"Saved to {self.output_path}")
 
     def run(self, eval_with_model: str) -> EvaluationResult:
-        def filter_group(group):
-            if group["successfully_answered"].sum() >= 2:
-                return group[group["successfully_answered"]]
-
-        filtered_df = pd.concat(
-            [
-                filter_group(group)
-                for _, group in self.df.groupby("question_text")
-                if filter_group(group) is not None
-            ]
-        )
-
         pairs = []
-        for cols, group in tqdm(filtered_df.groupby("question_text")):
+        for cols, group in tqdm(self.df.groupby("question_text")):
             for pair in itertools.combinations(group.iterrows(), 2):
                 pairs.append(pair)
         breakpoint()
