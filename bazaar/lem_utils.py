@@ -1541,7 +1541,7 @@ def select_follow_up_question(
 
     Their supervisors have given them a question and an answer that their peers have produced. Their task is to decide if the provided answer adequately answers the question or whether things are still unclear. If the provided answer does not conclusively answer the question, they must come up with follow up questions that would enrich the answer. The follow up questions must be to the-point.   
     
-    Bobby wants the answer to cover enough ground to satisfy the client's curiosity. Michael is mindful about the risk of confusing the client by providing information that is not highly relevant to the question.  
+    Bobby wants the answer to cover enough ground to satisfy the client's curiosity. Michael is mindful about the risk of confusing the client by providing information that is not relevant to the question.
 
     Note that follow up questions should only be asked if there is a need for concrete information that is missing from the provided answer or if the provided answer is missing crucial details. In other words, Bobby and Michael are not necessarily required to ask a follow up question.
     {{~/system}}

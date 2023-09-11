@@ -391,6 +391,24 @@ class BuyerAgent(BazaarAgent):
             # If there are accepted quotes, we synthesize an answer with them.
             self.enqueue_follow_up_queries()
 
+    def remove_duplicate_quotes(self, quotes: List[Quote]) -> List[Quote]:
+        # If there are two quotes with the same blocks and the same query, we keep
+        # the one that is cheaper.
+        # No-op codepath
+        if len(quotes) == 0:
+            return []
+        # Real codepath
+        quotes_by_query = defaultdict(lambda: defaultdict(list))
+        for quote in quotes:
+            quotes_by_query[quote.query][quote.get_block_content_hash()].append(quote)
+        quotes = []
+        for query, quotes_this_query in quotes_by_query.items():
+            for _, quotes_this_query_by_block_content in quotes_this_query.items():
+                quotes.append(
+                    min(quotes_this_query_by_block_content, key=lambda q: q.price)
+                )
+        return quotes
+
     def select_quote(self, candidate_quotes: List[Quote]) -> List[Quote]:
         # The condition for calling this function is that all candidate_quotes have
         # the same query
@@ -400,6 +418,11 @@ class BuyerAgent(BazaarAgent):
         # First we filter out all the quotes that are too expensive
         candidate_quotes = [
             quote for quote in candidate_quotes if quote.price <= self.credit
+        ]
+        # First filter: remove duplicate quotes
+        candidate_quotes = [
+            quote.progress_quote()
+            for quote in self.remove_duplicate_quotes(candidate_quotes)
         ]
         # Apply reranker if required
         if len(candidate_quotes) > 0 and self.use_reranker:

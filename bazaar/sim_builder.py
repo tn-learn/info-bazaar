@@ -41,6 +41,7 @@ class SimulationConfig:
     # LLMs and embeddings
     llm_name: str
     embedding_name: str
+    reranker_name: str
 
     def dump(self, path: PathType) -> "SimulationConfig":
         dump_dict(self.__dict__, path)

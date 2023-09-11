@@ -1,7 +1,8 @@
+import hashlib
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, List, Union, Optional, Dict, Any
+from typing import TYPE_CHECKING, List, Union, Optional, Dict, Any, Tuple
 
 import tiktoken
 
@@ -259,6 +260,9 @@ class Quote:
             ]
         )
 
+    def get_block_content_hash(self) -> str:
+        return "+".join([block.get_block_content_hash() for block in self.answer_blocks])
+
 
 @dataclass
 class BulletinBoard:
@@ -376,6 +380,9 @@ class Block:
         )
 
     def compare_content(self, other: "Block") -> bool:
+        return self.get_block_content_prehash() == other.get_block_content_prehash()
+
+    def get_block_content_prehash(self) -> Tuple[str, str, str, str, int, int, str]:
         return (
             self.document_id,
             self.document_title,
@@ -384,15 +391,12 @@ class Block:
             self.token_start,
             self.token_end,
             self.content,
-        ) == (
-            other.document_id,
-            other.document_title,
-            other.section_title,
-            other.publication_date,
-            other.token_start,
-            other.token_end,
-            other.content,
         )
+
+    def get_block_content_hash(self) -> str:
+        return hashlib.sha256(
+            str(self.get_block_content_prehash()).encode("utf-8")
+        ).hexdigest()
 
     def evaluation_summary(self) -> Dict[str, Any]:
         return dict(block_id=self.block_id, content=self.content)
