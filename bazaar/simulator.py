@@ -264,11 +264,13 @@ class BuyerAgent(BazaarAgent):
     def receive_quote(self, quote: Quote):
         self._quote_inbox.append(quote)
 
-    def submit_final_response(self, response: Answer) -> "BuyerAgent":
+    def submit_final_response(self, response: Optional[Answer]) -> "BuyerAgent":
         self.principal: "BuyerPrincipal"
         self.print(
             f"Buyer {self.principal.name} submitted final response."
         )
+        if response is None:
+            response = Answer(success=False)
         self.principal.submit_final_response(answer=response)
         # Cancel all outstanding quotes
         for quote in list(self._quote_inbox):
@@ -426,6 +428,7 @@ class BuyerAgent(BazaarAgent):
             quote.progress_quote()
             for quote in self.remove_duplicate_quotes(candidate_quotes)
         ]
+        self.print(f"Received {len(candidate_quotes)} quotes for query: {candidate_quotes[0].query.text}")
         # Apply reranker if required
         if len(candidate_quotes) > 0 and self.use_reranker:
             # Before applying the reranker, we want to make sure that we don't have
@@ -485,6 +488,7 @@ class BuyerAgent(BazaarAgent):
                 )
             )
         selected_quotes = [quote.progress_quote() for quote in selected_quotes]
+        self.print(f"Selected {len(selected_quotes)} quotes for query: {candidate_quotes[0].query.text}")
         return selected_quotes
 
     def forward(self) -> None:
