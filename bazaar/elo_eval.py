@@ -93,12 +93,11 @@ class EloEvaluator:
         self.exp_root = exp_root
         self.evaluator_model = evaluator_model
         self.output_path = f"{exp_root}/elo_evaluation.csv"
-        if os.path.exists(self.output_path) and cache:
+        self.pairs_path = f"{self.exp_root}/all_pairs.csv"
+        if os.path.exists(self.output_path) and os.path.exists(self.pairs_path) and cache:
             print(f"Loading from {self.output_path}")
             self.df = pd.read_csv(self.output_path)
-            self.all_pairs_df = pd.read_csv(f"{self.exp_root}/all_pairs.csv").applymap(
-                try_literal_eval
-            )
+            self.all_pairs_df = pd.read_csv(self.pairs_path).applymap(try_literal_eval)
             return
         else:
             print(f"Creating new dataframe")
@@ -177,12 +176,16 @@ class EloEvaluator:
 
     def sub_sample_by_question(self, max_num_questions: int):
         questions = self.all_pairs_df["answer1_question_text"].unique()
-        sampled_questions = np.random.choice(questions, max_num_questions, replace=False)
+        sampled_questions = np.random.choice(
+            questions, max_num_questions, replace=False
+        )
         orig_num_pairs = len(self.all_pairs_df)
         self.all_pairs_df = self.all_pairs_df[
             self.all_pairs_df["answer1_question_text"].isin(sampled_questions)
         ]
-        print(f"Subsampled to {max_num_questions} questions. Reduced from {orig_num_pairs} to {len(self.all_pairs_df)} pairs")
+        print(
+            f"Subsampled to {max_num_questions} questions. Reduced from {orig_num_pairs} to {len(self.all_pairs_df)} pairs"
+        )
 
     def run(self, max_num_questions=-1) -> EvaluationResult:
         if max_num_questions > 0:
@@ -222,9 +225,7 @@ class EloEvaluator:
 def main(args: Optional[argparse.Namespace] = None):
     if args is None:
         parser = argparse.ArgumentParser()
-        parser.add_argument(
-            "--exp_root", type=str, default=None, help="path to run directory",
-        )
+        parser.add_argument("--exp_root", type=str)
         parser.add_argument("--evaluator_model", type=str)
         parser.add_argument("--cache", action="store_true")
         parser.add_argument("--n_jobs", type=int, default=10)
