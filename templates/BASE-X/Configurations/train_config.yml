@@ -36,4 +36,4 @@ LLAMAPI_API_PORT: 8911
 LLAMAPI_API_HOST: "http://login-1:8911"
 embedding_manager_path: "data/final_dataset_embeddings.db"
 dataset_path: "data/final_dataset_with_metadata.json"
-query_range: "0:5:1"
+query_range: "0:20"
