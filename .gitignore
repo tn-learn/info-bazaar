@@ -1,3 +1,6 @@
+.idea/
+*.pkl
+*.csv
 *rdb
 *.pyc
 logs/

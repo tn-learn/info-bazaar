@@ -1789,6 +1789,123 @@ def evaluate_answer_with_debate(
     return score_dict
 
 
+@backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
+def evaluate_answer_with_debate_retrieved_closed(
+        question: str,
+        gold_passage: str,
+        answer1: str,
+        answer2: str,
+        model_name: str,
+) -> Dict[str, Dict[str, int]]:
+    program_string = """
+    {{#system~}}
+    Bobby and Michael are college professors co-teaching a class on Machine Learning. It's the end of semester, and their three students took the final exams. Bobby and Michael must now grade their exams. 
+
+    There are no absolute grades for their class, meaning that the grades are relative. Bobby and Michael must therefore collectively decide how a student's answer ranks along several dimensions, namely:
+    1. Comprehensiveness.
+    2. Correctness.
+    3. Simplicity. 
+    4. Relevance. 
+
+    You will be given the question, a passage containing the true gold answer ("gold passage"), and the answers of two students. Your task is to simulate a constructive argument between Bobby and Michael, as they deliberate how to rank each student along these dimensions. It's important for you to note that there cannot be ties. When they are done, they will produce a ranking as follows: 
+
+    COMPREHENSIVENESS: 
+    Rank 1: <name>
+    Rank 2: <name> 
+
+    CORRECTNESS: 
+    Rank 1: <name>
+    Rank 2: <name> 
+
+    SIMPLICITY: 
+    Rank 1: <name>
+    Rank 2: <name> 
+
+    RELEVANCE: 
+    Rank 1: <name>
+    Rank 2: <name> 
+    {{~/system}}
+
+    {{#user~}}
+    Question: {{question}}
+
+    Gold Passage: "{{gold_passage}}"
+
+    Answer of James: {{answer1}}
+
+    Answer of Robert: {{answer2}}
+    {{~/user}}
+
+    {{#assistant~}}
+    {{gen "answer" temperature=0.0 max_tokens=2048}}
+    {{~/assistant}}
+    """
+    program_string = clean_program_string(program_string)
+    # Run the program
+    excuse_answer = "I'm sorry, I cannot not answer this question. I pass."
+    program_output = ask_for_guidance(
+        program_string=program_string,
+        llm=get_llm(model_name=model_name),
+        silent=True,
+        inputs=dict(
+            question=question,
+            gold_passage=gold_passage,
+            answer1=answer1,
+            answer2=answer2,
+        ),
+        output_keys=["answer"],
+    )
+    answer = program_output["answer"]
+    
+    # Parse the answer.
+    def extract_ranks(text: str) -> Dict[str, List[str]]:
+        # Splitting the text into potential categories with case-insensitive matching
+        potential_categories = re.split(r"([A-Za-z]+):", text, flags=re.IGNORECASE)[1:]
+        potential_categories = [
+            potential_categories[i: i + 2]
+            for i in range(0, len(potential_categories), 2)
+        ]
+
+        result_dict = {}
+        for category, ranks in potential_categories:
+            # Extracting names based on "Rank n: Name" pattern
+            names = re.findall(r"Rank \d+: (\w+)", ranks, flags=re.IGNORECASE)
+            if names:  # Only include categories that have ranks
+                result_dict[category.lower()] = names
+
+        return result_dict
+
+    rank_dict = extract_ranks(answer)
+
+    # Create a set of unique names
+    unique_names = set()
+    for ranks in rank_dict.values():
+        unique_names.update(ranks)
+
+    # Calculate max score
+    max_score = max(len(ranks) for ranks in rank_dict.values()) - 1
+
+    # Convert ranks to scores
+    score_dict = {}
+    for name in unique_names:
+        scores = {}
+        for category, ranks in rank_dict.items():
+            # If the name is in the ranks, then score is max_score - rank
+            # If the name is not in the ranks, then score is None
+            score = max_score - ranks.index(name) if name in ranks else None
+            scores[category] = score
+        score_dict[name] = scores
+
+    # Map the fake names back to the real names
+    name_map = {
+        "James": "answer1",
+        "Robert": "answer2",
+    }
+    score_dict.pop("None", None)
+    score_dict = {name_map[name]: scores for name, scores in score_dict.items()}
+    return score_dict
+
+
 def _test_main():
     question = "Who proposed variational inference?"
 
