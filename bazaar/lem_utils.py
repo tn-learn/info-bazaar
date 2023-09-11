@@ -1697,9 +1697,9 @@ def evaluate_answer_with_debate(
 def evaluate_answer_with_debate_retrieved_closed(
         question: str,
         gold_passage: str,
-        retrieved_answer: Optional[str],
-        closed_book_answer: str,
-        model_name: str = "gpt-4",
+        answer1: str,
+        answer2: str,
+        model_name: str,
 ) -> Dict[str, Dict[str, int]]:
     program_string = """
     {{#system~}}
@@ -1711,7 +1711,7 @@ def evaluate_answer_with_debate_retrieved_closed(
     3. Simplicity. 
     4. Relevance. 
 
-    You will be given the question, a passage containing the true gold answer ("gold passage"), and the answers of each student. Your task is to simulate a constructive argument between Bobby and Michael, as they deliberate how to rank each student along these dimensions. It's important for you to note that there cannot be ties. When they are done, they will produce a ranking as follows: 
+    You will be given the question, a passage containing the true gold answer ("gold passage"), and the answers of two students. Your task is to simulate a constructive argument between Bobby and Michael, as they deliberate how to rank each student along these dimensions. It's important for you to note that there cannot be ties. When they are done, they will produce a ranking as follows: 
 
     COMPREHENSIVENESS: 
     Rank 1: <name>
@@ -1735,9 +1735,9 @@ def evaluate_answer_with_debate_retrieved_closed(
 
     Gold Passage: "{{gold_passage}}"
 
-    Answer of James: {{closed_book_answer}}
+    Answer of James: {{answer1}}
 
-    Answer of Robert: {{retrieved_answer}}
+    Answer of Robert: {{answer2}}
     {{~/user}}
 
     {{#assistant~}}
@@ -1754,15 +1754,13 @@ def evaluate_answer_with_debate_retrieved_closed(
         inputs=dict(
             question=question,
             gold_passage=gold_passage,
-            retrieved_answer=(
-                retrieved_answer if retrieved_answer is not None else excuse_answer
-            ),
-            closed_book_answer=closed_book_answer,
+            answer1=answer1,
+            answer2=answer2,
         ),
         output_keys=["answer"],
     )
     answer = program_output["answer"]
-
+    
     # Parse the answer.
     def extract_ranks(text: str) -> Dict[str, List[str]]:
         # Splitting the text into potential categories with case-insensitive matching
@@ -1804,8 +1802,8 @@ def evaluate_answer_with_debate_retrieved_closed(
 
     # Map the fake names back to the real names
     name_map = {
-        "James": "closed_book",
-        "Robert": "retrieved",
+        "James": "answer1",
+        "Robert": "answer2",
     }
     score_dict.pop("None", None)
     score_dict = {name_map[name]: scores for name, scores in score_dict.items()}

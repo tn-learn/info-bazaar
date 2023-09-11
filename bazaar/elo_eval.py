@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional, Dict, List, Tuple
 import pandas as pd
 from concurrent.futures import ProcessPoolExecutor
+import yaml
 from tqdm import tqdm
 
 from bazaar.lem_utils import (
@@ -35,10 +36,13 @@ def evaluate_answer_quality_binary(
         answer2=answer2,
         model_name=model_name,
     )
+    allowed_keys = {'comprehensiveness', 'correctness', 'simplicity', 'relevance'}
+    answer1_filtered = {k: v for k, v in evaluated_answers['answer1'].items() if k in allowed_keys}
+    answer2_filtered = {k: v for k, v in evaluated_answers['answer2'].items() if k in allowed_keys}
 
     answer_qualities = dict(
-        answer1=AnswerQuality(**evaluated_answers["answer1"]),
-        answer2=AnswerQuality(**evaluated_answers["answer2"]),
+        answer1=AnswerQuality(**answer1_filtered),
+        answer2=AnswerQuality(**answer2_filtered),
     )
     return answer_qualities
 
@@ -53,7 +57,7 @@ def process_b(args_tuple):
         "seed": seed,
         "closed_book_answer": closed_book_answer,
         "llm_name": llm_name,
-        "budget_used": b["max_budget"] - b["credit_left"],
+        "budget_used": b.get("max_budget", 0) - b.get("credit_left", 0),
         "num_blocks": len(b["principal"]["answer"]["blocks"]),
     }
 
@@ -83,34 +87,25 @@ class EloEvaluator:
         rows = defaultdict(list)
         for experiment_name in os.listdir(exp_root):
             exp_base_dir = os.path.join(exp_root, experiment_name)
-            seed_dirs = [
-                d
-                for d in os.listdir(exp_base_dir)
-                if os.path.isdir(os.path.join(exp_base_dir, d))
-            ]
-
-            for seed in tqdm(seed_dirs):
-                seed_dir = os.path.join(exp_base_dir, seed)
-                summary_path = os.path.join(seed_dir, "bazaar_summary.json")
-                config_path = os.path.join(seed_dir, "config.json")
+            summary_path = os.path.join(exp_base_dir, "Logs", "baazar_summary.json")
+            config_path = os.path.join(exp_base_dir, "Configurations", "train_config.yml")
+            try:
+                with open(summary_path, "r") as f:
+                    summary = json.load(f)
+                with open(config_path, "r") as f:
+                    config = yaml.safe_load(f)
+            except FileNotFoundError:
+                continue
+            for b in summary["buyer_agents"]:
+                model_name = config["llm_name"]
+                question = b["principal"]["query"]["text"]
                 try:
-                    with open(summary_path, "r") as f:
-                        summary = json.load(f)
-                    with open(config_path, "r") as f:
-                        config = json.load(f)
-                except FileNotFoundError:
+                    if b["principal"]["answer"]["success"]:
+                        del b['rejected_quotes']
+                        rows[question].append((b, experiment_name, config['rng_seed'], model_name))
+                except (KeyError, TypeError):
                     continue
-                for b in summary["buyer_agents"]:
-                    model_name = config["llm_name"]
-                    question = b["principal"]["query"]["text"]
-                    try:
-                        if b["principal"]["answer"]["success"]:
-                            del b['rejected_quotes']
-                            rows[question].append((b, experiment_name, seed, model_name))
-                    except (KeyError, TypeError):
-                        continue
         flattened_rows = [item for sublist in rows.values() for item in sublist]
-        breakpoint()
         with ProcessPoolExecutor(max_workers=self.n_jobs) as executor:
             results = list(tqdm(executor.map(process_b, flattened_rows), total=len(flattened_rows)))
         self.df = pd.DataFrame(results)
@@ -118,25 +113,35 @@ class EloEvaluator:
         print(f"Saved to {self.output_path}")
 
     def run(self, eval_with_model: str) -> EvaluationResult:
+        import ast
+        self.df['principal/query'] = self.df['principal/query'].apply(ast.literal_eval)
+        self.df['principal/answer'] = self.df['principal/answer'].apply(ast.literal_eval)
+        self.df['question_text'] = self.df['principal/query'].apply(lambda x: x['text'] if 'text' in x else None)
+        self.df['answer_text'] = self.df['principal/answer'].apply(lambda x: x['text'] if 'text' in x else None)
+        self.df['answer_success'] = self.df['principal/answer'].apply(lambda x: x['success'] if 'success' in x else None)
         pairs = []
         for cols, group in tqdm(self.df.groupby("question_text")):
             for pair in itertools.combinations(group.iterrows(), 2):
                 pairs.append(pair)
-        breakpoint()
+        
         all_answer_qualities = []
         for pair in tqdm(pairs):
-            question_text = pair[0]["question_text"]
-            answer1 = pair[0]["answer"]
-            answer2 = pair[1]["answer"]
-            gold_block_content = pair[0]["gold_block_content"]
-            answer_qualities = evaluate_answer_quality_binary(
-                question_text=question_text,
-                answer1=answer1,
-                answer2=answer2,
-                gold_block_content=gold_block_content,
-                model_name=eval_with_model,
-            )
-            all_answer_qualities.append(answer_qualities)
+            question_text = pair[0][1]["question_text"]
+            answer1 = pair[0][1]["answer_text"]
+            answer2 = pair[1][1]["answer_text"]
+            gold_block_content = pair[0][1]['principal/query']['gold_block']['content']
+            try:
+                answer_qualities = evaluate_answer_quality_binary(
+                    question_text=question_text,
+                    answer1=answer1,
+                    answer2=answer2,
+                    gold_block_content=gold_block_content,
+                    model_name=eval_with_model,
+                )
+                result = {"answer1": dict(pair[0][1]), "answer2": dict(pair[1][1]), "answer1_quality": answer_qualities["answer1"], "answer2_quality": answer_qualities["answer2"]}
+                all_answer_qualities.append(result)
+            except Exception:
+                continue
         dump_dict(all_answer_qualities, f"{self.exp_root}/evaluation.json")
         return all_answer_qualities
 
