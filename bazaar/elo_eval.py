@@ -114,8 +114,14 @@ class EloEvaluator:
 
     def run(self, eval_with_model: str) -> EvaluationResult:
         import ast
-        self.df['principal/query'] = self.df['principal/query'].apply(ast.literal_eval)
-        self.df['principal/answer'] = self.df['principal/answer'].apply(ast.literal_eval)
+        def try_literal_eval(x):
+            try:
+                return ast.literal_eval(x)
+            except (ValueError, SyntaxError):
+                return None
+
+        self.df['principal/query'] = self.df['principal/query'].apply(try_literal_eval)
+        self.df['principal/answer'] = self.df['principal/answer'].apply(try_literal_eval)
         self.df['question_text'] = self.df['principal/query'].apply(lambda x: x['text'] if 'text' in x else None)
         self.df['answer_text'] = self.df['principal/answer'].apply(lambda x: x['text'] if 'text' in x else None)
         self.df['answer_success'] = self.df['principal/answer'].apply(lambda x: x['success'] if 'success' in x else None)
@@ -138,7 +144,7 @@ class EloEvaluator:
                     gold_block_content=gold_block_content,
                     model_name=eval_with_model,
                 )
-                result = {"answer1": dict(pair[0][1]), "answer2": dict(pair[1][1]), "answer1_quality": answer_qualities["answer1"], "answer2_quality": answer_qualities["answer2"]}
+                result = {"answer1": dict(pair[0][1]), "answer2": dict(pair[1][1]), "answer1_quality": answer_qualities["answer1"].summary(), "answer2_quality": answer_qualities["answer2"].summary()}
                 all_answer_qualities.append(result)
             except Exception:
                 continue
