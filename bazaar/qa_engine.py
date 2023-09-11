@@ -257,9 +257,9 @@ class QueryManager:
             answer = Answer(
                 success=True,
                 text=answer_text,
-                blocks=[block for quote in quotes for block in quote.answer_blocks],
+                blocks=[block for quote in quotes_for_query for block in quote.answer_blocks],
                 relevance_scores=[
-                    score for quote in quotes for score in quote.relevance_scores
+                    score for quote in quotes_for_query for score in quote.relevance_scores
                 ],
             )
             if commit:

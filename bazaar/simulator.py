@@ -131,9 +131,10 @@ class BazaarAgent(mesa.Agent):
             self.forward()
             self.called_count += 1
 
-    @staticmethod
-    def print(*args, **kwargs):
-        BazaarAgentContext.print(*args, **kwargs)
+    def print(self, *messages):
+        message = " ".join([str(m) for m in messages])
+        agent_info = f"{self.__class__.__name__}(id={self.unique_id})"
+        BazaarAgentContext.print(f"[{agent_info}] {message}")
 
     def evaluation_summary(self) -> Dict[str, Any]:
         summary = dict(
@@ -266,7 +267,7 @@ class BuyerAgent(BazaarAgent):
     def submit_final_response(self, response: Answer) -> "BuyerAgent":
         self.principal: "BuyerPrincipal"
         self.print(
-            f"Buyer {self.principal.name} submitted final response: {type(response)}"
+            f"Buyer {self.principal.name} submitted final response."
         )
         self.principal.submit_final_response(answer=response)
         # Cancel all outstanding quotes
@@ -292,6 +293,7 @@ class BuyerAgent(BazaarAgent):
                 self.model.bulletin_board.post(query)
                 self._query_queue.remove(query)
                 self._submitted_queries.append(query)
+                self.print(f"Posted query to bulletin board: {query.text}")
 
     def accept_or_claim_quote(self, quote: Quote) -> "BuyerAgent":
         # If the block content in the quote is already available, we don't need to buy it again.

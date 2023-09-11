@@ -10,7 +10,7 @@ import datetime
 from bazaar.lem_utils import (
     default_llm_name,
     default_embedding_name,
-    global_embedding_manager,
+    global_embedding_manager, default_reranker_name,
 )
 from bazaar.sim_builder import load, SimulationConfig
 from bazaar.simulator import BazaarSimulator
@@ -113,6 +113,8 @@ def main(args: Optional[argparse.Namespace] = None):
     logging.info(f"Using LLM: {config.llm_name}")
     default_embedding_name(set_to=config.embedding_name)
     logging.info(f"Using embedding: {config.embedding_name}")
+    default_reranker_name(set_to=config.reranker_name)
+    logging.info(f"Using reranker: {config.reranker_name}")
 
     # Load the dataset
     results = load(
