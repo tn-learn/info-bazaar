@@ -82,6 +82,19 @@ class SimulationRunner(BaseExperiment, IOMixin):
             if vendor_principal.num_blocks_owned > 0
         ]
 
+        # Remove vendors if required
+        if self.get("fraction_active_vendors") < 1.0:
+            num_vendors_to_keep = round(
+                len(vendor_principals) * self.get("fraction_active_vendors")
+            )
+            vendor_indices_to_keep = rng.choice(
+                len(vendor_principals), size=num_vendors_to_keep, replace=False
+            )
+            vendor_principals = [
+                vendor_principals[idx]
+                for idx in vendor_indices_to_keep
+            ]
+
         # Init the bazaar
         self.bazaar = BazaarSimulator(
             bulletin_board=bulletin_board,
