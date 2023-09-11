@@ -32,6 +32,21 @@ def parse_to_slice(s: str) -> slice:
         start, stop = s.split(":")
         return slice(int(start), int(stop))
 
+specific_questions = [
+    0, 4, 16, 17, 65, 83, 121, 195, 234, 247, 395, 526, 528, 727,
+    804, 917, 952, 983, 1009, 1010, 1124, 1157, 1168, 1178, 1284,
+    1573, 1723, 1794, 1801, 1915, 1954, 2000, 2062, 2201, 2281,
+    2446, 2486, 2611, 2688, 2844, 3625, 3833, 3885, 3940, 3984,
+    4129, 4165, 4188, 4289, 4369, 4427, 4630, 4764, 5108, 5246,
+]
+
+general_questions = [
+    10, 113, 114, 140, 173, 183, 210, 356, 378, 514, 658, 691, 699,
+    735, 840, 1144, 1210, 1241, 1318, 1837, 1863, 1971, 2005, 2230,
+    2337, 2431, 2432, 2675, 2729, 2799, 2808, 2954, 2991, 3391, 3461,
+    3596, 3600, 3601, 3655, 3691, 3729, 3732, 3858, 4025, 4146, 4259,
+    4472, 4499, 4618, 4639, 4705, 4904, 4947, 5046, 5384
+]
 
 class SimulationRunner(BaseExperiment, IOMixin):
     def __init__(self, skip_setup: bool = False):
@@ -104,7 +119,7 @@ class SimulationRunner(BaseExperiment, IOMixin):
     def dump_simulation_summary(self) -> "SimulationRunner":
         dump_dict(
             self.bazaar.evaluation_summary(),
-            Path(self.log_directory) / "baazar_summary.json",
+            Path(self.log_directory) / "bazaar_summary.json",
         )
         return self
 
