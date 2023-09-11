@@ -1,5 +1,6 @@
 import logging
 import random
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -9,7 +10,7 @@ from speedrun import BaseExperiment, register_default_dispatch, IOMixin
 from bazaar.lem_utils import (
     default_llm_name,
     global_embedding_manager,
-    default_embedding_name,
+    default_embedding_name, default_reranker_name,
 )
 from bazaar.py_utils import dump_dict, load_dict, root_dir_slash
 from bazaar.schema import BulletinBoard
@@ -41,10 +42,12 @@ class SimulationRunner(BaseExperiment, IOMixin):
 
     def _build(self):
         set_seed(self.get("rng_seed"))
+
         # Set the LLM and embedding names
         global_embedding_manager(init_from_path=root_dir_slash(self.get("embedding_manager_path")))
         default_llm_name(set_to=self.get("llm_name"))
         default_embedding_name(set_to=self.get("embedding_name"))
+        default_reranker_name(set_to=self.get("reranker_name"))
 
         # Load the dataset
         dataset = load_dict(root_dir_slash(self.get("dataset_path")))
@@ -89,6 +92,12 @@ class SimulationRunner(BaseExperiment, IOMixin):
             vendor_agent_kwargs=self.get("vendor_agent_kwargs"),
         )
 
+    def info(self, *message) -> "SimulationRunner":
+        # Add datetime stamp to message and print
+        message = " ".join([str(m) for m in message])
+        self.print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {message}")
+        return self
+
     def print_results(self) -> "SimulationRunner":
         # Get the buyer principals
         buyer_principals = [agent.principal for agent in self.bazaar.buyer_agents]
@@ -97,6 +106,9 @@ class SimulationRunner(BaseExperiment, IOMixin):
             self.print(f"Question: {buyer_principal.query.text}")
             if buyer_principal.answer.success:
                 self.print(f"Answer: {buyer_principal.answer.text}")
+                self.print("==== References ====")
+                for block_idx, block in enumerate(buyer_principal.answer.blocks):
+                    print(f"[Ref {block_idx + 1}] ", block.document_title)
             else:
                 self.print("No answer found.")
         return self
@@ -112,7 +124,7 @@ class SimulationRunner(BaseExperiment, IOMixin):
     def simulate(self) -> "SimulationRunner":
         self._build()
         # Run the sim
-        self.bazaar.run(self.get("runner/duration", 168))
+        self.bazaar.run(self.get("runner/duration", 168), print_callback=self.info)
         # Print the results and dump summary
         self.print_results().dump_simulation_summary()
         # Done
@@ -122,4 +134,4 @@ class SimulationRunner(BaseExperiment, IOMixin):
 
 if __name__ == '__main__':
     runner = SimulationRunner()
-    runner.simulate()
+    runner.run()

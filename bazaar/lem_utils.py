@@ -1492,13 +1492,6 @@ def get_closed_book_answer(question: str, model_name: Optional[str] = None) -> s
     return answer
 
 
-def synthesize_compound_answer(
-    query_answer_pairs: List[Tuple["Query", "Answer"]], model_name: Optional[str] = None
-) -> str:
-    # TODO
-    pass
-
-
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def get_open_book_answer(
     question: str, gold_passage: str, model_name: Optional[str] = None
