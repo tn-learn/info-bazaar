@@ -60,7 +60,6 @@ def process_b(args_tuple):
         "budget_used": b.get("max_budget", 0) - b.get("credit_left", 0),
         "num_blocks": len(b["principal"]["answer"]["blocks"]),
     }
-
     for k, v in b.items():
         if isinstance(v, dict):
             for sub_k, sub_v in v.items():
@@ -85,7 +84,8 @@ class EloEvaluator:
 
         print(f"Loading experiments: {os.listdir(exp_root)} from {exp_root}")
         rows = defaultdict(list)
-        for experiment_name in os.listdir(exp_root):
+        experiments = [f for f in os.listdir(exp_root) if os.path.isdir(os.path.join(exp_root, f))]
+        for experiment_name in tqdm(experiments):
             exp_base_dir = os.path.join(exp_root, experiment_name)
             summary_path = os.path.join(exp_base_dir, "Logs", "baazar_summary.json")
             config_path = os.path.join(exp_base_dir, "Configurations", "train_config.yml")
@@ -119,7 +119,6 @@ class EloEvaluator:
                 return ast.literal_eval(x)
             except (ValueError, SyntaxError):
                 return None
-
         self.df['principal/query'] = self.df['principal/query'].apply(try_literal_eval)
         self.df['principal/answer'] = self.df['principal/answer'].apply(try_literal_eval)
         self.df['question_text'] = self.df['principal/query'].apply(lambda x: x['text'] if 'text' in x else None)
