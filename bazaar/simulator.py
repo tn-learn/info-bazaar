@@ -495,7 +495,10 @@ class BuyerAgent(BazaarAgent):
                 )
             )
         selected_quotes = [quote.progress_quote() for quote in selected_quotes]
-        self.print(f"Selected {len(selected_quotes)} quotes for query: {candidate_quotes[0].query.text}")
+        if len(candidate_quotes) > 0:
+            self.print(f"Selected {len(selected_quotes)} quotes for query: {candidate_quotes[0].query.text}")
+        else:
+            self.print(f"There were no quotes to select.")
         return selected_quotes
 
     def forward(self) -> None:
