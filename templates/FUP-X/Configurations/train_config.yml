@@ -12,7 +12,7 @@ query_creation_time_start: 0
 query_creation_time_end: 1
 embedding_manager_path: "data/final_dataset_embeddings.db"
 dataset_path: "data/final_dataset_with_metadata.json"
-query_range: "380:381"
+query_range: "general_questions:51"
 fraction_active_vendors: 1.0
 
 # Simulator
@@ -39,7 +39,7 @@ vendor_agent_kwargs:
     mips_weight: 1.0
 bulletin_board_retrieval_top_k: 1
 bulletin_board_retrieval_score_threshold: 0.7
-llm_name: "gpt-3.5-turbo-16k"
+llm_name: "gpt-4"
 embedding_name: "bge-large-en"
 reranker_name: "ms-marco-MiniLM-L-12-v2"
 

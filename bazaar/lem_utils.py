@@ -1396,7 +1396,7 @@ def synthesize_answer(
 
     program_string = """
     {{#system~}}
-    You are a Question Answering Bot. Your task is to answer a question to the best of your ability. To help you in that task, you will be given some passages that might contain the answer.  
+    You are a Question Answering Bot. Your task is to answer a question to the best of your ability. To help you in that task, you will be given some passages that might contain useful information.  
     
     It is important that your answer is formulated in a simple and understandable way. 
     {{~/system}}
@@ -1410,10 +1410,12 @@ def synthesize_answer(
     {{add @index 1}}. {{this.answer_block}}
     {{/each}}---
     
-    Please start by summarizing what you know about the answer, and what you don't know or what you are not confident about. Also discuss what's in the passages, and to what extent they help you towards answering the question. Don't be afraid of not knowing things, but be honest about what you don't know. When writing these down, start with "THOUGHTS: <your thoughts>".
+    Please start by summarizing what you know, and what you are not confident about. Also discuss the content of the passages, and to what extent they help you towards answering the question. Don't be afraid of not knowing things, but be honest about what you don't know. Finally, when deciding how detailed your answer should be, think about the intention of the question asker. If the question is about something specific, the answer must be to-the-point. If the question is more general, the answer can be more comprehensive. 
 
-    Once you're done, begin your answer with "ANSWER: <your answer>".
+    When writing these down, start with "THOUGHTS: <your thoughts>".
     
+    Once you're done, begin your answer with "ANSWER: <your answer>".
+
     Let's begin.
     {{~/user}}
     
@@ -1534,7 +1536,7 @@ def select_follow_up_question(
 
     Their supervisors have given them a question and an answer that their peers have produced. Their task is to decide if the provided answer adequately answers the question or whether things are still unclear. If the provided answer does not conclusively answer the question, they must come up with follow up questions that would enrich the answer. The follow up questions must be to the-point.   
     
-    Bobby wants the answer to cover enough ground to satisfy the client's curiosity. Michael is mindful about the risk of confusing the client by providing information that is not relevant to the question.
+    Bobby wants the answer to cover enough ground to satisfy the client's curiosity. Michael is mindful about the risk of confusing the client by providing information that is not relevant to the question. Together, they must try to figure out whether the client wants a to-the-point answer or a more elaborate answer. If the client's question is general and warrants a more elaborate answer, it makes more sense to ask follow-up questions. In the case that the client's question is specific, then the follow-up questions must only be asked if the currently available answer is not conclusive. 
 
     Note that follow up questions should only be asked if there is a need for concrete information that is missing from the provided answer or if the provided answer is missing crucial details. In other words, Bobby and Michael are not necessarily required to ask a follow up question.
     {{~/system}}
@@ -1597,9 +1599,9 @@ def refine_answer(
 
     program_string = """
     {{#system~}}
-    You are an Answer Refinement AI. You will be given a question, and an initial answer. The initial answer was not clear in some aspect, so follow up questions were asked to clarify. 
+    You are an Answer Refinement AI. You will be given a question, and an initial answer. The initial answer was lacking in some aspects, so follow up questions were asked to improve the initial answer. 
     
-    Your task is to refine the initial answer by incorporating the extra insights obtained from the answers to the follow up questions. But be mindful to only include the insights that make the original answer better, and ignore the rest. The refined answer should answer the original question with simplicity and precision. 
+    Your task is to refine the initial answer by incorporating the extra insights obtained from the answers to the follow up questions. But be mindful to only include the insights that make the original answer better, and ignore the rest. The refined answer should directly answer the original question. 
     {{~/system}}
 
     {{#user~}}
@@ -1615,7 +1617,11 @@ def refine_answer(
     {{~/each}}
     --- 
     
-    Given these follow up questions, your task is to refine the initial answer. Begin by thinking out loud about what you need to do. Then print "REFINED ANSWER: <your answer>"
+    Given these follow up questions, your task is to refine the initial answer. 
+    
+    Begin by thinking out loud about what you need to do. Ask yourself whether the question is general or specific. If it is general, then you need to provide a more comprehensive answer. If it is specific, then you need to provide a more to-the-point answer. Also ask yourself whether you need to use all the follow up answers, or only some of them. 
+    
+    When it's finally time to write down your refined answer, print "REFINED ANSWER: <your answer>"
     
     Let's go. 
     {{~/user}}
