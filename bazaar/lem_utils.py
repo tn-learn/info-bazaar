@@ -1703,31 +1703,25 @@ Next, you will produce a score according to a Likert scale ranging from 1 (lowes
     answer = program_output["answer"]
 
     # Parse the answer.
-    def extract_likert_ranks(text: str) -> Dict[str, List[str]]:
-        # Splitting the text into potential categories with case-insensitive matching
-        potential_categories = re.split(r"([A-Za-z]+):", text, flags=re.IGNORECASE)[1:]
-        potential_categories = [
-            potential_categories[i : i + 2]
-            for i in range(0, len(potential_categories), 2)
-        ]
+    def extract_likert_ranks(text: str) -> Dict[str, int]:
+        # Define categories to look for
+        categories = ['CORRECTNESS', 'RELEVANCE', 'SIMPLICITY', 'COMPREHENSIVENESS', 'OVERALL', 'QUALITY']
 
+        # Initialize result dictionary
         result_dict = {}
-        for category, ranks in potential_categories:
-            correctness = re.findall(r"CORRECTNESS: (\d+)", ranks, flags=re.IGNORECASE)
-            relevance = re.findall(r"RELEVANCE: (\d+)", ranks, flags=re.IGNORECASE)
-            simplicity = re.findall(r"SIMPLICITY: (\d+)", ranks, flags=re.IGNORECASE)
-            comprehensiveness = re.findall(r"COMPREHENSIVENESS: (\d+)", ranks, flags=re.IGNORECASE)
-            overall_quality = re.findall(r"OVERALL QUALITY: (\d+)", ranks, flags=re.IGNORECASE)
-            if correctness:
-                result_dict["correctness"] = correctness[-1]
-            if relevance:
-                result_dict["relevance"] = relevance[-1]
-            if simplicity:
-                result_dict["simplicity"] = simplicity[-1]
-            if comprehensiveness:
-                result_dict["comprehensiveness"] = comprehensiveness[-1]
-            if overall_quality:
-                result_dict["overall_quality"] = overall_quality[-1]
+
+        # Loop through each category to find its rank in the text
+        for category in categories:
+            # Use a broad regex pattern to capture the digits
+            search_result = re.findall(f"{category}[^\d]*?(\d+)", text, re.IGNORECASE)
+
+            if search_result:
+                # For 'OVERALL' and 'QUALITY', combine them into 'overall_quality'
+                if category in ['OVERALL', 'QUALITY']:
+                    result_dict['overall_quality'] = int(search_result[-1])
+                else:
+                    result_dict[category.lower()] = int(search_result[-1])
+
         return result_dict
 
     rank_dict = extract_likert_ranks(answer)
