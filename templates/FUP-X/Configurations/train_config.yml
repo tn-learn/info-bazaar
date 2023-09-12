@@ -42,6 +42,7 @@ bulletin_board_retrieval_score_threshold: 0.7
 llm_name: "gpt-4"
 embedding_name: "bge-large-en"
 reranker_name: "ms-marco-MiniLM-L-12-v2"
+run_type: "retrieve"
 
 # LLAMAPI
 LLAMAPI_API_PORT: 8911

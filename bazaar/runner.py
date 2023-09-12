@@ -11,10 +11,10 @@ from bazaar.lem_utils import (
     default_llm_name,
     global_embedding_manager,
     default_embedding_name,
-    default_reranker_name,
+    default_reranker_name, get_closed_book_answer, get_open_book_answer,
 )
 from bazaar.py_utils import dump_dict, load_dict, root_dir_slash
-from bazaar.schema import BulletinBoard
+from bazaar.schema import BulletinBoard, Answer
 from bazaar.sim_builder import (
     build_buyers,
     build_authors_and_institutions,
@@ -186,7 +186,31 @@ class SimulationRunner(BaseExperiment, IOMixin):
     def simulate(self) -> "SimulationRunner":
         self._build()
         # Run the sim
-        self.bazaar.run(self.get("runner/duration", 168), print_callback=self.info)
+        if self.get("run_type") == "retrieve":
+            self.bazaar.run(self.get("runner/duration", 168), print_callback=self.info)
+        elif self.get("run_type") == "closed_book":
+            for buyer_agent in self.bazaar.buyer_agents:
+                closed_book_answer = get_closed_book_answer(
+                    question=buyer_agent.principal.question.text, model_name=self.get("llm_name")
+                )
+                answer = Answer(
+                    success=True,
+                    text=closed_book_answer,
+                )
+                buyer_agent.principal.answer = answer
+        elif self.get("run_type") == "open_book":
+            for buyer_agent in self.bazaar.buyer_agents:
+                open_book_answer = get_open_book_answer(
+                    question=buyer_agent.principal.question,
+                    gold_passage=buyer_agent.principal.question._gold_block.content,
+                    model_name=self.get("llm_name")
+                )
+                answer = Answer(
+                    success=True,
+                    text=open_book_answer,
+                )
+                buyer_agent.principal.answer = answer
+
         # Print the results and dump summary
         self.print_results().dump_simulation_summary()
         # Done
