@@ -101,6 +101,7 @@ class QueryManager:
         self,
         agent: "BuyerAgent",
         answer_synthesis_model_name: str,
+        follow_up_question_synthesis_model_name: str,
         max_query_depth: int = 3,
     ):
         # Private
@@ -108,6 +109,9 @@ class QueryManager:
         self._allow_closed_book_answers = False
         # Public
         self.answer_synthesis_model_name = answer_synthesis_model_name
+        self.follow_up_question_synthesis_model_name = (
+            follow_up_question_synthesis_model_name
+        )
         self.max_query_depth = max_query_depth
         self.question_graph = DiGraph()
 
@@ -257,9 +261,13 @@ class QueryManager:
             answer = Answer(
                 success=True,
                 text=answer_text,
-                blocks=[block for quote in quotes_for_query for block in quote.answer_blocks],
+                blocks=[
+                    block for quote in quotes_for_query for block in quote.answer_blocks
+                ],
                 relevance_scores=[
-                    score for quote in quotes_for_query for score in quote.relevance_scores
+                    score
+                    for quote in quotes_for_query
+                    for score in quote.relevance_scores
                 ],
             )
             if commit:
@@ -338,7 +346,7 @@ class QueryManager:
         follow_up_questions = select_follow_up_question(
             question=node.query.text,
             current_answer=node.answer.text,
-            model_name="gpt-3.5-turbo",
+            model_name=self.follow_up_question_synthesis_model_name,
         )
 
         # Get the root query from which we inherit some query properties

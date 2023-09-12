@@ -10,7 +10,8 @@ from speedrun import BaseExperiment, register_default_dispatch, IOMixin
 from bazaar.lem_utils import (
     default_llm_name,
     global_embedding_manager,
-    default_embedding_name, default_reranker_name,
+    default_embedding_name,
+    default_reranker_name,
 )
 from bazaar.py_utils import dump_dict, load_dict, root_dir_slash
 from bazaar.schema import BulletinBoard
@@ -26,13 +27,7 @@ def set_seed(seed: int):
     np.random.seed(seed)
 
 
-def parse_to_slice(s: str) -> slice:
-    if s is None:
-        return slice(0, None)
-    else:
-        start, stop = s.split(":")
-        return slice(int(start), int(stop))
-
+# fmt: off
 specific_questions = [
     0, 4, 16, 17, 65, 83, 121, 195, 234, 247, 395, 526, 528, 727,
     804, 917, 952, 983, 1009, 1010, 1124, 1157, 1168, 1178, 1284,
@@ -48,6 +43,8 @@ general_questions = [
     3596, 3600, 3601, 3655, 3691, 3729, 3732, 3858, 4025, 4146, 4259,
     4472, 4499, 4618, 4639, 4705, 4904, 4947, 5046, 5384
 ]
+# fmt: on
+
 
 class SimulationRunner(BaseExperiment, IOMixin):
     def __init__(self, skip_setup: bool = False):
@@ -55,11 +52,47 @@ class SimulationRunner(BaseExperiment, IOMixin):
         if not skip_setup:
             self.auto_setup()
 
+    def _select_buyers(self, buyers: list) -> list:
+        def slicey(list_: list, slice_str: str):
+            if slice_str is None:
+                pass
+            elif ":" in slice_str:
+                start, stop, *step = slice_str.split(":")
+                if len(step) > 0:
+                    step = int(step[0])
+                    list_ = list_[start:stop:step]
+                else:
+                    list_ = list_[start:stop]
+            elif "," in slice_str:
+                list_ = [list_[int(idx)] for idx in slice_str.split(",")]
+            elif slice_str.isdigit():
+                list_ = [list_[int(slice_str)]]
+            else:
+                raise ValueError(f"Invalid slice string: {slice_str}")
+            return list_
+
+        query_range = self.get("query_range")
+        if query_range.startswith("general_questions:"):
+            indices = slicey(
+                general_questions, query_range.replace("general_questions:", "")
+            )
+            buyers = [buyers[idx] for idx in indices]
+        elif query_range.startswith("specific_questions:"):
+            indices = slicey(
+                specific_questions, query_range.replace("specific_questions:", "")
+            )
+            buyers = [buyers[idx] for idx in indices]
+        else:
+            buyers = slicey(buyers, query_range)
+        return buyers
+
     def _build(self):
         set_seed(self.get("rng_seed"))
 
         # Set the LLM and embedding names
-        global_embedding_manager(init_from_path=root_dir_slash(self.get("embedding_manager_path")))
+        global_embedding_manager(
+            init_from_path=root_dir_slash(self.get("embedding_manager_path"))
+        )
         default_llm_name(set_to=self.get("llm_name"))
         default_embedding_name(set_to=self.get("embedding_name"))
         default_reranker_name(set_to=self.get("reranker_name"))
@@ -77,6 +110,7 @@ class SimulationRunner(BaseExperiment, IOMixin):
             query_creation_time_end=self.get("query_creation_time_end"),
             rng=rng,
         )
+        buyers = self._select_buyers(buyers)
 
         authors, institutions = build_authors_and_institutions(
             dataset=dataset,
@@ -88,7 +122,6 @@ class SimulationRunner(BaseExperiment, IOMixin):
             rng=rng,
         )
         bulletin_board = BulletinBoard()
-        buyers = buyers[parse_to_slice(self.get("query_range"))]
 
         # Filter out the vendors that don't have a block to sell
         vendor_principals = [
@@ -106,8 +139,7 @@ class SimulationRunner(BaseExperiment, IOMixin):
                 len(vendor_principals), size=num_vendors_to_keep, replace=False
             )
             vendor_principals = [
-                vendor_principals[idx]
-                for idx in vendor_indices_to_keep
+                vendor_principals[idx] for idx in vendor_indices_to_keep
             ]
 
         # Init the bazaar
@@ -160,6 +192,6 @@ class SimulationRunner(BaseExperiment, IOMixin):
         return self
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     runner = SimulationRunner()
     runner.run()

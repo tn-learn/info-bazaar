@@ -228,6 +228,7 @@ class BuyerAgent(BazaarAgent):
         reranker_max_num_quotes: Optional[int] = None,
         quote_selection_model_name: Optional[str] = None,
         answer_synthesis_model_name: Optional[str] = None,
+        follow_up_question_synthesis_model_name: Optional[str] = None,
         reranking_model_name: Optional[str] = None,
     ):
         super().__init__(principal)
@@ -241,6 +242,9 @@ class BuyerAgent(BazaarAgent):
             agent=self,
             max_query_depth=max_query_depth,
             answer_synthesis_model_name=self.get_llm_name(answer_synthesis_model_name),
+            follow_up_question_synthesis_model_name=self.get_llm_name(
+                follow_up_question_synthesis_model_name
+            ),
         )
         # Publics
         self.quote_review_top_k = quote_review_top_k
