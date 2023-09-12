@@ -31,6 +31,7 @@ class Query:
     required_by_time: Optional[int] = None
     processor_model: Optional[str] = None
     embedding_model: Optional[str] = None
+    query_type: Optional[str] = None
     # Containers for hyde and text
     _text_embedding: Optional[List[float]] = None
     _hyde_text: Optional[str] = None

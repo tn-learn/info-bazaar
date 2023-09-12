@@ -73,19 +73,18 @@ class SimulationRunner(BaseExperiment, IOMixin):
                 raise ValueError(f"Invalid slice string: {slice_str}")
             return list_
 
-        query_range = self.get("query_range")
-        if query_range.startswith("general_questions:"):
+        if self.get("question_type") == "general":
             indices = slicey(
-                general_questions, query_range.replace("general_questions:", "")
+                general_questions, self.get("query_range")
             )
             buyers = [buyers[idx] for idx in indices]
-        elif query_range.startswith("specific_questions:"):
+        elif self.get("question_type") == "specific":
             indices = slicey(
-                specific_questions, query_range.replace("specific_questions:", "")
+                specific_questions, self.get("query_range")
             )
             buyers = [buyers[idx] for idx in indices]
         else:
-            buyers = slicey(buyers, query_range)
+            buyers = slicey(buyers, self.get("query_range"))
         return buyers
 
     def _build(self):
