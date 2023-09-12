@@ -12,7 +12,7 @@ query_creation_time_start: 0
 query_creation_time_end: 1
 embedding_manager_path: "data/final_dataset_embeddings.db"
 dataset_path: "data/final_dataset_with_metadata.json"
-query_range: "general_questions:51"
+query_range: "51"
 fraction_active_vendors: 1.0
 
 # Simulator
@@ -44,6 +44,7 @@ llm_name: "gpt-4"
 embedding_name: "bge-large-en"
 reranker_name: "ms-marco-MiniLM-L-12-v2"
 run_type: "retrieve"
+question_type: "general"
 
 # LLAMAPI
 LLAMAPI_API_PORT: 8911
