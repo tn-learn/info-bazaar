@@ -3,6 +3,7 @@ import os
 import argparse
 import ast
 import random
+import yaml
 from tqdm import tqdm
 from typing import Optional, Dict, List, Any
 
@@ -55,7 +56,7 @@ class LikertEvaluator:
     def read_bazaar_summaries(self) -> List[Dict[str, str]]:
         rows = []
         for experiment_path in glob.glob(
-            os.path.join(self.experiment_root, self.experiment_name)
+            os.path.join(self.experiment_root, self.experiment_name+ "*/")
         ):
             summary_path = os.path.join(experiment_path, "Logs", "bazaar_summary.json")
             config_path = os.path.join(
@@ -63,9 +64,8 @@ class LikertEvaluator:
             )
             if not os.path.exists(summary_path) or not os.path.exists(config_path):
                 continue
-            config = load_dict(config_path)
+            config = yaml.safe_load(open(config_path, "r"))
             summary = load_dict(summary_path)
-
             for buyer_agent_summary in summary["buyer_agents"]:
                 to_append = {}
                 to_append["experiment_name"] = experiment_path
@@ -74,9 +74,7 @@ class LikertEvaluator:
                 to_append["question"] = buyer_agent_summary["principal"]["query"][
                     "text"
                 ]
-                to_append["question_type"] = buyer_agent_summary["principal"]["query"][
-                    "type"
-                ]
+                to_append["question_type"] = buyer_agent_summary["principal"]["query"].get('type', 'general')
                 credit_left = buyer_agent_summary["credit"]
                 budget = buyer_agent_summary["principal"]["query"]["max_budget"]
                 to_append["credit_spent"] = budget - credit_left
@@ -93,16 +91,17 @@ class LikertEvaluator:
                     question=to_append["question"],
                     gold_block_content=to_append["gold_block"],
                     answer=to_append["answer"],
-                    llm_name=to_append["llm_name"],
+                    llm_name=to_append["agent_model"],
                     answer_type=to_append["answer_type"],
                 )
                 rows.append(to_append)
         return rows
 
     def evaluate_likert_score_for_row(self, row: Dict[str, Any], inplace: bool = False) -> Dict[str, str]:
+        breakpoint()
         evaluated_answers = evaluate_answer_with_likert(
             question=row["question"],
-            gold_passage=row["gold_block"],
+            gold_block=row["gold_block"],
             answer=row["answer"],
             model_name=self.evaluator_model,
         )
@@ -130,7 +129,7 @@ def main(args: Optional[argparse.Namespace] = None):
         parser.add_argument("--experiment_root", type=str)
         parser.add_argument("--experiment_name", type=str)
         parser.add_argument("--evaluator_model", type=str)
-        parser.add_argument("--evaluator_seed", type=int, default=42)
+        parser.add_argument("--seed", type=int, default=42)
         args = parser.parse_args()
     random.seed(args.seed)
     np.random.seed(args.seed)
