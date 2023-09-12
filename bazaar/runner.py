@@ -58,6 +58,8 @@ class SimulationRunner(BaseExperiment, IOMixin):
                 pass
             elif ":" in slice_str:
                 start, stop, *step = slice_str.split(":")
+                start = int(start)
+                stop = int(stop)
                 if len(step) > 0:
                     step = int(step[0])
                     list_ = list_[start:stop:step]
