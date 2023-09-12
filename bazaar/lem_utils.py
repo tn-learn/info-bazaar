@@ -32,7 +32,7 @@ from llamapi.client import ask_for_guidance
 
 if TYPE_CHECKING:
     import torch
-    from bazaar.schema import Quote, Query, Answer
+    from bazaar.schema import Quote, Query, Answer, Block
 
 OAI_EXCEPTIONS = (
     openai.error.APIError,
@@ -1198,6 +1198,7 @@ def select_quotes_with_debate(
     fraction_of_max_budget: Optional[float] = None,
     model_name: Optional[str] = None,
     use_block_content_metadata: bool = False,
+    use_block_metadata_only: bool = False,
 ) -> List["Quote"]:
     assert all(
         [quotes[0].query.compare_content(quote.query) for quote in quotes[1:]]
@@ -1216,18 +1217,21 @@ def select_quotes_with_debate(
 
     # Get the question
     question = quotes[0].query.text
+
+    # Build the content extractor
+    def content_extractor(block: "Block") -> str:
+        if use_block_content_metadata:
+            return block.content_with_metadata
+        elif use_block_metadata_only:
+            return block.metadata
+        else:
+            return block.content
+
     # Get the options
     options = [
         {
             "answer_block": " [...] ".join(
-                [
-                    (
-                        block.content_with_metadata
-                        if use_block_content_metadata
-                        else block.content
-                    )
-                    for block in quote.answer_blocks
-                ]
+                [content_extractor(block) for block in quote.answer_blocks]
             ),
             "price": max(int(round(quote.price * scale_factor)), 1),
         }
@@ -1790,11 +1794,11 @@ def evaluate_answer_with_debate(
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def evaluate_answer_with_debate_retrieved_closed(
-        question: str,
-        gold_passage: str,
-        answer1: str,
-        answer2: str,
-        model_name: str,
+    question: str,
+    gold_passage: str,
+    answer1: str,
+    answer2: str,
+    model_name: str,
 ) -> Dict[str, Dict[str, int]]:
     program_string = """
     {{#system~}}
@@ -1855,13 +1859,13 @@ def evaluate_answer_with_debate_retrieved_closed(
         output_keys=["answer"],
     )
     answer = program_output["answer"]
-    
+
     # Parse the answer.
     def extract_ranks(text: str) -> Dict[str, List[str]]:
         # Splitting the text into potential categories with case-insensitive matching
         potential_categories = re.split(r"([A-Za-z]+):", text, flags=re.IGNORECASE)[1:]
         potential_categories = [
-            potential_categories[i: i + 2]
+            potential_categories[i : i + 2]
             for i in range(0, len(potential_categories), 2)
         ]
 

@@ -437,6 +437,14 @@ class Block:
         )
         return content
 
+    @property
+    def metadata(self) -> str:
+        content = (
+            f"Paper Title: {self.document_title}\n"
+            f"Section Title: {self.section_title}\n"
+        )
+        return content
+
     def get_content_embedding(
         self,
         model: Optional[str] = None,

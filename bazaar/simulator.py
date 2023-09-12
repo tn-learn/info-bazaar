@@ -221,6 +221,7 @@ class BuyerAgent(BazaarAgent):
         principal: BuyerPrincipal,
         quote_review_top_k: Optional[int] = None,
         quote_review_use_block_metadata: bool = False,
+        quote_review_use_metadata_only: bool = False,
         quote_review_num_tries: int = 1,
         num_quote_gathering_steps: int = 0,
         max_query_depth: int = 2,
@@ -249,6 +250,7 @@ class BuyerAgent(BazaarAgent):
         # Publics
         self.quote_review_top_k = quote_review_top_k
         self.quote_review_use_block_metadata = quote_review_use_block_metadata
+        self.quote_review_use_metadata_only = quote_review_use_metadata_only
         self.quote_review_num_tries = quote_review_num_tries
         self.num_quote_gathering_steps = num_quote_gathering_steps
         self.use_reranker = use_reranker
@@ -488,6 +490,7 @@ class BuyerAgent(BazaarAgent):
                         budget=self.credit,
                         model_name=self.quote_selection_model_name,
                         use_block_content_metadata=self.quote_review_use_block_metadata,
+                        use_block_metadata_only=self.quote_review_use_metadata_only,
                     )
                 )
             )
