@@ -792,7 +792,7 @@ def generate_hyde_passage(question: str, model: Optional[str] = None) -> str:
     {{~/user}}
 
     {{#assistant~}} 
-    {{set 'hyde_answer' (parse_answer (gen stop="\\n\\n" temperature=0.0))}}
+    {{gen 'hyde_answer' stop="\\n" temperature=0.0}}
     {{~/assistant}}
     """  # noqa
     program_string = clean_program_string(program_string)
@@ -802,11 +802,11 @@ def generate_hyde_passage(question: str, model: Optional[str] = None) -> str:
         silent=True,
         inputs=dict(
             question=question,
-            parse_answer=_parse_answer,
         ),
         output_keys=["hyde_answer"],
     )
-    return program_outputs["hyde_answer"]
+    hyde_answer = program_outputs["hyde_answer"]
+    return _parse_answer(hyde_answer)
 
 
 def generate_keywords(
