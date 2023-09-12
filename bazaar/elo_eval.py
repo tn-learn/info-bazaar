@@ -30,6 +30,13 @@ def try_literal_eval(x):
     except (ValueError, SyntaxError):
         return x
 
+def create_html_text(question, gold_block_content, answer1, answer2, llm_name1, llm_name2, type1, type2):
+    html_dict = {
+        'Question': f'<span data-toggle="tooltip" data-html="true" data-placement="bottom" title="Context: Question"><b>QUESTION</b>: {question}\n\n<b>GOLD PASSAGE</b>: {gold_block_content}</span>',
+        'Answer 1': f'<span data-toggle="tooltip" data-html="true" data-placement="bottom" title="Context: {type1}  {llm_name1}">{answer1}</span>',
+        'Answer 2': f'<span data-toggle="tooltip" data-html="true" data-placement="bottom" title="Context: {type2}  {llm_name2}">{answer2}</span>'
+    }
+    return html_dict
 
 def evaluate_answer_quality_binary(
     question_text: str,
@@ -98,6 +105,7 @@ class EloEvaluator:
             print(f"Loading from {self.output_path}")
             self.df = pd.read_csv(self.output_path)
             self.all_pairs_df = pd.read_csv(self.pairs_path).applymap(try_literal_eval)
+            self.all_pairs_df = self.bake_potato(self.all_pairs_df)
             return
         else:
             print(f"Creating new dataframe")
@@ -170,9 +178,24 @@ class EloEvaluator:
                 )
 
         self.all_pairs_df = pd.DataFrame(pair_data).applymap(try_literal_eval)
+        self.all_pairs_df = self.bake_potato(self.all_pairs_df)
         self.all_pairs_df.to_csv(f"{self.exp_root}/all_pairs.csv")
         self.df.to_csv(self.output_path)
         print(f"Saved to {self.output_path}")
+
+    def bake_potato(self, df):
+        df['text'] = df.apply(lambda row: create_html_text(
+            row['answer1_question_text'],
+            row['answer1_principal/query']['gold_block']['content'],
+            row['answer1_answer_text'],
+            row['answer2_answer_text'],
+            row['answer1_llm_name'],
+            row['answer2_llm_name'],
+            row['answer1_answer_type'],
+            row['answer2_answer_type']
+        ), axis=1)
+        df['name'] = df['answer1_principal/name']
+        return df
 
     def sub_sample_by_question(self, max_num_questions: int):
         questions = self.all_pairs_df["answer1_question_text"].unique()

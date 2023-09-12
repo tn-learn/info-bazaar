@@ -402,14 +402,10 @@ class TransformersEmbedding:
         # Resolve model id
         model_id = resolve_embedding_model_id(model_id)
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model_id,
-            cache_dir=hf_cache_directory,
-            use_auth_token=hf_auth_token,
+            model_id, cache_dir=hf_cache_directory, use_auth_token=hf_auth_token,
         )
         self.model = transformers.AutoModel.from_pretrained(
-            model_id,
-            cache_dir=hf_cache_directory,
-            use_auth_token=hf_auth_token,
+            model_id, cache_dir=hf_cache_directory, use_auth_token=hf_auth_token,
         )
         # Manually ship to device
         self.model.to(self.device)
@@ -520,14 +516,10 @@ class LMReranker:
         hf_cache_directory = get_hf_cache_directory(hf_cache_directory)
         # Init the tokenizer and model
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model_id,
-            cache_dir=hf_cache_directory,
-            use_auth_token=hf_auth_token,
+            model_id, cache_dir=hf_cache_directory, use_auth_token=hf_auth_token,
         )
         self.model = transformers.AutoModelForSequenceClassification.from_pretrained(
-            model_id,
-            cache_dir=hf_cache_directory,
-            use_auth_token=hf_auth_token,
+            model_id, cache_dir=hf_cache_directory, use_auth_token=hf_auth_token,
         )
         self.model.to(self.device)
         self.model.eval()
@@ -800,9 +792,7 @@ def generate_hyde_passage(question: str, model: Optional[str] = None) -> str:
         program_string=program_string,
         llm=get_llm(model),
         silent=True,
-        inputs=dict(
-            question=question,
-        ),
+        inputs=dict(question=question,),
         output_keys=["hyde_answer"],
     )
     hyde_answer = program_outputs["hyde_answer"]
@@ -943,10 +933,7 @@ def split_to_paragraphs(
         program_string=program_string,
         llm=get_llm(model_name=model_name),
         silent=True,
-        inputs=dict(
-            sentences=sentences,
-            num_para=target_num_paragraphs,
-        ),
+        inputs=dict(sentences=sentences, num_para=target_num_paragraphs,),
         output_keys=["parasplits"],
     )
     paragraph_indices = [int(x) - 1 for x in program_output["parasplits"]]
@@ -1280,11 +1267,7 @@ def select_quotes_with_debate(
         program_string=program_string,
         llm=get_llm(model_name=model_name),
         silent=True,
-        inputs=dict(
-            question=question,
-            options=options,
-            balance=100,
-        ),
+        inputs=dict(question=question, options=options, balance=100,),
         output_keys=["answer"],
     )
     answer = program_output["answer"]
@@ -1433,10 +1416,7 @@ def synthesize_answer(
         program_string=program_string,
         llm=get_llm(model_name=model_name),
         silent=True,
-        inputs=dict(
-            question=question,
-            quotes=passages,
-        ),
+        inputs=dict(question=question, quotes=passages,),
         output_keys=["answer"],
     )
 
@@ -1664,6 +1644,97 @@ def refine_answer(
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
+def evaluate_answer_with_likert(
+    question: str, gold_block: str, answer: str, model_name: str
+):
+    program_string = """
+    {{#system~}}
+    Your job is to rate an answer text along several dimensions, namely:
+    1. Correctness.
+    2. Relevance. 
+    3. Simplicity. 
+    4. Comprehensiveness.
+    5. Overall Quality.
+
+You will be given the question, a passage containing the true gold answer ("gold passage"), and a candidate answer. 
+
+You will produce a paragraph assessing the quality of the given answer along each dimension as follows:
+    1. Correctness: <paragraph>
+    2. Relevance: <paragraph>
+    3. Simplicity: <paragraph>
+    4. Comprehensiveness: <paragraph>
+    5. Overall Quality: <paragraph>
+
+Next, you will produce a score according to a Likert scale ranging from 1 (lowest) to 5 (highest), and your output should be in the following form.
+    
+    CORRECTNESS: int    
+    RELEVANCE: int
+    SIMPLICITY: int
+    COMPREHENSIVENESS: int    
+    OVERALL QUALITY: int
+    {{~/system}}
+    
+    {{#user~}}
+    QUESTION: {{question}}
+    
+    GOLD PASSAGE: {{gold_passage}}
+    
+    ANSWER: {{answer}}
+    {{~/user}}
+    
+    {{#assistant~}}
+    {{gen "answer" temperature=0.0 max_tokens=2048}}
+    {{~/assistant}}
+
+"""
+    program_string = clean_program_string(program_string)
+    # Run the program
+    program_output = ask_for_guidance(
+        program_string=program_string,
+        llm=get_llm(model_name=model_name),
+        silent=True,
+        inputs=dict(
+            question=question,
+            gold_passage=gold_block,
+            answer=answer,
+        ),
+        output_keys=["answer"],
+    )
+    answer = program_output["answer"]
+
+    # Parse the answer.
+    def extract_likert_ranks(text: str) -> Dict[str, List[str]]:
+        # Splitting the text into potential categories with case-insensitive matching
+        potential_categories = re.split(r"([A-Za-z]+):", text, flags=re.IGNORECASE)[1:]
+        potential_categories = [
+            potential_categories[i : i + 2]
+            for i in range(0, len(potential_categories), 2)
+        ]
+
+        result_dict = {}
+        for category, ranks in potential_categories:
+            correctness = re.findall(r"CORRECTNESS: (\d+)", ranks, flags=re.IGNORECASE)
+            relevance = re.findall(r"RELEVANCE: (\d+)", ranks, flags=re.IGNORECASE)
+            simplicity = re.findall(r"SIMPLICITY: (\d+)", ranks, flags=re.IGNORECASE)
+            comprehensiveness = re.findall(r"COMPREHENSIVENESS: (\d+)", ranks, flags=re.IGNORECASE)
+            overall_quality = re.findall(r"OVERALL QUALITY: (\d+)", ranks, flags=re.IGNORECASE)
+            if correctness:
+                result_dict["correctness"] = correctness[-1]
+            if relevance:
+                result_dict["relevance"] = relevance[-1]
+            if simplicity:
+                result_dict["simplicity"] = simplicity[-1]
+            if comprehensiveness:
+                result_dict["comprehensiveness"] = comprehensiveness[-1]
+            if overall_quality:
+                result_dict["overall_quality"] = overall_quality[-1]
+        return result_dict
+
+    rank_dict = extract_likert_ranks(answer)
+    return rank_dict
+
+
+@backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def evaluate_answer_with_debate(
     question: str,
     gold_passage: str,
@@ -1794,11 +1865,7 @@ def evaluate_answer_with_debate(
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def evaluate_answer_with_debate_retrieved_closed(
-    question: str,
-    gold_passage: str,
-    answer1: str,
-    answer2: str,
-    model_name: str,
+    question: str, gold_passage: str, answer1: str, answer2: str, model_name: str,
 ) -> Dict[str, Dict[str, int]]:
     program_string = """
     {{#system~}}
