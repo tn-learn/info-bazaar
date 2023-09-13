@@ -434,7 +434,10 @@ class BuyerAgent(BazaarAgent):
             quote.progress_quote()
             for quote in self.remove_duplicate_quotes(candidate_quotes)
         ]
-        self.print(f"Received {len(candidate_quotes)} quotes for query: {candidate_quotes[0].query.text}")
+        if len(candidate_quotes) > 0:
+            self.print(f"Received {len(candidate_quotes)} quotes for query: {candidate_quotes[0].query.text}")
+        else:
+            self.print(f"There were no quotes to review.")
         # Apply reranker if required
         if len(candidate_quotes) > 0 and self.use_reranker:
             # Before applying the reranker, we want to make sure that we don't have
