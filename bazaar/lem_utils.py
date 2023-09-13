@@ -1650,28 +1650,28 @@ def evaluate_answer_with_likert(
     program_string = """
     {{#system~}}
     Your job is to rate an answer text along several dimensions, namely:
-    1. Correctness.
-    2. Relevance. 
-    3. Simplicity. 
-    4. Comprehensiveness.
-    5. Overall Quality.
-
-You will be given the question, a passage containing the true gold answer ("gold passage"), and a candidate answer. 
-
-You will produce a paragraph assessing the quality of the given answer along each dimension as follows:
-    1. Correctness: <paragraph>
-    2. Relevance: <paragraph>
-    3. Simplicity: <paragraph>
-    4. Comprehensiveness: <paragraph>
-    5. Overall Quality: <paragraph>
-
-Next, you will produce a score according to a Likert scale ranging from 1 (lowest) to 5 (highest), and your output should be in the following form.
+        1. Correctness.
+        2. Relevance. 
+        3. Simplicity. 
+        4. Comprehensiveness.
+        5. Overall Quality.
     
-    CORRECTNESS: int    
-    RELEVANCE: int
-    SIMPLICITY: int
-    COMPREHENSIVENESS: int    
-    OVERALL QUALITY: int
+    You will be given the question, a passage containing the true gold answer ("gold passage"), and a candidate answer. 
+    
+    You will produce a paragraph assessing the quality of the given answer along each dimension as follows:
+        1. Correctness: <paragraph>
+        2. Relevance: <paragraph>
+        3. Simplicity: <paragraph>
+        4. Comprehensiveness: <paragraph>
+        5. Overall Quality: <paragraph>
+    
+    Next, you will produce a score according to a Likert scale ranging from 1 (lowest) to 5 (highest), and your output should be in the following form.
+        
+        CORRECTNESS: int    
+        RELEVANCE: int
+        SIMPLICITY: int
+        COMPREHENSIVENESS: int    
+        OVERALL QUALITY: int
     {{~/system}}
     
     {{#user~}}
