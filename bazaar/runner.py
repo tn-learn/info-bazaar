@@ -101,9 +101,10 @@ class SimulationRunner(BaseExperiment, IOMixin):
         set_seed(self.get("rng_seed"))
 
         # Set the LLM and embedding names
-        global_embedding_manager(
-            init_from_path=root_dir_slash(self.get("embedding_manager_path"))
-        )
+        if self.get("embedding_manager_path") is not None:
+            global_embedding_manager(
+                init_from_path=root_dir_slash(self.get("embedding_manager_path"))
+            )
         default_llm_name(set_to=self.get("llm_name"))
         default_embedding_name(set_to=self.get("embedding_name"))
         default_reranker_name(set_to=self.get("reranker_name"))
