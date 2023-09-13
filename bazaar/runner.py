@@ -1,6 +1,7 @@
 import logging
 import random
 from datetime import datetime
+from itertools import zip_longest
 from pathlib import Path
 from typing import Optional
 
@@ -11,7 +12,9 @@ from bazaar.lem_utils import (
     default_llm_name,
     global_embedding_manager,
     default_embedding_name,
-    default_reranker_name, get_closed_book_answer, get_open_book_answer,
+    default_reranker_name,
+    get_closed_book_answer,
+    get_open_book_answer,
 )
 from bazaar.py_utils import dump_dict, load_dict, root_dir_slash
 from bazaar.schema import BulletinBoard, Answer
@@ -74,14 +77,21 @@ class SimulationRunner(BaseExperiment, IOMixin):
             return list_
 
         if self.get("question_type") == "general":
-            indices = slicey(
-                general_questions, self.get("query_range")
-            )
+            indices = slicey(general_questions, self.get("query_range"))
             buyers = [buyers[idx] for idx in indices]
         elif self.get("question_type") == "specific":
-            indices = slicey(
-                specific_questions, self.get("query_range")
-            )
+            indices = slicey(specific_questions, self.get("query_range"))
+            buyers = [buyers[idx] for idx in indices]
+        elif self.get("question_type") == "mixed":
+            # Interleave general and specific question indices
+            mixed_questions = [
+                x
+                for pair in zip_longest(general_questions, specific_questions)
+                if pair is not None
+                for x in pair
+                if x is not None
+            ]
+            indices = slicey(mixed_questions, self.get("query_range"))
             buyers = [buyers[idx] for idx in indices]
         else:
             buyers = slicey(buyers, self.get("query_range"))
@@ -190,7 +200,8 @@ class SimulationRunner(BaseExperiment, IOMixin):
         elif self.get("run_type") == "closed_book":
             for buyer_agent in self.bazaar.buyer_agents:
                 closed_book_answer = get_closed_book_answer(
-                    question=buyer_agent.principal.question.text, model_name=self.get("llm_name")
+                    question=buyer_agent.principal.question.text,
+                    model_name=self.get("llm_name"),
                 )
                 answer = Answer(
                     success=True,
@@ -202,7 +213,7 @@ class SimulationRunner(BaseExperiment, IOMixin):
                 open_book_answer = get_open_book_answer(
                     question=buyer_agent.principal.question,
                     gold_passage=buyer_agent.principal.question._gold_block.content,
-                    model_name=self.get("llm_name")
+                    model_name=self.get("llm_name"),
                 )
                 answer = Answer(
                     success=True,
