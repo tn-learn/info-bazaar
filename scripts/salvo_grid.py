@@ -18,7 +18,7 @@ def iter_wrapper(name, iterator):
 def str_to_py(s):
     try:
         return literal_eval(s)
-    except ValueError:
+    except (ValueError, SyntaxError):
         return str(s)
 
 
