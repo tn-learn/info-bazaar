@@ -98,16 +98,15 @@ class LikertEvaluator:
         return rows
 
     def evaluate_likert_score_for_row(self, row: Dict[str, Any], inplace: bool = False) -> Dict[str, str]:
-        breakpoint()
         evaluated_answers = evaluate_answer_with_likert(
             question=row["question"],
             gold_block=row["gold_block"],
             answer=row["answer"],
             model_name=self.evaluator_model,
         )
-        allowed_keys = {"comprehensiveness", "correctness", "simplicity", "relevance"}
+        allowed_keys = {"comprehensiveness", "correctness", "simplicity", "relevance", "overall_quality"}
         answer_filtered = {
-            f"likert_{k}": v for k, v in evaluated_answers["answer"].items() if k in allowed_keys
+            f"likert_{k}": v for k, v in evaluated_answers.items() if k in allowed_keys
         }
         if inplace:
             row.update(answer_filtered)
