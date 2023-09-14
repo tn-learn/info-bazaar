@@ -47,6 +47,10 @@ general_questions = [
 # fmt: on
 
 
+def flush_print(*args, **kwargs):
+    print(*args, flush=True, **kwargs)
+
+
 class SimulationRunner(BaseExperiment, IOMixin):
     def __init__(self, skip_setup: bool = False):
         super(SimulationRunner, self).__init__()
@@ -96,6 +100,7 @@ class SimulationRunner(BaseExperiment, IOMixin):
         return buyers
 
     def _build(self):
+        self.set_printer(printer=flush_print)
         set_seed(self.get("rng_seed"))
 
         # Set the LLM and embedding names
