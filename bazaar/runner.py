@@ -168,7 +168,7 @@ class SimulationRunner(BaseExperiment, IOMixin):
         self.print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {message}")
         return self
 
-    def heartbeat(self) -> "SimulationRunner":
+    def heartbeat(self, now: int) -> "SimulationRunner":
         # Touches a file to indicate that the simulation is still running
         (Path(self.log_directory) / "heartbeat.txt").touch()
         return self
