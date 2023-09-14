@@ -201,7 +201,7 @@ class SimulationRunner(BaseExperiment, IOMixin):
         elif self.get("run_type") == "closed_book":
             for buyer_agent in self.bazaar.buyer_agents:
                 closed_book_answer = get_closed_book_answer(
-                    question=buyer_agent.principal.question.text,
+                    question=buyer_agent.principal.query.text,
                     model_name=self.get("llm_name"),
                 )
                 answer = Answer(
@@ -212,8 +212,8 @@ class SimulationRunner(BaseExperiment, IOMixin):
         elif self.get("run_type") == "open_book":
             for buyer_agent in self.bazaar.buyer_agents:
                 open_book_answer = get_open_book_answer(
-                    question=buyer_agent.principal.question,
-                    gold_passage=buyer_agent.principal.question._gold_block.content,
+                    question=buyer_agent.principal.query.text,
+                    gold_passage=buyer_agent.principal.query._gold_block.content,
                     model_name=self.get("llm_name"),
                 )
                 answer = Answer(
