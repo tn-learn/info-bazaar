@@ -507,10 +507,13 @@ class BuyerAgent(BazaarAgent):
     def forward(self) -> None:
         # Step 1: Check if there are quotes in the inbox that need to be processed.
         self.process_quotes()
+        self.print(f"Processed quotes at t = {self.now}.")
         # Step 2: Check if there are queries that need to be submitted to the bulletin board
         self.post_queries_to_bulletin_board()
+        self.print(f"Posted queries to bulletin board at t = {self.now}.")
         # Step 3: Finalize the step (this decides what happens in the next step)
         self.finalize_step()
+        self.print(f"Finalized step at t = {self.now}.")
 
     def evaluation_summary(self) -> Dict[str, Any]:
         summary = super().evaluation_summary()
@@ -581,22 +584,28 @@ class BazaarSimulator(mesa.Model):
         self,
         max_num_steps: Optional[int] = None,
         print_callback: Optional[Callable[[str], Any]] = None,
+        step_callback: Optional[Callable[[int], Any]] = None,
     ):
         if print_callback is None:
             print_callback = lambda *args, **kwargs: None
         else:
             BazaarAgentContext.bind_printer(print_callback)
 
+        if step_callback is None:
+            step_callback = lambda *args, **kwargs: None
+
         if max_num_steps is None:
             while not self.all_buyer_agents_terminated:
                 print_callback(f"Simulating t = {self.now}.")
                 self.step()
+                step_callback(self.now)
         else:
             for _ in range(max_num_steps):
                 if self.all_buyer_agents_terminated:
                     break
                 print_callback(f"Simulating t = {self.now}.")
                 self.step()
+                step_callback(self.now)
         print_callback(f"Simulation complete at t = {self.now}.")
 
     def evaluation_summary(self) -> Dict[str, Any]:

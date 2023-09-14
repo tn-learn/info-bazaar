@@ -1,9 +1,7 @@
-import logging
 import random
 from datetime import datetime
 from itertools import zip_longest
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 from speedrun import BaseExperiment, register_default_dispatch, IOMixin
@@ -170,6 +168,11 @@ class SimulationRunner(BaseExperiment, IOMixin):
         self.print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {message}")
         return self
 
+    def heartbeat(self) -> "SimulationRunner":
+        # Touches a file to indicate that the simulation is still running
+        (Path(self.log_directory) / "heartbeat.txt").touch()
+        return self
+
     def print_results(self) -> "SimulationRunner":
         # Get the buyer principals
         buyer_principals = [agent.principal for agent in self.bazaar.buyer_agents]
@@ -197,7 +200,11 @@ class SimulationRunner(BaseExperiment, IOMixin):
         self._build()
         # Run the sim
         if self.get("run_type") == "retrieve":
-            self.bazaar.run(self.get("runner/duration", 168), print_callback=self.info)
+            self.bazaar.run(
+                self.get("runner/duration", 168),
+                print_callback=self.info,
+                step_callback=self.heartbeat,
+            )
         elif self.get("run_type") == "closed_book":
             for buyer_agent in self.bazaar.buyer_agents:
                 closed_book_answer = get_closed_book_answer(
