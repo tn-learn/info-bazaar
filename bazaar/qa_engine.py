@@ -438,8 +438,12 @@ class QueryManager:
         node_summaries = [
             node.evaluation_summary() for node in self.question_graph.nodes
         ]
-        # Get the edges of the graph
-        adjacency_matrix = nx.adjacency_matrix(self.question_graph).todense().tolist()
+        try:
+            # Get the edges of the graph
+            adjacency_matrix = nx.adjacency_matrix(self.question_graph).todense().tolist()
+        except Exception:
+            print("Oh Donkey")
+            adjacency_matrix = []
         return dict(
             node_summaries=node_summaries,
             adjacency_matrix=adjacency_matrix,

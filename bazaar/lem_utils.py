@@ -223,33 +223,33 @@ class LLaMa2(guidance.llms.Transformers):
         self.llm_name = self.model_id.split("/")[-1]
 
     def initialize_model(
-        self,
-        hf_auth_token: str,
-        hf_cache_directory: str,
-        size: str,
-        rope_scaling: str,
-        monitor_model: bool,
+            self,
+            hf_auth_token: str,
+            hf_cache_directory: str,
+            size: str,
+            rope_scaling: str,
+            monitor_model: bool,
+            use_bnb_config: bool = True
     ):
         import transformers
         import torch
 
-        # Get the huggingface auth token if not provided
         hf_auth_token = get_hf_auth_token(hf_auth_token, raise_if_not_found=True)
-        # Get the cache directory
         hf_cache_directory = get_hf_cache_directory(
             hf_cache_directory, raise_if_not_found=False
         )
-        # Build the model
-        bnb_config = transformers.BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_use_double_quant=True,
-            bnb_4bit_compute_dtype=torch.bfloat16,
-        )
+
+        bnb_config = None
+        if use_bnb_config:
+            bnb_config = transformers.BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_compute_dtype=torch.bfloat16,
+            )
+
         assert size in ["7b", "13b", "70b"]
         self.model_id = f"meta-llama/Llama-2-{size}-chat-hf"
-
-        # Configure the model
         model_id = resolve_llm_model_id(self.model_id)
         extra_config = {}
 
@@ -261,7 +261,6 @@ class LLaMa2(guidance.llms.Transformers):
         else:
             raise ValueError(f"Unknown rope scaling {rope_scaling}")
 
-        # Build
         model_config = transformers.AutoConfig.from_pretrained(
             model_id,
             use_auth_token=hf_auth_token,
@@ -277,6 +276,7 @@ class LLaMa2(guidance.llms.Transformers):
             use_auth_token=hf_auth_token,
             cache_dir=hf_cache_directory,
         )
+
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(
             model_id, use_auth_token=hf_auth_token, cache_dir=hf_cache_directory
         )
