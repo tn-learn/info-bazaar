@@ -1187,6 +1187,8 @@ def select_quotes_with_debate(
     use_block_content_metadata: bool = False,
     use_block_metadata_only: bool = False,
 ) -> List["Quote"]:
+    if len(quotes) == 0:
+        return []
     assert all(
         [quotes[0].query.compare_content(quote.query) for quote in quotes[1:]]
     ), "All quotes must have the same query."
