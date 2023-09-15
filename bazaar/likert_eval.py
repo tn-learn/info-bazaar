@@ -13,6 +13,7 @@ import pandas as pd
 from bazaar.py_utils import dump_dict, load_dict
 from bazaar.lem_utils import evaluate_answer_with_likert
 
+
 def try_literal_eval(x):
     try:
         return ast.literal_eval(x)
@@ -44,19 +45,34 @@ class LikertEvaluator:
         "potato_text": HTML blurb that renders question, gold_passage and answer to HTML.
     """
 
-    def __init__(self, experiment_root: str, experiment_name: str, evaluator_model: str):
+    def __init__(
+        self,
+        experiment_root: str,
+        experiment_name: str,
+        evaluator_model: str,
+        save_key: Optional[str] = None,
+    ):
         self.experiment_root = experiment_root
         self.experiment_name = experiment_name
         self.evaluator_model = evaluator_model
+        self.save_key = save_key
 
     @property
     def result_output_path(self):
-        return os.path.join(self.experiment_root, f"likert_eval_{self.evaluator_model}.csv")
+        if self.save_key in ["", None]:
+            return os.path.join(
+                self.experiment_root, f"likert_eval_{self.evaluator_model}.csv"
+            )
+        else:
+            return os.path.join(
+                self.experiment_root,
+                f"likert_eval_{self.evaluator_model}_{self.save_key}.csv",
+            )
 
     def read_bazaar_summaries(self) -> List[Dict[str, str]]:
         rows = []
         for experiment_path in glob.glob(
-            os.path.join(self.experiment_root, self.experiment_name+ "*/")
+            os.path.join(self.experiment_root, self.experiment_name + "*/")
         ):
             summary_path = os.path.join(experiment_path, "Logs", "bazaar_summary.json")
             config_path = os.path.join(
@@ -74,7 +90,9 @@ class LikertEvaluator:
                 to_append["question"] = buyer_agent_summary["principal"]["query"][
                     "text"
                 ]
-                to_append["question_type"] = buyer_agent_summary["principal"]["query"].get('type', 'general')
+                to_append["question_type"] = buyer_agent_summary["principal"][
+                    "query"
+                ].get("type", "general")
                 credit_left = buyer_agent_summary["credit"]
                 budget = buyer_agent_summary["principal"]["query"]["max_budget"]
                 to_append["credit_spent"] = budget - credit_left
@@ -97,14 +115,22 @@ class LikertEvaluator:
                 rows.append(to_append)
         return rows
 
-    def evaluate_likert_score_for_row(self, row: Dict[str, Any], inplace: bool = False) -> Dict[str, str]:
+    def evaluate_likert_score_for_row(
+        self, row: Dict[str, Any], inplace: bool = False
+    ) -> Dict[str, str]:
         evaluated_answers = evaluate_answer_with_likert(
             question=row["question"],
             gold_block=row["gold_block"],
             answer=row["answer"],
             model_name=self.evaluator_model,
         )
-        allowed_keys = {"comprehensiveness", "correctness", "simplicity", "relevance", "overall_quality"}
+        allowed_keys = {
+            "comprehensiveness",
+            "correctness",
+            "simplicity",
+            "relevance",
+            "overall_quality",
+        }
         answer_filtered = {
             f"likert_{k}": v for k, v in evaluated_answers.items() if k in allowed_keys
         }
@@ -129,6 +155,7 @@ def main(args: Optional[argparse.Namespace] = None):
         parser.add_argument("--experiment_name", type=str)
         parser.add_argument("--evaluator_model", type=str)
         parser.add_argument("--seed", type=int, default=42)
+        parser.add_argument("--save_key", type=str, default="")
         args = parser.parse_args()
     random.seed(args.seed)
     np.random.seed(args.seed)
