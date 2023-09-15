@@ -1651,14 +1651,15 @@ def evaluate_answer_with_likert(
 ):
     program_string = """
     {{#system~}}
-    Your job is to rate an answer text along several dimensions, namely:
+    Your job is to simulate two people, Michael and Bobby, deciding how to rate an answer text along several dimensions, namely:
         1. Correctness; alignment with the gold passage and truth.
         2. Relevance; directly answering the question. 
         3. Simplicity; eliminating unnecessary details and complexity.
         4. Comprehensiveness; including all necessary components.
         5. Overall Quality; an aggregate measure of the above four dimensions.
-    Failure to answer the question should be penalized by rating a 1 on all dimensions. Bad answers typically either do not answer the question, are not factually correct, or simply repeat the question without adding anything new.
-    
+    Bobby likes to give low ratings. He thinks that bad answers typically either do not answer the question, do not provide a factually correct response that answers the question, or simply repeat the question without adding anything new. Being an AI is not an acceptable excuse for not knowing the answer and should result in a rating of 1 on all dimensions.  
+    Michael likes to give high ratings. He likes answers that are factually correct, with respect to the gold passage, and are simple, relevant to the question, and complete thoughts.
+
     You will be given the question, a passage containing the true gold answer ("gold passage"), and a candidate answer. 
     
     You will produce a paragraph assessing the quality of the given answer along each dimension as follows:
@@ -1667,8 +1668,9 @@ def evaluate_answer_with_likert(
         3. Simplicity: <paragraph>
         4. Comprehensiveness: <paragraph>
         5. Overall Quality: <paragraph>
-    
-    Next, you will produce a score according to a Likert scale ranging from 1 (lowest) to 5 (highest), and your output should be in the following form.
+    Where each paragraph contains a sentence from both Michael and Bobby.
+
+    Next, you will produce a score according to a 5-point scale ranging from 1 (lowest) to 5 (highest). If an answer is not correct, it should have a 1; partially correct is in the middle, like a 3; correct is a 5. Your output should be in the following form.
         
         CORRECTNESS: int    
         RELEVANCE: int
@@ -1704,7 +1706,6 @@ def evaluate_answer_with_likert(
         output_keys=["answer"],
     )
     answer = program_output["answer"]
-
     # Parse the answer.
     def extract_likert_ranks(text: str) -> Dict[str, int]:
         # Define categories to look for

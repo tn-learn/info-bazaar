@@ -61,11 +61,11 @@ class LikertEvaluator:
     def result_output_path(self):
         if self.save_key in ["", None]:
             return os.path.join(
-                self.experiment_root, f"likert_eval_{self.evaluator_model}.csv"
+                self.experiment_root, self.experiment_name, "Logs", f"likert_eval_{self.evaluator_model}.csv"
             )
         else:
             return os.path.join(
-                self.experiment_root,
+                self.experiment_root, self.experiment_name, "Logs",
                 f"likert_eval_{self.evaluator_model}_{self.save_key}.csv",
             )
 
@@ -166,6 +166,7 @@ def main(args: Optional[argparse.Namespace] = None):
         experiment_name=args.experiment_name,
         evaluator_model=args.evaluator_model,
     )
+    
     print("Running evaluation...")
     evaluator.run()
     # Done
