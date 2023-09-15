@@ -1650,11 +1650,12 @@ def evaluate_answer_with_likert(
     program_string = """
     {{#system~}}
     Your job is to rate an answer text along several dimensions, namely:
-        1. Correctness.
-        2. Relevance. 
-        3. Simplicity. 
-        4. Comprehensiveness.
-        5. Overall Quality.
+        1. Correctness; alignment with the gold passage and truth.
+        2. Relevance; directly answering the question. 
+        3. Simplicity; eliminating unnecessary details and complexity.
+        4. Comprehensiveness; including all necessary components.
+        5. Overall Quality; an aggregate measure of the above four dimensions.
+    Failure to answer the question should be penalized by rating a 1 on all dimensions. Bad answers typically either do not answer the question, are not factually correct, or simply repeat the question without adding anything new.
     
     You will be given the question, a passage containing the true gold answer ("gold passage"), and a candidate answer. 
     
