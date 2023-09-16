@@ -1605,9 +1605,13 @@ def refine_answer(
     
     Given these follow up questions, your task is to refine the initial answer. 
     
-    Begin by thinking out loud about what you need to do. Ask yourself whether the question is general or specific. If it is general, then you need to provide a more comprehensive answer. If it is specific, then you need to provide a more to-the-point answer. Also ask yourself whether you need to use all the follow up answers, or only some of them. 
+    Before you get to formulating the refined answer, think out loud about what you need to do. Ask yourself whether the question is general or specific. If it is general, then you need to provide a more comprehensive answer. If it is specific, then you need to provide a more to-the-point answer. 
+    
+    Also, it's possible that you don't need to use all follow up answers to come up with a good answer to the original question. Ask yourself whether you need to use all the follow up answers, or only some of them.
     
     When it's finally time to write down your refined answer, print "REFINED ANSWER: <your answer>"
+    
+    It is very important that you do not have any text other than the refined answer after "REFINED ANSWER:". 
     
     Let's go. 
     {{~/user}}
