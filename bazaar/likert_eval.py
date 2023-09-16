@@ -50,8 +50,8 @@ class LikertEvaluator:
         experiment_root: str,
         experiment_name: str,
         evaluator_model: str,
-        save_key: Optional[str] = None,
         auto_glob: bool = True,
+        save_in_root: bool = False,
     ):
         assert experiment_root is not None, "experiment_root must be specified."
         assert experiment_name is not None, "experiment_name must be specified."
@@ -59,8 +59,8 @@ class LikertEvaluator:
         self.experiment_root = experiment_root
         self.experiment_name = experiment_name
         self.evaluator_model = evaluator_model
-        self.save_key = save_key
         self.auto_glob = auto_glob
+        self.save_in_root = save_in_root
 
     def get_result_output_path(self, mkdir: bool = True) -> str:
         if self.auto_glob and "*" not in self.experiment_name:
@@ -69,7 +69,7 @@ class LikertEvaluator:
             experiment_name = self.experiment_name
         experiment_name = experiment_name.replace("*", "STAR")
 
-        if self.save_key in ["", None]:
+        if not self.save_in_root:
             path = os.path.join(
                 self.experiment_root,
                 experiment_name,
@@ -79,9 +79,7 @@ class LikertEvaluator:
         else:
             path = os.path.join(
                 self.experiment_root,
-                experiment_name,
-                "Logs",
-                f"likert_eval_{self.evaluator_model}_{self.save_key}.csv",
+                f"likert_eval_{self.evaluator_model}_{experiment_name}.csv",
             )
         # Create the directory if it doesn't exist
         if mkdir:
@@ -190,7 +188,7 @@ class LikertEvaluator:
         for experiment_path in self.get_experiment_paths():
             print(experiment_path)
         print("-" * 80)
-        print("Would have dumped results to:", self.get_result_output_path())
+        print("Would have dumped results to:", self.get_result_output_path(False))
 
 
 def main(args: Optional[argparse.Namespace] = None):
@@ -200,8 +198,8 @@ def main(args: Optional[argparse.Namespace] = None):
         parser.add_argument("--experiment_name", type=str)
         parser.add_argument("--evaluator_model", type=str)
         parser.add_argument("--seed", type=int, default=42)
-        parser.add_argument("--save_key", type=str, default="")
         parser.add_argument("--no_auto_glob", action="store_true", default=False)
+        parser.add_argument("--save_in_root", action="store_true", default=False)
         parser.add_argument("--dry_run", action="store_true", default=False)
         args = parser.parse_args()
     random.seed(args.seed)
@@ -212,8 +210,8 @@ def main(args: Optional[argparse.Namespace] = None):
         experiment_root=args.experiment_root,
         experiment_name=args.experiment_name,
         evaluator_model=args.evaluator_model,
-        save_key=args.save_key,
-        auto_glob=(not args.no_auto_glob)
+        auto_glob=(not args.no_auto_glob),
+        save_in_root=args.save_in_root,
     )
 
     print("Running evaluation...")
