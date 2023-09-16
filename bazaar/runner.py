@@ -103,7 +103,7 @@ class SimulationRunner(BaseExperiment, IOMixin):
         # Load the dataset
         dataset = load_dict(root_dir_slash(self.get("dataset_path")))
         if self.get("questions_path") is not None:
-            print(f"Loading questions from {self.get('questions_path')}...")
+            self.print(f"Loading questions from {self.get('questions_path')}...")
             questions = load_dict(root_dir_slash(self.get("questions_path")))
             for question in questions:
                 question['gold_block'] = dataclass_from_dict(Block, question['gold_block'])
@@ -118,7 +118,7 @@ class SimulationRunner(BaseExperiment, IOMixin):
                 if q["question_type"] == "specific"
             ]
         else:
-            print("Getting questions from dataset...")
+            self.print("Getting questions from dataset...")
             questions = parse_questions_from_dataset(dataset)
             # fmt: off
             specific_question_idxs = [
@@ -137,7 +137,7 @@ class SimulationRunner(BaseExperiment, IOMixin):
                 4472, 4499, 4618, 4639, 4705, 4904, 4947, 5046, 5384
             ]
             # fmt: on
-        print(f"Loaded {len(questions)} questions.")
+        self.print(f"Loaded {len(questions)} questions.")
         rng = np.random.RandomState(self.get("rng_seed"))
 
         buyers = build_buyers(
@@ -267,6 +267,7 @@ class SimulationRunner(BaseExperiment, IOMixin):
     def extract_follow_up_graph_summary(self):
         # Read in the bazaar summary
         bazaar_summary = load_dict(Path(self.log_directory) / "bazaar_summary.json")
+        self.print("Loaded bazaar summary.")
         graph_summary_for_all_queries = []
         # Get the buyer principals
         for buyer_agent_summary in bazaar_summary["buyer_agent"]:
@@ -301,10 +302,12 @@ class SimulationRunner(BaseExperiment, IOMixin):
                 }
                 graph_summary_for_query["node_summaries"].append(node_summary_extract)
             graph_summary_for_all_queries.append(graph_summary_for_query)
+        dump_path = Path(self.log_directory) / "follow_up_graph_summary.json"
         dump_dict(
             graph_summary_for_all_queries,  # noqa
-            Path(self.log_directory) / "follow_up_graph_summary.json",
+            dump_path,
         )
+        self.print(f"Dumped follow up graph summary to: {str(dump_path)}")
 
 
 if __name__ == "__main__":
