@@ -18,11 +18,10 @@ fraction_active_vendors: 1.0
 # Simulator
 buyer_agent_kwargs:
   quote_review_top_k: 3
-  quote_review_use_block_metadata: false
-  quote_review_use_metadata_only: true
+  quote_review_use_block_metadata: true
   num_quote_gathering_steps: 2
   max_query_depth: 2
-  use_reranker: false
+  use_reranker: true
   reranker_max_num_quotes: 50
 vendor_agent_kwargs:
   retriever_config:
