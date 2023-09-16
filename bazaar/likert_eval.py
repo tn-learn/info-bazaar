@@ -53,6 +53,9 @@ class LikertEvaluator:
         save_key: Optional[str] = None,
         auto_glob: bool = True,
     ):
+        assert experiment_root is not None, "experiment_root must be specified."
+        assert experiment_name is not None, "experiment_name must be specified."
+        assert evaluator_model is not None, "evaluator_model must be specified."
         self.experiment_root = experiment_root
         self.experiment_name = experiment_name
         self.evaluator_model = evaluator_model
