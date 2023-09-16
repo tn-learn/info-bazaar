@@ -51,29 +51,64 @@ class LikertEvaluator:
         experiment_name: str,
         evaluator_model: str,
         save_key: Optional[str] = None,
+        auto_glob: bool = True,
     ):
         self.experiment_root = experiment_root
         self.experiment_name = experiment_name
         self.evaluator_model = evaluator_model
         self.save_key = save_key
+        self.auto_glob = auto_glob
 
-    @property
-    def result_output_path(self):
+    def get_result_output_path(self, mkdir: bool = True) -> str:
+        if self.auto_glob and "*" not in self.experiment_name:
+            experiment_name = f"{self.experiment_name}*"
+        else:
+            experiment_name = self.experiment_name
+        experiment_name = experiment_name.replace("*", "STAR")
+
         if self.save_key in ["", None]:
-            return os.path.join(
-                self.experiment_root, self.experiment_name, "Logs", f"likert_eval_{self.evaluator_model}.csv"
+            path = os.path.join(
+                self.experiment_root,
+                experiment_name,
+                "Logs",
+                f"likert_eval_{self.evaluator_model}.csv",
             )
         else:
-            return os.path.join(
-                self.experiment_root, self.experiment_name, "Logs",
+            path = os.path.join(
+                self.experiment_root,
+                experiment_name,
+                "Logs",
                 f"likert_eval_{self.evaluator_model}_{self.save_key}.csv",
             )
+        # Create the directory if it doesn't exist
+        if mkdir:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+        return path
+
+    def get_experiment_paths(self) -> List[str]:
+        # Figure out which experiments we're dealing with
+        if self.auto_glob and "*" not in self.experiment_name:
+            # Glob all experiments
+            experiment_paths = glob.glob(
+                os.path.join(self.experiment_root, f"{self.experiment_name}*")
+            )
+        elif not self.auto_glob and "*" not in self.experiment_name:
+            # Single experiment
+            experiment_paths = [
+                os.path.join(self.experiment_root, self.experiment_name)
+            ]
+        elif "*" in self.experiment_name:
+            # Glob all experiments
+            experiment_paths = glob.glob(
+                os.path.join(self.experiment_root, self.experiment_name)
+            )
+        else:
+            raise ValueError(f"Invalid experiment name: {self.experiment_name}")
+        return experiment_paths
 
     def read_bazaar_summaries(self) -> List[Dict[str, str]]:
         rows = []
-        for experiment_path in glob.glob(
-            os.path.join(self.experiment_root, self.experiment_name + "*/")
-        ):
+        for experiment_path in self.get_experiment_paths():
             summary_path = os.path.join(experiment_path, "Logs", "bazaar_summary.json")
             config_path = os.path.join(
                 experiment_path, "Configurations", "train_config.yml"
@@ -92,7 +127,7 @@ class LikertEvaluator:
                 ]
                 to_append["question_type"] = buyer_agent_summary["principal"][
                     "query"
-                ].get("type", "general")
+                ].get("question_type", "general")
                 credit_left = buyer_agent_summary["credit"]
                 budget = buyer_agent_summary["principal"]["query"]["max_budget"]
                 to_append["credit_spent"] = budget - credit_left
@@ -145,7 +180,14 @@ class LikertEvaluator:
         for row in tqdm(bazaar_summaries):
             self.evaluate_likert_score_for_row(row, inplace=True)
         df = pd.DataFrame.from_dict(bazaar_summaries)
-        df.to_csv(self.result_output_path)
+        df.to_csv(self.get_result_output_path())
+
+    def dry_run(self):
+        print("Experiment paths that would have been processed:")
+        for experiment_path in self.get_experiment_paths():
+            print(experiment_path)
+        print("-" * 80)
+        print("Would have dumped results to:", self.get_result_output_path())
 
 
 def main(args: Optional[argparse.Namespace] = None):
@@ -156,6 +198,7 @@ def main(args: Optional[argparse.Namespace] = None):
         parser.add_argument("--evaluator_model", type=str)
         parser.add_argument("--seed", type=int, default=42)
         parser.add_argument("--save_key", type=str, default="")
+        parser.add_argument("--dry_run", action="store_true", default=False)
         args = parser.parse_args()
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -166,9 +209,12 @@ def main(args: Optional[argparse.Namespace] = None):
         experiment_name=args.experiment_name,
         evaluator_model=args.evaluator_model,
     )
-    
+
     print("Running evaluation...")
-    evaluator.run()
+    if args.dry_run:
+        evaluator.dry_run()
+    else:
+        evaluator.run()
     # Done
     print("Done.")
 
