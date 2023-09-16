@@ -18,7 +18,8 @@ from bazaar.py_utils import dump_dict, load_dict, root_dir_slash
 from bazaar.schema import BulletinBoard, Answer
 from bazaar.sim_builder import (
     build_buyers,
-    build_authors_and_institutions, parse_questions_from_dataset,
+    build_authors_and_institutions,
+    parse_questions_from_dataset,
 )
 from bazaar.simulator import BazaarSimulator
 
@@ -26,25 +27,6 @@ from bazaar.simulator import BazaarSimulator
 def set_seed(seed: int):
     random.seed(seed)
     np.random.seed(seed)
-
-
-# fmt: off
-specific_questions = [
-    0, 4, 16, 17, 65, 83, 121, 195, 234, 247, 395, 526, 528, 727,
-    804, 917, 952, 983, 1009, 1010, 1124, 1157, 1168, 1178, 1284,
-    1573, 1723, 1794, 1801, 1915, 1954, 2000, 2062, 2201, 2281,
-    2446, 2486, 2611, 2688, 2844, 3625, 3833, 3885, 3940, 3984,
-    4129, 4165, 4188, 4289, 4369, 4427, 4630, 4764, 5108, 5246,
-]
-
-general_questions = [
-    10, 113, 114, 140, 173, 183, 210, 356, 378, 514, 658, 691, 699,
-    735, 840, 1144, 1210, 1241, 1318, 1837, 1863, 1971, 2005, 2230,
-    2337, 2431, 2432, 2675, 2729, 2799, 2808, 2954, 2991, 3391, 3461,
-    3596, 3600, 3601, 3655, 3691, 3729, 3732, 3858, 4025, 4146, 4259,
-    4472, 4499, 4618, 4639, 4705, 4904, 4947, 5046, 5384
-]
-# fmt: on
 
 
 def flush_print(*args, **kwargs):
@@ -61,7 +43,9 @@ class SimulationRunner(BaseExperiment, IOMixin):
     def _init(self):
         self.set_printer(printer=flush_print)
 
-    def _select_buyers(self, buyers: list) -> list:
+    def _select_buyers(
+        self, buyers: list, specific_question_idxs: list, general_question_idxs: list
+    ) -> list:
         def slicey(list_: list, slice_str: str):
             if slice_str is None:
                 pass
@@ -120,9 +104,36 @@ class SimulationRunner(BaseExperiment, IOMixin):
         if self.get("questions_path") is not None:
             print(f"Loading questions from {self.get('questions_path')}...")
             questions = load_dict(root_dir_slash(self.get("questions_path")))
+            specific_question_idxs = [
+                idx
+                for idx, q in enumerate(questions)
+                if q["question_type"] == "specific"
+            ]
+            general_question_idxs = [
+                idx
+                for idx, q in enumerate(questions)
+                if q["question_type"] == "specific"
+            ]
         else:
             print("Getting questions from dataset...")
             questions = parse_questions_from_dataset(dataset)
+            # fmt: off
+            specific_question_idxs = [
+                0, 4, 16, 17, 65, 83, 121, 195, 234, 247, 395, 526, 528, 727,
+                804, 917, 952, 983, 1009, 1010, 1124, 1157, 1168, 1178, 1284,
+                1573, 1723, 1794, 1801, 1915, 1954, 2000, 2062, 2201, 2281,
+                2446, 2486, 2611, 2688, 2844, 3625, 3833, 3885, 3940, 3984,
+                4129, 4165, 4188, 4289, 4369, 4427, 4630, 4764, 5108, 5246,
+            ]
+
+            general_question_idxs = [
+                10, 113, 114, 140, 173, 183, 210, 356, 378, 514, 658, 691, 699,
+                735, 840, 1144, 1210, 1241, 1318, 1837, 1863, 1971, 2005, 2230,
+                2337, 2431, 2432, 2675, 2729, 2799, 2808, 2954, 2991, 3391, 3461,
+                3596, 3600, 3601, 3655, 3691, 3729, 3732, 3858, 4025, 4146, 4259,
+                4472, 4499, 4618, 4639, 4705, 4904, 4947, 5046, 5384
+            ]
+            # fmt: on
         print(f"Loaded {len(questions)} questions.")
         rng = np.random.RandomState(self.get("rng_seed"))
 
@@ -136,7 +147,11 @@ class SimulationRunner(BaseExperiment, IOMixin):
             query_creation_time_end=self.get("query_creation_time_end"),
             rng=rng,
         )
-        buyers = self._select_buyers(buyers)
+        buyers = self._select_buyers(
+            buyers=buyers,
+            specific_question_idxs=specific_question_idxs,
+            general_question_idxs=specific_question_idxs,
+        )
 
         authors, institutions = build_authors_and_institutions(
             dataset=dataset,
@@ -227,10 +242,7 @@ class SimulationRunner(BaseExperiment, IOMixin):
                     question=buyer_agent.principal.query.text,
                     model_name=self.get("llm_name"),
                 )
-                answer = Answer(
-                    success=True,
-                    text=closed_book_answer,
-                )
+                answer = Answer(success=True, text=closed_book_answer,)
                 buyer_agent.principal.answer = answer
         elif self.get("run_type") == "open_book":
             for buyer_agent in self.bazaar.buyer_agents:
@@ -239,10 +251,7 @@ class SimulationRunner(BaseExperiment, IOMixin):
                     gold_passage=buyer_agent.principal.query._gold_block.content,
                     model_name=self.get("llm_name"),
                 )
-                answer = Answer(
-                    success=True,
-                    text=open_book_answer,
-                )
+                answer = Answer(success=True, text=open_book_answer,)
                 buyer_agent.principal.answer = answer
 
         # Print the results and dump summary
