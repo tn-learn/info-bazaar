@@ -294,7 +294,10 @@ class SimulationRunner(BaseExperiment, IOMixin):
                     ),
                     "num_answer_blocks": (
                         len(node_summary["answer"]["blocks"])
-                        if node_summary["answer"]["blocks"] is not None
+                        if (
+                            node_summary["answer"] is not None
+                            and node_summary["answer"]["blocks"] is not None
+                        )
                         else 0
                     ),
                     "pre_refinement_answer": (
