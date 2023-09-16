@@ -198,6 +198,7 @@ def main(args: Optional[argparse.Namespace] = None):
         parser.add_argument("--evaluator_model", type=str)
         parser.add_argument("--seed", type=int, default=42)
         parser.add_argument("--save_key", type=str, default="")
+        parser.add_argument("--no_auto_glob", action="store_true", default=False)
         parser.add_argument("--dry_run", action="store_true", default=False)
         args = parser.parse_args()
     random.seed(args.seed)
@@ -208,6 +209,8 @@ def main(args: Optional[argparse.Namespace] = None):
         experiment_root=args.experiment_root,
         experiment_name=args.experiment_name,
         evaluator_model=args.evaluator_model,
+        save_key=args.save_key,
+        auto_glob=(not args.no_auto_glob)
     )
 
     print("Running evaluation...")
