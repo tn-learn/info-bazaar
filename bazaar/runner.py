@@ -67,16 +67,16 @@ class SimulationRunner(BaseExperiment, IOMixin):
             return list_
 
         if self.get("question_type") == "general":
-            indices = slicey(general_questions, self.get("query_range"))
+            indices = slicey(general_question_idxs, self.get("query_range"))
             buyers = [buyers[idx] for idx in indices]
         elif self.get("question_type") == "specific":
-            indices = slicey(specific_questions, self.get("query_range"))
+            indices = slicey(specific_question_idxs, self.get("query_range"))
             buyers = [buyers[idx] for idx in indices]
         elif self.get("question_type") == "mixed":
             # Interleave general and specific question indices
             mixed_questions = [
                 x
-                for pair in zip_longest(general_questions, specific_questions)
+                for pair in zip_longest(general_question_idxs, specific_question_idxs)
                 if pair is not None
                 for x in pair
                 if x is not None
