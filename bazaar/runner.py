@@ -270,7 +270,7 @@ class SimulationRunner(BaseExperiment, IOMixin):
         self.print("Loaded bazaar summary.")
         graph_summary_for_all_queries = []
         # Get the buyer principals
-        for buyer_agent_summary in bazaar_summary["buyer_agent"]:
+        for buyer_agent_summary in bazaar_summary["buyer_agents"]:
             query_manager_summary = buyer_agent_summary["query_manager"]
             graph_summary_for_query = {
                 "adjacency_matrix": query_manager_summary["adjacency_matrix"],
