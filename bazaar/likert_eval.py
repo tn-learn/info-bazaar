@@ -51,7 +51,7 @@ class LikertEvaluator:
         experiment_name: str,
         evaluator_model: str,
         auto_glob: bool = True,
-        save_in_root: bool = False,
+        save_in_root: bool = True,
     ):
         assert experiment_root is not None, "experiment_root must be specified."
         assert experiment_name is not None, "experiment_name must be specified."
@@ -199,7 +199,7 @@ def main(args: Optional[argparse.Namespace] = None):
         parser.add_argument("--evaluator_model", type=str)
         parser.add_argument("--seed", type=int, default=42)
         parser.add_argument("--no_auto_glob", action="store_true", default=False)
-        parser.add_argument("--save_in_root", action="store_true", default=False)
+        parser.add_argument("--no_save_in_root", action="store_true", default=False)
         parser.add_argument("--dry_run", action="store_true", default=False)
         args = parser.parse_args()
     random.seed(args.seed)
@@ -211,7 +211,7 @@ def main(args: Optional[argparse.Namespace] = None):
         experiment_name=args.experiment_name,
         evaluator_model=args.evaluator_model,
         auto_glob=(not args.no_auto_glob),
-        save_in_root=args.save_in_root,
+        save_in_root=(not args.no_save_in_root),
     )
 
     print("Running evaluation...")
