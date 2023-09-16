@@ -2,6 +2,7 @@ import random
 from datetime import datetime
 from itertools import zip_longest
 from pathlib import Path
+from turtledemo.sorting_animate import Block
 
 import numpy as np
 from speedrun import BaseExperiment, register_default_dispatch, IOMixin
@@ -14,7 +15,7 @@ from bazaar.lem_utils import (
     get_closed_book_answer,
     get_open_book_answer,
 )
-from bazaar.py_utils import dump_dict, load_dict, root_dir_slash
+from bazaar.py_utils import dump_dict, load_dict, root_dir_slash, dataclass_from_dict
 from bazaar.schema import BulletinBoard, Answer
 from bazaar.sim_builder import (
     build_buyers,
@@ -104,6 +105,8 @@ class SimulationRunner(BaseExperiment, IOMixin):
         if self.get("questions_path") is not None:
             print(f"Loading questions from {self.get('questions_path')}...")
             questions = load_dict(root_dir_slash(self.get("questions_path")))
+            for question in questions:
+                question['gold_block'] = dataclass_from_dict(Block, question['gold_block'])
             specific_question_idxs = [
                 idx
                 for idx, q in enumerate(questions)
@@ -150,7 +153,7 @@ class SimulationRunner(BaseExperiment, IOMixin):
         buyers = self._select_buyers(
             buyers=buyers,
             specific_question_idxs=specific_question_idxs,
-            general_question_idxs=specific_question_idxs,
+            general_question_idxs=general_question_idxs,
         )
 
         authors, institutions = build_authors_and_institutions(

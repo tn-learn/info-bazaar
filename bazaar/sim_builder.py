@@ -51,7 +51,7 @@ class SimulationConfig:
 def build_buyer(
     question: str,
     gold_block_id: Optional[str],
-    gold_block_text: Optional[str],
+    gold_block: Optional[str],
     buyer_name: str,
     buyer_max_budget_mean: float,
     buyer_max_budget_sigma: float,
@@ -74,7 +74,7 @@ def build_buyer(
         urgency=urgency,
         created_at_time=created_at_time,
         _gold_block_id=gold_block_id,
-        _gold_block=gold_block_text,
+        _gold_block=gold_block,
     )
     buyer = BuyerPrincipal(name=buyer_name, query=query,)
     return buyer
@@ -92,7 +92,7 @@ def parse_questions_from_dataset(dataset: dict) -> List[Dict[str, Any]]:
                         "buyer_name": buyer_name,
                         "question": question,
                         "gold_block_id": block.block_id,
-                        "gold_block_text": block.content,
+                        "gold_block": block,
                     }
                 )
     return questions
@@ -113,7 +113,7 @@ def build_buyers(
         buyer = build_buyer(
             question=question["question"],
             gold_block_id=question["gold_block_id"],
-            gold_block_text=question["gold_block_text"],
+            gold_block=question["gold_block"],
             buyer_name=question["buyer_name"],
             buyer_max_budget_mean=buyer_max_budget_mean,
             buyer_max_budget_sigma=buyer_max_budget_sigma,
