@@ -18,7 +18,7 @@ from bazaar.py_utils import dump_dict, load_dict, root_dir_slash
 from bazaar.schema import BulletinBoard, Answer
 from bazaar.sim_builder import (
     build_buyers,
-    build_authors_and_institutions,
+    build_authors_and_institutions, parse_questions_from_dataset,
 )
 from bazaar.simulator import BazaarSimulator
 
@@ -114,9 +114,17 @@ class SimulationRunner(BaseExperiment, IOMixin):
 
         # Load the dataset
         dataset = load_dict(root_dir_slash(self.get("dataset_path")))
+        if self.get("questions_path") is not None:
+            print(f"Loading questions from {self.get('questions_path')}...")
+            questions = load_dict(root_dir_slash(self.get("questions_path")))
+        else:
+            print("Getting questions from dataset...")
+            questions = parse_questions_from_dataset(dataset)
+        print(f"Loaded {len(questions)} questions.")
         rng = np.random.RandomState(self.get("rng_seed"))
+
         buyers = build_buyers(
-            dataset=dataset,
+            questions=questions,
             buyer_max_budget_mean=self.get("buyer_max_budget_mean"),
             buyer_max_budget_sigma=self.get("buyer_max_budget_sigma"),
             buyer_urgency_min=self.get("buyer_urgency_min"),

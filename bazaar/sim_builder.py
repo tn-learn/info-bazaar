@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Tuple, List
+from typing import Tuple, List, Optional, Dict, Any
 
 import numpy as np
 
@@ -48,49 +48,82 @@ class SimulationConfig:
         return self
 
 
-
-
-
-def build_buyers(
-    dataset: dict,
+def build_buyer(
+    question: str,
+    gold_block_id: Optional[str],
+    gold_block_text: Optional[str],
+    buyer_name: str,
     buyer_max_budget_mean: float,
     buyer_max_budget_sigma: float,
     buyer_urgency_min: int,
     buyer_urgency_max: int,
     query_creation_time_start: int,
     query_creation_time_end: int,
-    rng: np.random.RandomState
-) -> List[BuyerPrincipal]:
-    buyers = []
+    rng: np.random.RandomState,
+):
+    max_budget = np.random.lognormal(
+        mean=buyer_max_budget_mean, sigma=buyer_max_budget_sigma, size=1,
+    )
+    urgency = rng.randint(low=buyer_urgency_min, high=buyer_urgency_max)
+    created_at_time = rng.randint(
+        low=query_creation_time_start, high=query_creation_time_end,
+    )
+    query = Query(
+        text=question,
+        max_budget=max_budget,
+        urgency=urgency,
+        created_at_time=created_at_time,
+        _gold_block_id=gold_block_id,
+        _gold_block=gold_block_text,
+    )
+    buyer = BuyerPrincipal(name=buyer_name, query=query,)
+    return buyer
+
+
+def parse_questions_from_dataset(dataset: dict) -> List[Dict[str, Any]]:
+    questions = []
     for arxiv_id, data in dataset.items():
         for block in data["blocks"]:
             block = dataclass_from_dict(Block, block)
             for idx, question in enumerate(block.questions):
-                max_budget = np.random.lognormal(
-                    mean=buyer_max_budget_mean,
-                    sigma=buyer_max_budget_sigma,
-                    size=1,
+                buyer_name = f"buyer-{block.block_id}-{idx}"
+                questions.append(
+                    {
+                        "buyer_name": buyer_name,
+                        "question": question,
+                        "gold_block_id": block.block_id,
+                        "gold_block_text": block.content,
+                    }
                 )
-                urgency = rng.randint(
-                    low=buyer_urgency_min, high=buyer_urgency_max
-                )
-                created_at_time = rng.randint(
-                    low=query_creation_time_start,
-                    high=query_creation_time_end,
-                )
-                query = Query(
-                    text=question,
-                    max_budget=max_budget,
-                    urgency=urgency,
-                    created_at_time=created_at_time,
-                    _gold_block_id=block.block_id,
-                    _gold_block=block,
-                )
-                buyer = BuyerPrincipal(
-                    name=f"buyer-{block.block_id}-{idx}",
-                    query=query,
-                )
-                buyers.append(buyer)
+    return questions
+
+
+def build_buyers(
+    questions: List[Dict[str, Any]],
+    buyer_max_budget_mean: float,
+    buyer_max_budget_sigma: float,
+    buyer_urgency_min: int,
+    buyer_urgency_max: int,
+    query_creation_time_start: int,
+    query_creation_time_end: int,
+    rng: np.random.RandomState,
+) -> List[BuyerPrincipal]:
+    buyers = []
+    for question in questions:
+        buyer = build_buyer(
+            question=question["question"],
+            gold_block_id=question["gold_block_id"],
+            gold_block_text=question["gold_block_text"],
+            buyer_name=question["buyer_name"],
+            buyer_max_budget_mean=buyer_max_budget_mean,
+            buyer_max_budget_sigma=buyer_max_budget_sigma,
+            buyer_urgency_min=buyer_urgency_min,
+            buyer_urgency_max=buyer_urgency_max,
+            query_creation_time_start=query_creation_time_start,
+            query_creation_time_end=query_creation_time_end,
+            rng=rng,
+        )
+        buyers.append(buyer)
     return buyers
 
 
@@ -107,12 +140,13 @@ def shuffle_blocks(entity, fraction_to_move, rng):
         del entity.public_blocks[key]
     return entity
 
+
 def build_authors_and_institutions(
     dataset: dict,
     author_fraction_of_private_blocks: float,
     author_response_time_mean: float,
     author_response_time_sigma: float,
-    rng: np.random.RandomState
+    rng: np.random.RandomState,
 ) -> Tuple[List[Author], List[Institution]]:
     authors = {}
     institutions = {}
@@ -167,9 +201,7 @@ def build_authors_and_institutions(
     for author in authors.values():
         author = shuffle_blocks(author, author_fraction_of_private_blocks, rng)
         author.mean_response_time = rng.lognormal(
-            mean=author_response_time_mean,
-            sigma=author_response_time_sigma,
-            size=1,
+            mean=author_response_time_mean, sigma=author_response_time_sigma, size=1,
         )
 
     for institution in institutions.values():
@@ -177,9 +209,7 @@ def build_authors_and_institutions(
             institution, author_fraction_of_private_blocks, rng
         )
         institution.mean_response_time = rng.lognormal(
-            mean=author_response_time_mean,
-            sigma=author_response_time_sigma,
-            size=1,
+            mean=author_response_time_mean, sigma=author_response_time_sigma, size=1,
         )
 
     return list(authors.values()), list(institutions.values())
