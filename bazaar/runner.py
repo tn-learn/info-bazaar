@@ -106,7 +106,9 @@ class SimulationRunner(BaseExperiment, IOMixin):
             self.print(f"Loading questions from {self.get('questions_path')}...")
             questions = load_dict(root_dir_slash(self.get("questions_path")))
             for question in questions:
-                question['gold_block'] = dataclass_from_dict(Block, question['gold_block'])
+                question["gold_block"] = dataclass_from_dict(
+                    Block, question["gold_block"]
+                )
             specific_question_idxs = [
                 idx
                 for idx, q in enumerate(questions)
@@ -246,7 +248,10 @@ class SimulationRunner(BaseExperiment, IOMixin):
                     question=buyer_agent.principal.query.text,
                     model_name=self.get("llm_name"),
                 )
-                answer = Answer(success=True, text=closed_book_answer,)
+                answer = Answer(
+                    success=True,
+                    text=closed_book_answer,
+                )
                 buyer_agent.principal.answer = answer
         elif self.get("run_type") == "open_book":
             for buyer_agent in self.bazaar.buyer_agents:
@@ -255,7 +260,10 @@ class SimulationRunner(BaseExperiment, IOMixin):
                     gold_passage=buyer_agent.principal.query._gold_block.content,
                     model_name=self.get("llm_name"),
                 )
-                answer = Answer(success=True, text=open_book_answer,)
+                answer = Answer(
+                    success=True,
+                    text=open_book_answer,
+                )
                 buyer_agent.principal.answer = answer
 
         # Print the results and dump summary
@@ -279,7 +287,11 @@ class SimulationRunner(BaseExperiment, IOMixin):
             for node_summary in query_manager_summary["node_summaries"]:
                 node_summary_extract = {
                     "query": node_summary["query"]["text"],
-                    "answer": node_summary["answer"]["text"],
+                    "answer": (
+                        node_summary["answer"]["text"]
+                        if node_summary["answer"] is not None
+                        else None
+                    ),
                     "num_answer_blocks": (
                         len(node_summary["answer"]["blocks"])
                         if node_summary["answer"]["blocks"] is not None
