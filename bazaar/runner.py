@@ -56,6 +56,10 @@ class SimulationRunner(BaseExperiment, IOMixin):
         super(SimulationRunner, self).__init__()
         if not skip_setup:
             self.auto_setup()
+            self._init()
+
+    def _init(self):
+        self.set_printer(printer=flush_print)
 
     def _select_buyers(self, buyers: list) -> list:
         def slicey(list_: list, slice_str: str):
@@ -100,7 +104,6 @@ class SimulationRunner(BaseExperiment, IOMixin):
         return buyers
 
     def _build(self):
-        self.set_printer(printer=flush_print)
         set_seed(self.get("rng_seed"))
 
         # Set the LLM and embedding names
@@ -239,6 +242,48 @@ class SimulationRunner(BaseExperiment, IOMixin):
         # Done
         self.print("Done.")
         return self
+
+    def extract_follow_up_graph_summary(self):
+        # Read in the bazaar summary
+        bazaar_summary = load_dict(Path(self.log_directory) / "bazaar_summary.json")
+        graph_summary_for_all_queries = []
+        # Get the buyer principals
+        for buyer_agent_summary in bazaar_summary["buyer_agent"]:
+            query_manager_summary = buyer_agent_summary["query_manager"]
+            graph_summary_for_query = {
+                "adjacency_matrix": query_manager_summary["adjacency_matrix"],
+                "node_summaries": [],
+            }
+            for node_summary in query_manager_summary["node_summaries"]:
+                node_summary_extract = {
+                    "query": node_summary["query"]["text"],
+                    "answer": node_summary["answer"]["text"],
+                    "num_answer_blocks": (
+                        len(node_summary["answer"]["blocks"])
+                        if node_summary["answer"]["blocks"] is not None
+                        else 0
+                    ),
+                    "pre_refinement_answer": (
+                        node_summary["pre_refinement_answer"]["text"]
+                        if node_summary["pre_refinement_answer"] is not None
+                        else None
+                    ),
+                    "num_pre_refinement_answer_blocks": (
+                        len(node_summary["pre_refinement_answer"]["blocks"])
+                        if (
+                            node_summary["pre_refinement_answer"] is not None
+                            and node_summary["pre_refinement_answer"]["blocks"]
+                            is not None
+                        )
+                        else 0
+                    ),
+                }
+                graph_summary_for_query["node_summaries"].append(node_summary_extract)
+            graph_summary_for_all_queries.append(graph_summary_for_query)
+        dump_dict(
+            graph_summary_for_all_queries,  # noqa
+            Path(self.log_directory) / "follow_up_graph_summary.json",
+        )
 
 
 if __name__ == "__main__":
