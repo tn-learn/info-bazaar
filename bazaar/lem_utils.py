@@ -1607,7 +1607,7 @@ def refine_answer(
     
     Before you get to formulating the refined answer, think out loud about what you need to do. Ask yourself whether the question is general or specific. If it is general, then you need to provide a more comprehensive answer. If it is specific, then you need to provide a more to-the-point answer. 
     
-    Also, it's possible that you don't need to use all follow up answers to come up with a good answer to the original question. Ask yourself whether you need to use all the follow up answers, or only some of them.
+    Also, it's possible that some follow up questions and answers are off-topic. In this case, you don't need to use them in order to come up with a good answer to the original question. Be sure ask yourself which follow up questions and answers are relevant to the original question.
     
     When it's finally time to write down your refined answer, print "REFINED ANSWER: <your answer>"
     
