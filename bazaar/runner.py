@@ -2,7 +2,7 @@ import random
 from datetime import datetime
 from itertools import zip_longest
 from pathlib import Path
-from turtledemo.sorting_animate import Block
+from bazaar.schema import Block
 
 import numpy as np
 from speedrun import BaseExperiment, register_default_dispatch, IOMixin
@@ -155,6 +155,7 @@ class SimulationRunner(BaseExperiment, IOMixin):
             specific_question_idxs=specific_question_idxs,
             general_question_idxs=general_question_idxs,
         )
+        print(f"filtered to {len(buyers)} questions")
 
         authors, institutions = build_authors_and_institutions(
             dataset=dataset,
@@ -248,6 +249,7 @@ class SimulationRunner(BaseExperiment, IOMixin):
                 answer = Answer(success=True, text=closed_book_answer,)
                 buyer_agent.principal.answer = answer
         elif self.get("run_type") == "open_book":
+            breakpoint()
             for buyer_agent in self.bazaar.buyer_agents:
                 open_book_answer = get_open_book_answer(
                     question=buyer_agent.principal.query.text,
