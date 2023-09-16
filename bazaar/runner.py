@@ -249,7 +249,6 @@ class SimulationRunner(BaseExperiment, IOMixin):
                 answer = Answer(success=True, text=closed_book_answer,)
                 buyer_agent.principal.answer = answer
         elif self.get("run_type") == "open_book":
-            breakpoint()
             for buyer_agent in self.bazaar.buyer_agents:
                 open_book_answer = get_open_book_answer(
                     question=buyer_agent.principal.query.text,
