@@ -1322,9 +1322,9 @@ def select_quotes_with_debate(
                 if option_num in option_verdicts:
                     # If the verdict is inconsistent, raise an exception
                     if option_verdicts[option_num] != is_buy:
-                        raise ValueError(
-                            f"Inconsistent verdict for Option {option_num}."
-                        )
+                        import warnings
+
+                        warnings.warn(f"Inconsistent verdict for Option {option_num}.")
                 else:
                     option_verdicts[option_num] = is_buy
 
@@ -1501,6 +1501,7 @@ def synthesize_answer(
     answer = program_output["answer"]
     # If we didn't use deep guidance, we'd need to parse the answer
     if not use_deep_guidance:
+
         def extract_answer(s):
             match = re.search(r"<answer>(.*?)</answer>", s, re.DOTALL)
             return match.group(1) if match else None
