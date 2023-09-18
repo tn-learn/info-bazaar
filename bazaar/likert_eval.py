@@ -6,6 +6,7 @@ import random
 import yaml
 from tqdm import tqdm
 from typing import Optional, Dict, List, Any
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import pandas as pd
@@ -52,6 +53,7 @@ class LikertEvaluator:
         evaluator_model: str,
         auto_glob: bool = True,
         save_in_root: bool = True,
+        num_threads: Optional[int] = None,
     ):
         assert experiment_root is not None, "experiment_root must be specified."
         assert experiment_name is not None, "experiment_name must be specified."
@@ -61,6 +63,7 @@ class LikertEvaluator:
         self.evaluator_model = evaluator_model
         self.auto_glob = auto_glob
         self.save_in_root = save_in_root
+        self.num_threads = num_threads
 
     def get_result_output_path(self, mkdir: bool = True) -> str:
         if self.auto_glob and "*" not in self.experiment_name:
@@ -173,13 +176,28 @@ class LikertEvaluator:
         if inplace:
             row.update(answer_filtered)
             row.update({"evaluator_model": self.evaluator_model})
-        return answer_filtered
+        else:
+            row = {**row, **answer_filtered, "evaluator_model": self.evaluator_model}
+        return row
 
     def run(self):
         # We do all the things here
         bazaar_summaries = self.read_bazaar_summaries()
-        for row in tqdm(bazaar_summaries):
-            self.evaluate_likert_score_for_row(row, inplace=True)
+        if self.num_threads in [None, 0]:
+            for row in tqdm(bazaar_summaries):
+                self.evaluate_likert_score_for_row(row, inplace=True)
+        else:
+            # Use executor map to run the evaluate_likert_score_for_row
+            # function in parallel
+            with ThreadPoolExecutor(max_workers=self.num_threads) as executor:
+                bazaar_summaries = list(
+                    tqdm(
+                        executor.map(
+                            self.evaluate_likert_score_for_row, bazaar_summaries
+                        ),
+                        total=len(bazaar_summaries),
+                    )
+                )
         df = pd.DataFrame.from_dict(bazaar_summaries)
         df.to_csv(self.get_result_output_path())
 
@@ -201,6 +219,7 @@ def main(args: Optional[argparse.Namespace] = None):
         parser.add_argument("--no_auto_glob", action="store_true", default=False)
         parser.add_argument("--no_save_in_root", action="store_true", default=False)
         parser.add_argument("--dry_run", action="store_true", default=False)
+        parser.add_argument("--num_threads", type=int, default=None)
         args = parser.parse_args()
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -212,6 +231,7 @@ def main(args: Optional[argparse.Namespace] = None):
         evaluator_model=args.evaluator_model,
         auto_glob=(not args.no_auto_glob),
         save_in_root=(not args.no_save_in_root),
+        num_threads=args.num_threads,
     )
 
     print("Running evaluation...")
