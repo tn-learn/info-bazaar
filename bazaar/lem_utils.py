@@ -43,6 +43,14 @@ OAI_EXCEPTIONS = (
 
 MODEL_CACHE = {}
 OAI_MODELS = ["gpt-3.5-turbo", "gpt-3.5-turbo-16k", "gpt-4", "gpt-4-32k"]
+HF_MODELS = [  # Huggingface models support advanced guidance
+    "Llama-2-70b-chat-hf",
+    "Llama-2-13b-chat-hf",
+    "Llama-2-7b-chat-hf",
+    "RemoteLlama-2-70b-chat-hf",
+    "RemoteLlama-2-13b-chat-hf",
+    "RemoteLlama-2-7b-chat-hf",
+]
 OAI_EMBEDDINGS = ["text-embedding-ada-002"]
 
 DEFAULT_LLM_NAME = "RemoteLlama-2-70b-chat-hf"
@@ -223,13 +231,13 @@ class LLaMa2(guidance.llms.Transformers):
         self.llm_name = self.model_id.split("/")[-1]
 
     def initialize_model(
-            self,
-            hf_auth_token: str,
-            hf_cache_directory: str,
-            size: str,
-            rope_scaling: str,
-            monitor_model: bool,
-            use_bnb_config: bool = True
+        self,
+        hf_auth_token: str,
+        hf_cache_directory: str,
+        size: str,
+        rope_scaling: str,
+        monitor_model: bool,
+        use_bnb_config: bool = True,
     ):
         import transformers
         import torch
@@ -402,10 +410,14 @@ class TransformersEmbedding:
         # Resolve model id
         model_id = resolve_embedding_model_id(model_id)
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model_id, cache_dir=hf_cache_directory, use_auth_token=hf_auth_token,
+            model_id,
+            cache_dir=hf_cache_directory,
+            use_auth_token=hf_auth_token,
         )
         self.model = transformers.AutoModel.from_pretrained(
-            model_id, cache_dir=hf_cache_directory, use_auth_token=hf_auth_token,
+            model_id,
+            cache_dir=hf_cache_directory,
+            use_auth_token=hf_auth_token,
         )
         # Manually ship to device
         self.model.to(self.device)
@@ -516,10 +528,14 @@ class LMReranker:
         hf_cache_directory = get_hf_cache_directory(hf_cache_directory)
         # Init the tokenizer and model
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model_id, cache_dir=hf_cache_directory, use_auth_token=hf_auth_token,
+            model_id,
+            cache_dir=hf_cache_directory,
+            use_auth_token=hf_auth_token,
         )
         self.model = transformers.AutoModelForSequenceClassification.from_pretrained(
-            model_id, cache_dir=hf_cache_directory, use_auth_token=hf_auth_token,
+            model_id,
+            cache_dir=hf_cache_directory,
+            use_auth_token=hf_auth_token,
         )
         self.model.to(self.device)
         self.model.eval()
@@ -792,7 +808,9 @@ def generate_hyde_passage(question: str, model: Optional[str] = None) -> str:
         program_string=program_string,
         llm=get_llm(model),
         silent=True,
-        inputs=dict(question=question,),
+        inputs=dict(
+            question=question,
+        ),
         output_keys=["hyde_answer"],
     )
     hyde_answer = program_outputs["hyde_answer"]
@@ -933,7 +951,10 @@ def split_to_paragraphs(
         program_string=program_string,
         llm=get_llm(model_name=model_name),
         silent=True,
-        inputs=dict(sentences=sentences, num_para=target_num_paragraphs,),
+        inputs=dict(
+            sentences=sentences,
+            num_para=target_num_paragraphs,
+        ),
         output_keys=["parasplits"],
     )
     paragraph_indices = [int(x) - 1 for x in program_output["parasplits"]]
@@ -1269,7 +1290,11 @@ def select_quotes_with_debate(
         program_string=program_string,
         llm=get_llm(model_name=model_name),
         silent=True,
-        inputs=dict(question=question, options=options, balance=100,),
+        inputs=dict(
+            question=question,
+            options=options,
+            balance=100,
+        ),
         output_keys=["answer"],
     )
     answer = program_output["answer"]
@@ -1383,71 +1408,112 @@ def synthesize_answer(
         for quote in quotes
     ]
 
-    program_string = """
-    {{#system~}}
-    You are a Question Answering Bot. Your task is to answer a question to the best of your ability. To help you in that task, you will be given some passages that might contain useful information.  
-    
-    It is important that your answer is formulated in a simple and understandable way. 
-    {{~/system}}
-    
-    {{#user~}}
-    The question is "{{question}}?"
-    
-    Here are some passages that you might find helpful.
-    
-    ---{{#each quotes}}
-    {{add @index 1}}. {{this.answer_block}}
-    {{/each}}---
-    
-    Please start by summarizing what you know, and what you are not confident about. Also discuss the content of the passages, and to what extent they help you towards answering the question. Don't be afraid of not knowing things, but be honest about what you don't know. Finally, when deciding how detailed your answer should be, think about the intention of the question asker. If the question is about something specific, the answer must be to-the-point. If the question is more general, the answer can be more comprehensive. 
+    use_deep_guidance = model_name in HF_MODELS
 
-    When writing these down, start with "THOUGHTS: <your thoughts>".
-    
-    Once you're done, begin your answer with "ANSWER: <your answer>".
+    if use_deep_guidance:
+        # This helps squeeze some juice out of the llama's
+        program_string = """
+        {{#system~}}
+        You are a helpful assistant, and you excel in following instructions.
 
-    Let's begin.
-    {{~/user}}
-    
-    {{#assistant~}}
-    {{gen "answer" temperature=0.0}}
-    {{~/assistant}}    
-    """
+        Your task is to answer a question to the best of your ability. To help you in that task, you will be given some passages that might contain useful information.  
+
+        It is important that your answer is formulated in a simple and understandable way. 
+        {{~/system}}
+
+        {{#user~}}
+        The question is "{{question}}?"
+
+        Here are some passages that you might find helpful.
+
+        ---{{#each quotes}}
+        {{add @index 1}}. {{this.answer_block}}
+        {{/each}}---
+
+        You'll solve your task step-by-step.
+
+        First, you'll start by discussing the content of all passages in the context of the question, which is "{{question}}". 
+
+        In particular, you will ask yourself which passages help you answer this question and to what extent. It is possible that multiple passages help you towards answering the question. But it is also possible that some passages are not helpful at all, and you should ignore them. Don't be afraid to express uncertainty if you are unsure about something.
+
+        Next, you will formulate your answer. The answer should not have explicit references to the passages. Instead, it should be a standalone answer to the question. 
+
+        Finally, note that it is *very important* that you enclose your answer with <answer> and </answer> tags. If you don't use the <answer> and </answer> tags, I will not be able to parse it and the whole effort will be wasted.
+        {{~/user}}
+
+        {{#assistant~}}
+        I understand. Here's what I think about the passages in the context of the question "{{question}}":
+
+        {{gen "rationale" temperature=0.0 max_tokens=1024 stop="<answer>"}}
+
+        Based on these information, I will now formulate my answer to the question "{{question}}". I also acknowledge that I shouldn't explicitly refer to the passages in my answer.
+
+        <answer>{{gen "answer" temperature=0.0 max_tokens=1024 stop="</answer>"}}</answer>
+        {{~/assistant}}
+        """
+    else:
+        program_string = """
+        {{#system~}}
+        You are a helpful assistant, and you excel in following instructions.
+
+        Your task is to answer a question to the best of your ability. To help you in that task, you will be given some passages that might contain useful information.  
+
+        It is important that your answer is formulated in a simple and understandable way. 
+        {{~/system}}
+
+        {{#user~}}
+        The question is "{{question}}?"
+
+        Here are some passages that you might find helpful.
+
+        ---{{#each quotes}}
+        {{add @index 1}}. {{this.answer_block}}
+        {{/each}}---
+
+        You'll solve your task step-by-step.
+
+        First, you'll start by discussing the content of all passages in the context of the question, which is "{{question}}". 
+
+        In particular, you will ask yourself which passages help you answer this question and to what extent. It is possible that multiple passages help you towards answering the question. But it is also possible that some passages are not helpful at all, and you should ignore them. Don't be afraid to express uncertainty if you are unsure about something.
+
+        Next, you will formulate your answer. The answer should not have explicit references to the passages. Instead, it should be a standalone answer to the question. 
+
+        Finally, note that it is *very important* that you enclose your answer with <answer> and </answer> tags. If you don't use the <answer> and </answer> tags, I will not be able to parse it and the whole effort will be wasted.
+        {{~/user}}
+
+        {{#assistant~}}
+        {{gen "answer" temperature=0.0 max_tokens=1024}}
+        {{~/assistant}}
+        """
+
     program_string = clean_program_string(program_string)
     # Run the program
     program_output = ask_for_guidance(
         program_string=program_string,
         llm=get_llm(model_name=model_name),
         silent=True,
-        inputs=dict(question=question, quotes=passages,),
+        inputs=dict(
+            question=question,
+            quotes=passages,
+        ),
         output_keys=["answer"],
     )
+    answer = program_output["answer"]
+    # If we didn't use deep guidance, we'd need to parse the answer
+    if not use_deep_guidance:
+        def extract_answer(s):
+            match = re.search(r"<answer>(.*?)</answer>", s, re.DOTALL)
+            return match.group(1) if match else None
 
-    def separate_text_to_dict_corrected(text: str) -> Dict[str, str]:
-        """
-        Splits the provided text into sections based on the given keywords and returns a dictionary.
-        """
-        # Split the text by the keywords "STRATEGY:" and "ANSWER:"
-        sections = ["THOUGHTS:", "ANSWER:"]
-        parts = {}
+        answer = extract_answer(answer)
 
-        for idx, section in enumerate(sections):
-            start_idx = text.find(section)
+        if answer is not None:
+            answer = answer.strip()
+        else:
+            answer = "My apologies, the answer failed to parse."
+    else:
+        answer = answer.strip()
 
-            if idx < len(sections) - 1:
-                # If it's not the last section, find the next section to determine the end index
-                end_idx = text.find(sections[idx + 1])
-                parts[section.strip(":").lower()] = text[
-                    start_idx + len(section) : end_idx
-                ].strip()
-            else:
-                # If it's the last section, use the end of the text
-                parts[section.strip(":").lower()] = text[
-                    start_idx + len(section) :
-                ].strip()
-
-        return parts
-
-    answer = separate_text_to_dict_corrected(program_output["answer"])["answer"]
     return answer
 
 
@@ -1582,44 +1648,102 @@ def refine_answer(
         dict(question=q, answer=a)
         for q, a in zip(follow_up_questions, answers_to_follow_up_questions)
     ]
+    use_deep_guidance = model_name in HF_MODELS
 
-    program_string = """
-    {{#system~}}
-    You are an Answer Refinement AI. You will be given a question, and an initial answer. The initial answer was lacking in some aspects, so follow up questions were asked to improve the initial answer. 
-    
-    Your task is to refine the initial answer by incorporating the extra insights obtained from the answers to the follow up questions. But be mindful to only include the insights that make the original answer better, and ignore the rest. The refined answer should directly answer the original question. 
-    {{~/system}}
+    if use_deep_guidance:
+        program_string = """
+        {{#system~}}
+        You are a helpful assistant, and you excel in following instructions. 
 
-    {{#user~}}
-    The original question is: {{question}}
+        In this session, you will be given a question, and an initial answer. The initial answer was lacking in some aspects, so follow-up questions were asked to improve the initial answer. 
+
+        Your task is to refine the initial answer by incorporating the extra insights obtained from the answers to the follow-up questions. But be mindful to only include the insights that make the original answer better, and ignore the rest. The refined answer should directly answer the original question. 
+        {{~/system}}
+
+        {{#user~}}
+        The original question is: {{question}}
+
+        The initial answer is: {{original_answer}}
+
+        Here are the follow-up questions that were asked, and the corresponding answers.
+        ---
+        {{#each follow_up_questions~}}
+        Question {{add @index 1}}: {{this.question}}
+        Answer: {{this.answer}}
+        {{~/each}}
+        --- 
+
+        Given these follow-up questions, your ultimate task is to refine the initial answer. 
+
+        But before you get to formulating the refined answer, please think out loud about what you need to do. Ask yourself whether the question is general or specific. If it is general, then you need to provide a more comprehensive answer. If it is specific, then you need to provide a more to-the-point answer. 
+
+        After that, please summarize the answers to the follow-up question in the context of the original answer, keeping only the information that is on-topic and useful while ignoring the rest. Note that some questions might be off-topic and not useful, and it's important that you ignore these distractor questions.
+
+        Finally, when it's time to write down the refined answer, please do not explicitly mention the passages, but focus on answering the question. Do not use your world knowledge, but only the information that is available in the original answer and the answers to relevant follow-up questions. 
+
+        It's *very important* that you enclose your answer with <answer> and </answer> tags. For example, if your answer is "REFINED ANSWER GOES HERE", then you should output <answer>REFINED ANSWER GOES HERE</answer>. 
+
+        If you don't use the <answer> and </answer> tags, I will not be able to parse it and the whole effort will be wasted. 
+        {{~/user}}
+
+        {{#assistant~}}
+        Understood. Let us first think about the follow-up questions and how they can help us answer the original question, which is "{{question}}".  
+
+        {{gen "rationale" temperature=0.0 max_tokens=1024 stop="<answer>"}}
+
+        Based on these insights, I think the refined answer to the original question is:
+        <answer>{{gen "answer" temperature=0.0 max_tokens=2048 stop="</answer>"}}</answer>
+        {{~/assistant}}
+        """
+    else:
+        program_string = """
+        {{#system~}}
+        You are a helpful assistant, and you excel in following instructions. 
     
-    The initial answer is: {{original_answer}}
+        In this session, you will be given a question, and an initial answer. The initial answer was lacking in some aspects, so follow-up questions were asked to improve the initial answer. 
     
-    Here are the follow up questions that were asked, and the corresponding answers.
-    ---
-    {{#each follow_up_questions~}}
-    Question {{add @index 1}}: {{this.question}}
-    Answer: {{this.answer}}
-    {{~/each}}
-    --- 
+        Your task is to refine the initial answer by incorporating the extra insights obtained from the answers to the follow-up questions. But be mindful to only include the insights that make the original answer better, and ignore the rest. The refined answer should directly answer the original question. 
+        {{~/system}}
     
-    Given these follow up questions, your task is to refine the initial answer. 
+        {{#user~}}
+        The original question is: {{question}}
     
-    Before you get to formulating the refined answer, think out loud about what you need to do. Ask yourself whether the question is general or specific. If it is general, then you need to provide a more comprehensive answer. If it is specific, then you need to provide a more to-the-point answer. 
+        The initial answer is: {{original_answer}}
     
-    Also, it's possible that some follow up questions and answers are off-topic. In this case, you don't need to use them in order to come up with a good answer to the original question. Be sure ask yourself which follow up questions and answers are relevant to the original question.
+        Here are the follow-up questions that were asked, and the corresponding answers.
+        ---
+        {{#each follow_up_questions~}}
+        Question {{add @index 1}}: {{this.question}}
+        Answer: {{this.answer}}
+        {{~/each}}
+        --- 
     
-    When it's finally time to write down your refined answer, print "REFINED ANSWER: <your answer>"
+        Given these follow-up questions, your ultimate task is to refine the initial answer. 
     
-    It is very important that you do not have any text other than the refined answer after "REFINED ANSWER:". 
+        But before you get to formulating the refined answer, please think out loud about what you need to do. Ask yourself whether the question is general or specific. If it is general, then you need to provide a more comprehensive answer. If it is specific, then you need to provide a more to-the-point answer. 
     
-    Let's go. 
-    {{~/user}}
+        After that, please summarize the answers to the follow-up question in the context of the original answer, keeping only the information that is on-topic and useful while ignoring the rest. Note that some questions might be off-topic and not useful, and it's important that you ignore these distractor questions. 
+        {{~/user}}
     
-    {{#assistant~}}
-    {{gen "answer" temperature=0.0 max_tokens=1024}}
-    {{~/assistant}}
-    """
+        {{#assistant~}}
+        {{gen "rationale" temperature=0.0 max_tokens=2048}}
+        {{~/assistant}}
+    
+        {{#user~}}
+        Now that it's time to write down the refined answer, please do not explicitly mention the passages, but focus on answering the question. Do not use your world knowledge, but only the information that is available in the original answer and the answers to relevant follow-up questions. 
+    
+        It's *very important* that you enclose your answer with <answer> and </answer> tags. 
+    
+        For example, if your answer is "REFINED ANSWER GOES HERE", then you should output <answer>REFINED ANSWER GOES HERE</answer>. 
+    
+        If you don't use the <answer> and </answer> tags, I will not be able to parse it and the whole effort will be wasted. 
+        {{~/user}}
+    
+        {{#assistant~}}
+        {{gen "answer" temperature=0.0 max_tokens=512}}
+        {{~/assistant}}
+        """
+
     program_string = clean_program_string(program_string)
     # Run the program
     program_output = ask_for_guidance(
@@ -1633,19 +1757,23 @@ def refine_answer(
         ),
         output_keys=["answer"],
     )
+
     answer = program_output["answer"]
 
-    # Parse the answer
-    def extract_answer(text):
-        pattern = r"(?i)REFINED ANSWER:([\s\S]*?)(?=\n\n[^ \t\n\r\f\v]*$|$)"
-        match = re.search(pattern, text)
-        if match:
-            # Strip the leading whitespace and return the extracted text.
-            return match.group(1).strip()
-        else:
-            return None
+    if not use_deep_guidance:
+        # Parse the answer
+        def extract_answer(s):
+            match = re.search(r"<answer>(.*?)</answer>", s, re.DOTALL)
+            return match.group(1) if match else None
 
-    answer = extract_answer(answer)
+        answer = extract_answer(answer)
+        if answer is not None:
+            answer = answer.strip()
+        else:
+            answer = "My apologies, the answer failed to parse."
+    else:
+        answer = answer.strip()
+
     return answer
 
 
@@ -1661,7 +1789,9 @@ def evaluate_answer_with_likert(
         3. Simplicity; eliminating unnecessary details and complexity.
         4. Comprehensiveness; including all necessary components.
         5. Overall Quality; an aggregate measure of the above four dimensions.
+    
     Bobby likes to give low ratings. He thinks that bad answers typically either do not answer the question, do not provide a factually correct response that answers the question, or simply repeat the question without adding anything new. Being an AI is not an acceptable excuse for not knowing the answer and should result in a rating of 1 on all dimensions.  
+    
     Michael likes to give high ratings. He likes answers that are factually correct, with respect to the gold passage, and are simple, relevant to the question, and complete thoughts.
 
     You will be given the question, a passage containing the true gold answer ("gold passage"), and a candidate answer. 
@@ -1694,8 +1824,7 @@ def evaluate_answer_with_likert(
     {{#assistant~}}
     {{gen "answer" temperature=0.0 max_tokens=2048}}
     {{~/assistant}}
-
-"""
+    """
     program_string = clean_program_string(program_string)
     # Run the program
     program_output = ask_for_guidance(
@@ -1710,10 +1839,18 @@ def evaluate_answer_with_likert(
         output_keys=["answer"],
     )
     answer = program_output["answer"]
+
     # Parse the answer.
     def extract_likert_ranks(text: str) -> Dict[str, int]:
         # Define categories to look for
-        categories = ['CORRECTNESS', 'RELEVANCE', 'SIMPLICITY', 'COMPREHENSIVENESS', 'OVERALL', 'QUALITY']
+        categories = [
+            "CORRECTNESS",
+            "RELEVANCE",
+            "SIMPLICITY",
+            "COMPREHENSIVENESS",
+            "OVERALL",
+            "QUALITY",
+        ]
 
         # Initialize result dictionary
         result_dict = {}
@@ -1725,8 +1862,8 @@ def evaluate_answer_with_likert(
 
             if search_result:
                 # For 'OVERALL' and 'QUALITY', combine them into 'overall_quality'
-                if category in ['OVERALL', 'QUALITY']:
-                    result_dict['overall_quality'] = int(search_result[-1])
+                if category in ["OVERALL", "QUALITY"]:
+                    result_dict["overall_quality"] = int(search_result[-1])
                 else:
                     result_dict[category.lower()] = int(search_result[-1])
 
@@ -1867,7 +2004,11 @@ def evaluate_answer_with_debate(
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def evaluate_answer_with_debate_retrieved_closed(
-    question: str, gold_passage: str, answer1: str, answer2: str, model_name: str,
+    question: str,
+    gold_passage: str,
+    answer1: str,
+    answer2: str,
+    model_name: str,
 ) -> Dict[str, Dict[str, int]]:
     program_string = """
     {{#system~}}
