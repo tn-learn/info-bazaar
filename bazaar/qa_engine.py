@@ -103,6 +103,7 @@ class QueryManager:
         answer_synthesis_model_name: str,
         follow_up_question_synthesis_model_name: str,
         max_query_depth: int = 3,
+        max_num_follow_up_questions_per_question: Optional[int] = None,
     ):
         # Private
         self._agent = agent
@@ -113,6 +114,9 @@ class QueryManager:
             follow_up_question_synthesis_model_name
         )
         self.max_query_depth = max_query_depth
+        self.max_num_follow_up_questions_per_question = (
+            max_num_follow_up_questions_per_question
+        )
         self.question_graph = DiGraph()
 
     def find_node(self, query: Query) -> QANode:
@@ -347,6 +351,7 @@ class QueryManager:
             question=node.query.text,
             current_answer=node.answer.text,
             model_name=self.follow_up_question_synthesis_model_name,
+            max_num_follow_up_questions=self.max_num_follow_up_questions_per_question,
         )
 
         # Get the root query from which we inherit some query properties
@@ -440,7 +445,9 @@ class QueryManager:
         ]
         try:
             # Get the edges of the graph
-            adjacency_matrix = nx.adjacency_matrix(self.question_graph).todense().tolist()
+            adjacency_matrix = (
+                nx.adjacency_matrix(self.question_graph).todense().tolist()
+            )
         except Exception:
             print("Oh Donkey")
             adjacency_matrix = []

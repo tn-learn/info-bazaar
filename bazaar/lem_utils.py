@@ -1581,7 +1581,10 @@ def get_open_book_answer(
 
 
 def select_follow_up_question(
-    question: str, current_answer: str, model_name: Optional[str] = None
+    question: str,
+    current_answer: str,
+    max_num_follow_up_questions: Optional[int] = None,
+    model_name: Optional[str] = None,
 ) -> List[str]:
     program_string = """
     {{#system~}}
@@ -1632,6 +1635,8 @@ def select_follow_up_question(
         return follow_ups
 
     follow_up = extract_follow_up(answer)
+    if max_num_follow_up_questions is not None:
+        follow_up = follow_up[:max_num_follow_up_questions]
     return follow_up
 
 
