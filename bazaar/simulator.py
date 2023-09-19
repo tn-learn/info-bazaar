@@ -1,6 +1,7 @@
 from collections import defaultdict
 from contextlib import contextmanager
 from typing import Optional, List, Dict, Union, Any, Callable
+import traceback
 import mesa
 import numpy as np
 
@@ -72,6 +73,7 @@ class BazaarAgent(mesa.Agent):
         super().__init__(**BazaarAgentContext.get_mesa_agent_kwargs())
         # Privates
         self._credit = 0
+        self._exception_str = None
         # Publics
         self.principal = principal
         self.agent_status = AgentStatus.ACTIVE
@@ -124,12 +126,23 @@ class BazaarAgent(mesa.Agent):
         """This function is called every step."""
         raise NotImplementedError
 
+    def register_exception_str(self, exception_str: str) -> "BazaarAgent":
+        # Get the stack trace of the exception
+        self._exception_str = exception_str
+        return self
+
     def step(self) -> None:
         if self.agent_status == AgentStatus.ACTIVE:
             if self.called_count == 0:
                 self.prepare()
-            self.forward()
-            self.called_count += 1
+            try:
+                self.forward()
+                self.called_count += 1
+            except Exception as e:
+                self.register_exception_str(traceback.format_exc())
+                self.print(f"Exception encountered: {str(e)}")
+                self.print(f"Exception stack trace: {self._exception_str}")
+                self.terminate_agent()
 
     def print(self, *messages):
         message = " ".join([str(m) for m in messages])
@@ -142,6 +155,7 @@ class BazaarAgent(mesa.Agent):
             credit=float(self.credit),
             called_count=self.called_count,
             principal=self.principal.evaluation_summary(),
+            exception_str=self._exception_str,
         )
         return summary
 
