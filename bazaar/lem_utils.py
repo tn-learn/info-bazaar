@@ -1580,6 +1580,40 @@ def get_open_book_answer(
     return answer
 
 
+@backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
+def bulletize(
+    passage: str, question: str, model_name: Optional[str] = None
+) -> str:
+    program_string = """
+    {{#system~}}
+    You will be given a passage and a question. 
+    
+    Your task is to convert the passage into bullet points. But you should only include points that are relevant to answering the question while discarding the rest.  
+    {{~/system}}
+
+    {{#user~}}
+    Passage: "{{passage}}"
+    
+    Question: "{{question}}"
+    {{~/user}}
+
+    {{#assistant~}}
+    {{gen "answer" temperature=0.0 max_tokens=1024}}
+    {{~/assistant}}
+    """
+    program_string = clean_program_string(program_string)
+    # Run the program
+    program_output = ask_for_guidance(
+        program_string=program_string,
+        llm=get_llm(model_name=model_name),
+        silent=True,
+        inputs=dict(passage=passage, question=question),
+        output_keys=["answer"],
+    )
+    answer = program_output["answer"]
+    return answer
+
+
 def select_follow_up_question(
     question: str,
     current_answer: str,
