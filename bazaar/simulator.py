@@ -225,6 +225,7 @@ class BuyerAgent(BazaarAgent):
         quote_review_num_tries: int = 1,
         num_quote_gathering_steps: int = 0,
         max_query_depth: int = 2,
+        max_num_follow_up_questions_per_question: Optional[int] = None,
         use_reranker: bool = False,
         reranker_max_num_quotes: Optional[int] = None,
         quote_selection_model_name: Optional[str] = None,
@@ -246,6 +247,7 @@ class BuyerAgent(BazaarAgent):
             follow_up_question_synthesis_model_name=self.get_llm_name(
                 follow_up_question_synthesis_model_name
             ),
+            max_num_follow_up_questions_per_question=max_num_follow_up_questions_per_question,
         )
         # Publics
         self.quote_review_top_k = quote_review_top_k
@@ -272,9 +274,7 @@ class BuyerAgent(BazaarAgent):
 
     def submit_final_response(self, response: Optional[Answer]) -> "BuyerAgent":
         self.principal: "BuyerPrincipal"
-        self.print(
-            f"Buyer {self.principal.name} submitted final response."
-        )
+        self.print(f"Buyer {self.principal.name} submitted final response.")
         if response is None:
             response = Answer(success=False)
         self.principal.submit_final_response(answer=response)
@@ -435,7 +435,9 @@ class BuyerAgent(BazaarAgent):
             for quote in self.remove_duplicate_quotes(candidate_quotes)
         ]
         if len(candidate_quotes) > 0:
-            self.print(f"Received {len(candidate_quotes)} quotes for query: {candidate_quotes[0].query.text}")
+            self.print(
+                f"Received {len(candidate_quotes)} quotes for query: {candidate_quotes[0].query.text}"
+            )
         else:
             self.print(f"There were no quotes to review.")
         # Apply reranker if required
@@ -499,7 +501,9 @@ class BuyerAgent(BazaarAgent):
             )
         selected_quotes = [quote.progress_quote() for quote in selected_quotes]
         if len(candidate_quotes) > 0:
-            self.print(f"Selected {len(selected_quotes)} quotes for query: {candidate_quotes[0].query.text}")
+            self.print(
+                f"Selected {len(selected_quotes)} quotes for query: {candidate_quotes[0].query.text}"
+            )
         else:
             self.print(f"There were no quotes to select.")
         return selected_quotes
