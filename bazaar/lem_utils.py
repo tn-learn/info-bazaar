@@ -817,6 +817,41 @@ def generate_hyde_passage(question: str, model: Optional[str] = None) -> str:
     return _parse_answer(hyde_answer)
 
 
+@backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
+def repharse_passage(passage: str, model: Optional[str] = None) -> str:
+    def _parse_answer(answer: str) -> str:
+        return answer.replace("ANSWER:", "").strip()
+
+    program_string = """
+    {{#system~}}
+    You are a helpful AI assistant.
+    {{~/system}}
+
+    {{#user~}}
+    Here is a text passage: 
+    {{passage}}
+
+    I would like you to rephrase this text passage while preserving all of the information content of the original passage. Begin your answer with "ANSWER:".
+    {{~/user}}
+
+    {{#assistant~}} 
+    {{gen 'rephrased' stop="\\n" temperature=0.0}}
+    {{~/assistant}}
+    """  # noqa
+    program_string = clean_program_string(program_string)
+    program_outputs = ask_for_guidance(
+        program_string=program_string,
+        llm=get_llm(model),
+        silent=True,
+        inputs=dict(
+            passage=passage,
+        ),
+        output_keys=["rephrased"],
+    )
+    rephrased_answered = program_outputs["rephrased"]
+    return _parse_answer(rephrased_answered)
+
+
 def generate_keywords(
     text: str, model_name: Optional[str] = None, num_keywords: int = 3
 ) -> List[str]:
