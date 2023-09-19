@@ -327,19 +327,22 @@ class BuyerAgent(BazaarAgent):
                 # Move to accepted quotes and remove from inbox, but don't pay for it.
                 quote.claim_quote()
                 self._accepted_quotes.append(quote)
-                self._quote_inbox.remove(quote)
+                if quote in self._quote_inbox:
+                    self._quote_inbox.remove(quote)
                 break
         else:
             quote.accept_quote()
             self.transfer_to_agent(quote.price, quote.issued_by)
             self._accepted_quotes.append(quote)
-            self._quote_inbox.remove(quote)
+            if quote in self._quote_inbox:
+                self._quote_inbox.remove(quote)
         return self
 
     def reject_quote(self, quote: Quote) -> "BuyerAgent":
         quote.reject_quote()
         self._rejected_quotes.append(quote)
-        self._quote_inbox.remove(quote)
+        if quote in self._quote_inbox:
+            self._quote_inbox.remove(quote)
         return self
 
     def reject_all_quotes_for_query(self, query: Query) -> "BuyerAgent":
