@@ -211,7 +211,7 @@ class LikertEvaluator:
             f"likert_{k}": v for k, v in evaluated_answers.items() if k in allowed_keys
         }
         for key in allowed_keys:
-            if key not in answer_filtered:
+            if f"likert_{key}" not in answer_filtered:
                 answer_filtered[f"likert_{key}"] = np.nan
         if inplace:
             row.update(answer_filtered)
