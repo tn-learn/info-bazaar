@@ -240,6 +240,7 @@ class BuyerAgent(BazaarAgent):
         num_quote_gathering_steps: int = 0,
         max_query_depth: int = 2,
         max_num_follow_up_questions_per_question: Optional[int] = None,
+        stay_faithful_to_quotes_when_sythesizing_answers: bool = False,
         use_reranker: bool = False,
         reranker_max_num_quotes: Optional[int] = None,
         quote_selection_model_name: Optional[str] = None,
@@ -262,6 +263,7 @@ class BuyerAgent(BazaarAgent):
                 follow_up_question_synthesis_model_name
             ),
             max_num_follow_up_questions_per_question=max_num_follow_up_questions_per_question,
+            stay_faithful_to_quotes_when_sythesizing_answers=stay_faithful_to_quotes_when_sythesizing_answers,
         )
         # Publics
         self.quote_review_top_k = quote_review_top_k
@@ -327,19 +329,22 @@ class BuyerAgent(BazaarAgent):
                 # Move to accepted quotes and remove from inbox, but don't pay for it.
                 quote.claim_quote()
                 self._accepted_quotes.append(quote)
-                self._quote_inbox.remove(quote)
+                if quote in self._quote_inbox:
+                    self._quote_inbox.remove(quote)
                 break
         else:
             quote.accept_quote()
             self.transfer_to_agent(quote.price, quote.issued_by)
             self._accepted_quotes.append(quote)
-            self._quote_inbox.remove(quote)
+            if quote in self._quote_inbox:
+                self._quote_inbox.remove(quote)
         return self
 
     def reject_quote(self, quote: Quote) -> "BuyerAgent":
         quote.reject_quote()
         self._rejected_quotes.append(quote)
-        self._quote_inbox.remove(quote)
+        if quote in self._quote_inbox:
+            self._quote_inbox.remove(quote)
         return self
 
     def reject_all_quotes_for_query(self, query: Query) -> "BuyerAgent":

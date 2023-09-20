@@ -3,6 +3,8 @@ import os
 import argparse
 import ast
 import random
+import traceback
+
 import yaml
 from tqdm import tqdm
 from typing import Optional, Dict, List, Any
@@ -12,7 +14,10 @@ import numpy as np
 import pandas as pd
 
 from bazaar.py_utils import dump_dict, load_dict
-from bazaar.lem_utils import evaluate_answer_with_likert
+from bazaar.lem_utils import (
+    evaluate_answer_with_likert,
+    evaluate_answer_with_likert_and_debate,
+)
 
 
 def try_literal_eval(x):
@@ -51,6 +56,7 @@ class LikertEvaluator:
         experiment_root: str,
         experiment_name: str,
         evaluator_model: str,
+        evaluator_function_key: str = "likert_eval",
         auto_glob: bool = True,
         save_in_root: bool = True,
         num_threads: Optional[int] = None,
@@ -61,6 +67,7 @@ class LikertEvaluator:
         self.experiment_root = experiment_root
         self.experiment_name = experiment_name
         self.evaluator_model = evaluator_model
+        self.evaluator_function_key = evaluator_function_key
         self.auto_glob = auto_glob
         self.save_in_root = save_in_root
         self.num_threads = num_threads
@@ -77,12 +84,12 @@ class LikertEvaluator:
                 self.experiment_root,
                 experiment_name,
                 "Logs",
-                f"likert_eval_{self.evaluator_model}.csv",
+                f"{self.evaluator_function_key}_{self.evaluator_model}.csv",
             )
         else:
             path = os.path.join(
                 self.experiment_root,
-                f"likert_eval_{self.evaluator_model}_{experiment_name}.csv",
+                f"{self.evaluator_function_key}_{self.evaluator_model}_{experiment_name}.csv",
             )
         # Create the directory if it doesn't exist
         if mkdir:
@@ -112,7 +119,7 @@ class LikertEvaluator:
 
     def read_bazaar_summaries(self) -> List[Dict[str, str]]:
         rows = []
-        for experiment_path in self.get_experiment_paths():
+        for experiment_path in tqdm(self.get_experiment_paths()):
             summary_path = os.path.join(experiment_path, "Logs", "bazaar_summary.json")
             config_path = os.path.join(
                 experiment_path, "Configurations", "train_config.yml"
@@ -154,25 +161,58 @@ class LikertEvaluator:
                 rows.append(to_append)
         return rows
 
+    @staticmethod
+    def _safety_wrap(fn, *args, **kwargs) -> Dict[str, Any]:
+        try:
+            return fn(*args, **kwargs)
+        except Exception as e:
+            print("-----")
+            print("Ignoring exception:")
+            exception_string = traceback.format_exc()
+            print(exception_string)
+            print("-----")
+            return {}
+
     def evaluate_likert_score_for_row(
         self, row: Dict[str, Any], inplace: bool = False
     ) -> Dict[str, str]:
-        evaluated_answers = evaluate_answer_with_likert(
-            question=row["question"],
-            gold_block=row["gold_block"],
-            answer=row["answer"],
-            model_name=self.evaluator_model,
-        )
-        allowed_keys = {
-            "comprehensiveness",
-            "correctness",
-            "simplicity",
-            "relevance",
-            "overall_quality",
-        }
+        if self.evaluator_function_key == "likert_eval":
+            evaluated_answers = self._safety_wrap(
+                evaluate_answer_with_likert,
+                question=row["question"],
+                gold_block=row["gold_block"],
+                answer=row["answer"],
+                model_name=self.evaluator_model,
+            )
+            allowed_keys = {
+                "comprehensiveness",
+                "correctness",
+                "simplicity",
+                "relevance",
+                "overall_quality",
+            }
+        elif self.evaluator_function_key == "likert_debate_eval":
+            evaluated_answers = self._safety_wrap(
+                evaluate_answer_with_likert_and_debate,
+                question=row["question"],
+                gold_block=row["gold_block"],
+                answer=row["answer"],
+                bulletize_gold_block=True,
+                model_name=self.evaluator_model,
+            )
+            allowed_keys = {
+                "fluency",
+                "relevance",
+                "correctness",
+            }
+        else:
+            raise NotImplementedError
         answer_filtered = {
             f"likert_{k}": v for k, v in evaluated_answers.items() if k in allowed_keys
         }
+        for key in allowed_keys:
+            if f"likert_{key}" not in answer_filtered:
+                answer_filtered[f"likert_{key}"] = np.nan
         if inplace:
             row.update(answer_filtered)
             row.update({"evaluator_model": self.evaluator_model})
@@ -215,6 +255,7 @@ def main(args: Optional[argparse.Namespace] = None):
         parser.add_argument("--experiment_root", type=str)
         parser.add_argument("--experiment_name", type=str)
         parser.add_argument("--evaluator_model", type=str)
+        parser.add_argument("--evaluator_function_key", type=str, default="likert_eval")
         parser.add_argument("--seed", type=int, default=42)
         parser.add_argument("--no_auto_glob", action="store_true", default=False)
         parser.add_argument("--no_save_in_root", action="store_true", default=False)
@@ -229,6 +270,7 @@ def main(args: Optional[argparse.Namespace] = None):
         experiment_root=args.experiment_root,
         experiment_name=args.experiment_name,
         evaluator_model=args.evaluator_model,
+        evaluator_function_key=args.evaluator_function_key,
         auto_glob=(not args.no_auto_glob),
         save_in_root=(not args.no_save_in_root),
         num_threads=args.num_threads,

@@ -1690,7 +1690,10 @@ def rerank_quotes(
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def synthesize_answer(
-    query: "Query", quotes: List["Quote"], model_name: Optional[str] = None
+    query: "Query",
+    quotes: List["Quote"],
+    force_faithfulness_to_quotes: bool = False,
+    model_name: Optional[str] = None,
 ) -> str:
     question = query.text
     # Make sure all quotes have the same query
@@ -1712,81 +1715,158 @@ def synthesize_answer(
 
     use_deep_guidance = model_name in HF_MODELS
 
-    if use_deep_guidance:
-        # This helps squeeze some juice out of the llama's
-        program_string = """
-        {{#system~}}
-        You are a helpful assistant, and you excel in following instructions.
-
-        Your task is to answer a question to the best of your ability. To help you in that task, you will be given some passages that might contain useful information.  
-
-        It is important that your answer is formulated in a simple and understandable way. 
-        {{~/system}}
-
-        {{#user~}}
-        The question is "{{question}}?"
-
-        Here are some passages that you might find helpful.
-
-        ---{{#each quotes}}
-        {{add @index 1}}. {{this.answer_block}}
-        {{/each}}---
-
-        You'll solve your task step-by-step.
-
-        First, you'll start by discussing the content of all passages in the context of the question, which is "{{question}}". 
-
-        In particular, you will ask yourself which passages help you answer this question and to what extent. It is possible that multiple passages help you towards answering the question. But it is also possible that some passages are not helpful at all, and you should ignore them. Don't be afraid to express uncertainty if you are unsure about something.
-
-        Next, you will formulate your answer. The answer should not have explicit references to the passages. Instead, it should be a standalone answer to the question. 
-
-        Finally, note that it is *very important* that you enclose your answer with <answer> and </answer> tags. If you don't use the <answer> and </answer> tags, I will not be able to parse it and the whole effort will be wasted.
-        {{~/user}}
-
-        {{#assistant~}}
-        I understand. Here's what I think about the passages in the context of the question "{{question}}":
-
-        {{gen "rationale" temperature=0.0 max_tokens=1024 stop="<answer>"}}
-
-        Based on these information, I will now formulate my answer to the question "{{question}}". I also acknowledge that I shouldn't explicitly refer to the passages in my answer.
-
-        <answer>{{gen "answer" temperature=0.0 max_tokens=1024 stop="</answer>"}}</answer>
-        {{~/assistant}}
-        """
+    if not force_faithfulness_to_quotes:
+        if use_deep_guidance:
+            # This helps squeeze some juice out of the llama's
+            program_string = """
+            {{#system~}}
+            You are a helpful assistant, and you excel in following instructions.
+    
+            Your task is to answer a question to the best of your ability. To help you in that task, you will be given some passages that might contain useful information.  
+    
+            It is important that your answer is formulated in a simple and understandable way. 
+            {{~/system}}
+    
+            {{#user~}}
+            The question is "{{question}}?"
+    
+            Here are some passages that you might find helpful.
+    
+            ---{{#each quotes}}
+            {{add @index 1}}. {{this.answer_block}}
+            {{/each}}---
+    
+            You'll solve your task step-by-step.
+    
+            First, you'll start by discussing the content of all passages in the context of the question, which is "{{question}}". 
+    
+            In particular, you will ask yourself which passages help you answer this question and to what extent. It is possible that multiple passages help you towards answering the question. But it is also possible that some passages are not helpful at all, and you should ignore them. Don't be afraid to express uncertainty if you are unsure about something.
+    
+            Next, you will formulate your answer. The answer should not have explicit references to the passages. Instead, it should be a standalone answer to the question. 
+    
+            Finally, note that it is *very important* that you enclose your answer with <answer> and </answer> tags. If you don't use the <answer> and </answer> tags, I will not be able to parse it and the whole effort will be wasted.
+            {{~/user}}
+    
+            {{#assistant~}}
+            I understand. Here's what I think about the passages in the context of the question "{{question}}":
+    
+            {{gen "rationale" temperature=0.0 max_tokens=1024 stop="<answer>"}}
+    
+            Based on these information, I will now formulate my answer to the question "{{question}}". I also acknowledge that I shouldn't explicitly refer to the passages in my answer.
+    
+            <answer>{{gen "answer" temperature=0.0 max_tokens=1024 stop="</answer>"}}</answer>
+            {{~/assistant}}
+            """
+        else:
+            program_string = """
+            {{#system~}}
+            You are a helpful assistant, and you excel in following instructions.
+    
+            Your task is to answer a question to the best of your ability. To help you in that task, you will be given some passages that might contain useful information.  
+    
+            It is important that your answer is formulated in a simple and understandable way. 
+            {{~/system}}
+    
+            {{#user~}}
+            The question is "{{question}}?"
+    
+            Here are some passages that you might find helpful.
+    
+            ---{{#each quotes}}
+            {{add @index 1}}. {{this.answer_block}}
+            {{/each}}---
+    
+            You'll solve your task step-by-step.
+    
+            First, you'll start by discussing the content of all passages in the context of the question, which is "{{question}}". 
+    
+            In particular, you will ask yourself which passages help you answer this question and to what extent. It is possible that multiple passages help you towards answering the question. But it is also possible that some passages are not helpful at all, and you should ignore them. Don't be afraid to express uncertainty if you are unsure about something.
+    
+            Next, you will formulate your answer. The answer should not have explicit references to the passages. Instead, it should be a standalone answer to the question. 
+    
+            Finally, note that it is *very important* that you enclose your answer with <answer> and </answer> tags. If you don't use the <answer> and </answer> tags, I will not be able to parse it and the whole effort will be wasted.
+            {{~/user}}
+    
+            {{#assistant~}}
+            {{gen "answer" temperature=0.0 max_tokens=1024}}
+            {{~/assistant}}
+            """
     else:
-        program_string = """
-        {{#system~}}
-        You are a helpful assistant, and you excel in following instructions.
+        if use_deep_guidance:
+            # This helps squeeze some juice out of the llama's
+            program_string = """
+            {{#system~}}
+            You are a helpful assistant, and you excel in following instructions.
 
-        Your task is to answer a question to the best of your ability. To help you in that task, you will be given some passages that might contain useful information.  
+            Your task is to answer a question to the best of your ability. To help you in that task, you will be given some passages that contain useful information. You are to only use information from these passages to answer the question.   
 
-        It is important that your answer is formulated in a simple and understandable way. 
-        {{~/system}}
+            It is important that your answer is formulated in a simple and understandable way. 
+            {{~/system}}
 
-        {{#user~}}
-        The question is "{{question}}?"
+            {{#user~}}
+            The question is "{{question}}?"
 
-        Here are some passages that you might find helpful.
+            Here are some passages that might contain useful information.
 
-        ---{{#each quotes}}
-        {{add @index 1}}. {{this.answer_block}}
-        {{/each}}---
+            ---{{#each quotes}}
+            {{add @index 1}}. {{this.answer_block}}
+            {{/each}}---
 
-        You'll solve your task step-by-step.
+            You'll solve your task step-by-step.
 
-        First, you'll start by discussing the content of all passages in the context of the question, which is "{{question}}". 
+            First, you'll start by discussing the content of all passages in the context of the question, which is "{{question}}". 
 
-        In particular, you will ask yourself which passages help you answer this question and to what extent. It is possible that multiple passages help you towards answering the question. But it is also possible that some passages are not helpful at all, and you should ignore them. Don't be afraid to express uncertainty if you are unsure about something.
+            In particular, you will ask yourself which passages help you answer this question and to what extent. It is possible that multiple passages help you towards answering the question. But it is also possible that some passages are not helpful at all, and you should ignore them. Don't be afraid to express uncertainty if you are unsure about something.
 
-        Next, you will formulate your answer. The answer should not have explicit references to the passages. Instead, it should be a standalone answer to the question. 
+            Next, you will formulate your answer. Be mindful that the answer should only use information available in the passages. If you cannot find the answer in the passages, you should say something like "I cannot answer the question given the information I have available".
 
-        Finally, note that it is *very important* that you enclose your answer with <answer> and </answer> tags. If you don't use the <answer> and </answer> tags, I will not be able to parse it and the whole effort will be wasted.
-        {{~/user}}
+            Finally, note that it is *very important* that you enclose your answer with <answer> and </answer> tags. If you don't use the <answer> and </answer> tags, I will not be able to parse it and the whole effort will be wasted.
+            {{~/user}}
 
-        {{#assistant~}}
-        {{gen "answer" temperature=0.0 max_tokens=1024}}
-        {{~/assistant}}
-        """
+            {{#assistant~}}
+            I understand. Here's what I think about the passages in the context of the question "{{question}}":
+
+            {{gen "rationale" temperature=0.0 max_tokens=1024 stop="<answer>"}}
+
+            Based on these information, I will now formulate my answer to the question "{{question}}". I also acknowledge that I shouldn't use information outside of the passages to answer the question.
+
+            <answer>{{gen "answer" temperature=0.0 max_tokens=1024 stop="</answer>"}}</answer>
+            {{~/assistant}}
+            """
+        else:
+            program_string = """
+            {{#system~}}
+            You are a helpful assistant, and you excel in following instructions.
+
+            Your task is to answer a question to the best of your ability. To help you in that task, you will be given some passages that contain useful information. You are to only use information from these passages to answer the question.   
+
+            It is important that your answer is formulated in a simple and understandable way. 
+            {{~/system}}
+
+            {{#user~}}
+            The question is "{{question}}?"
+
+            Here are some passages that might contain useful information.
+
+            ---{{#each quotes}}
+            {{add @index 1}}. {{this.answer_block}}
+            {{/each}}---
+
+            You'll solve your task step-by-step.
+
+            First, you'll start by discussing the content of all passages in the context of the question, which is "{{question}}". 
+
+            In particular, you will ask yourself which passages help you answer this question and to what extent. It is possible that multiple passages help you towards answering the question. But it is also possible that some passages are not helpful at all, and you should ignore them. Don't be afraid to express uncertainty if you are unsure about something.
+
+            Next, you will formulate your answer. Be mindful that the answer should only use information available in the passages. If you cannot find the answer in the passages, you should say something like "I cannot answer the question given the information I have available".
+
+            Finally, note that it is *very important* that you enclose your answer with <answer> and </answer> tags. If you don't use the <answer> and </answer> tags, I will not be able to parse it and the whole effort will be wasted.
+            {{~/user}}
+
+            {{#assistant~}}
+            {{gen "answer" temperature=0.0 max_tokens=1024}}
+            {{~/assistant}}
+            """
 
     program_string = clean_program_string(program_string)
     # Run the program
@@ -1884,25 +1964,42 @@ def get_open_book_answer(
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def bulletize(
-    passage: str, question: str, model_name: Optional[str] = None
+    passage: str, question: Optional[str] = None, model_name: Optional[str] = None
 ) -> str:
-    program_string = """
-    {{#system~}}
-    You will be given a passage and a question. 
+    if question is not None:
+        program_string = """
+        {{#system~}}
+        You will be given a passage and a question. 
+        
+        Your task is to convert the passage into bullet points. But you should only include points that are relevant to answering the question while discarding the rest.  
+        {{~/system}}
     
-    Your task is to convert the passage into bullet points. But you should only include points that are relevant to answering the question while discarding the rest.  
-    {{~/system}}
-
-    {{#user~}}
-    Passage: "{{passage}}"
+        {{#user~}}
+        Passage: "{{passage}}"
+        
+        Question: "{{question}}"
+        {{~/user}}
     
-    Question: "{{question}}"
-    {{~/user}}
+        {{#assistant~}}
+        {{gen "answer" temperature=0.0 max_tokens=1024}}
+        {{~/assistant}}
+        """
+    else:
+        program_string = """
+        {{#system~}}
+        You will be given a passage. Your task is to convert the passage into bullet points. Keep in mind that the bullet points should be to-the-point and as self-contained as possile. 
+        {{~/system}}
 
-    {{#assistant~}}
-    {{gen "answer" temperature=0.0 max_tokens=1024}}
-    {{~/assistant}}
-    """
+        {{#user~}}
+        Passage: "{{passage}}"
+
+        Question: "{{question}}"
+        {{~/user}}
+
+        {{#assistant~}}
+        {{gen "answer" temperature=0.0 max_tokens=1024}}
+        {{~/assistant}}
+        """
     program_string = clean_program_string(program_string)
     # Run the program
     program_output = ask_for_guidance(
@@ -2213,6 +2310,172 @@ def evaluate_answer_with_likert(
 
     rank_dict = extract_likert_ranks(answer)
     return rank_dict
+
+
+@backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
+def evaluate_answer_with_likert_and_debate(
+    question: str,
+    gold_block: str,
+    answer: str,
+    bulletize_gold_block: bool = False,
+    model_name: Optional[str] = None,
+) -> Dict[str, float]:
+
+    use_deep_guidance = model_name in HF_MODELS
+
+    if use_deep_guidance:
+        program_string = """
+        {{#system~}}
+        Michael and Bobby are employed at a company that specializes in vetting information. They've been kind of slacking off at work, and now their job hangs on the balance. If they do a good job, they get to keep their jobs. If they don't, they get fired. 
+
+        They are given a question, a gold passage, and a candidate answer. Your job is to simulate a conversation between Michael and Bobby where they evaluate the candidate answer along three dimensions, namely:
+        1. Fluency: this is a measure of how well the answer is written. Well written answers provide the right amount of detail for the given question.
+        2. Relevance: this is a measure of how well the answer addresses the question.
+        3. Correctness: this is a measure of the extent to which the answer is factually correct, with respect to the gold passage if applicable.
+
+        Michael hates most answers. He wants the answer to be factually correct, and relevant to the question. He points out, with evidence, where answers go wrong.
+
+        Bobby cares about whether the answer is written in a way that is fluent and easy to understand. 
+
+        Together, they argue about the quality of the answer and arrive at a score, out of 10, for each of these three dimensions.
+
+        {{~/system}}
+
+        {{#user~}}
+        Here is the question, the gold passage, and the candidate answer:
+
+        ---
+
+        Question: {{question}}
+
+        Gold passage: {{gold_passage}}
+
+        Candidate answer: {{answer}}
+
+        ---
+
+        A score of 10 is deserved if a the answer is perfect along a dimension. If the answer is mediocre, then the score should be lower, closer to a 5. If the answer is completely wrong, then the score should be 1. 
+
+        After they have deliberated and arrived at the scores, you will print them as follows:
+        FLUENCY: <number between 1 and 10>
+        RELEVANCE: <number between 1 and 10>
+        CORRECTNESS: <number between 1 and 10>
+        {{~/user}}
+
+        {{#assistant~}}
+        Understood, I will first simulate the argument between Michael and Bobby.
+        --- 
+        {{gen "rationale" temperature=0.0 max_tokens=2048}}
+        ---
+        Now that the debate is over, I will print the scores.
+        FLUENCY: {{gen "fluency" temperature=0.0 max_tokens=8 stop="\n"}}
+        RELEVANCE: {{gen "relevance" temperature=0.0 max_tokens=8 stop="\n"}}
+        CORRECTNESS: {{gen "correctness" temperature=0.0 max_tokens=8 stop="\n"}}
+        {{~/assistant}}
+        """
+        output_keys = ["fluency", "relevance", "correctness"]
+    else:
+        program_string = """
+        {{#system~}}
+        Michael and Bobby are employed at a company that specializes in vetting information. They've been kind of slacking off at work, and now their job hangs on the balance. If they do a good job, they get to keep their jobs. If they don't, they get fired. 
+
+        They are given a question, a gold passage, and a candidate answer. Your job is to simulate a conversation between Michael and Bobby where they evaluate the candidate answer along three dimensions, namely:
+        1. Fluency: this is a measure of how well the answer is written. Well written answers provide the right amount of detail for the given question.
+        2. Relevance: this is a measure of how well the answer addresses the question.
+        3. Correctness: this is a measure of the extent to which the answer is factually correct, with respect to the gold passage if applicable.
+
+        Michael hates most answers. He wants the answer to be factually correct, and relevant to the question. He points out, with evidence, where answers go wrong.
+
+        Bobby cares about whether the answer is written in a way that is fluent and easy to understand. 
+
+        Together, they argue about the quality of the answer and arrive at a score, out of 10, for each of these three dimensions.
+
+        {{~/system}}
+
+        {{#user~}}
+        Here is the question, the gold passage, and the candidate answer:
+
+        ---
+
+        Question: {{question}}
+
+        Gold passage: {{gold_passage}}
+
+        Candidate answer: {{answer}}
+
+        ---
+
+        A score of 10 is deserved if a the answer is perfect along a dimension. If the answer is mediocre, then the score should be lower, closer to a 5. If the answer is completely wrong, then the score should be 1. 
+
+        After they have deliberated and arrived at the scores, you will print them as follows:
+        FLUENCY: <number between 1 and 10>
+        RELEVANCE: <number between 1 and 10>
+        CORRECTNESS: <number between 1 and 10>
+        {{~/user}}
+
+        {{#assistant~}}
+        {{gen "answer" temperature=0.0 max_tokens=2048}}
+        {{~/assistant}}
+        """
+        output_keys = ["answer"]
+    program_string = clean_program_string(program_string)
+    # Bulletize the gold block if required
+    if bulletize_gold_block:
+        gold_block = bulletize(gold_block, model_name=model_name)
+    # Run the program
+    program_output = ask_for_guidance(
+        program_string=program_string,
+        llm=get_llm(model_name=model_name),
+        silent=True,
+        inputs=dict(
+            question=question,
+            gold_passage=gold_block,
+            answer=answer,
+        ),
+        output_keys=output_keys,
+    )
+
+    if use_deep_guidance:
+
+        def clean_score_string(s: str) -> float:
+            s = s.strip()
+            if s.endswith("out of 10"):
+                s = s.split()[0].strip()
+            return float(s)
+
+        scores = {
+            "fluency": clean_score_string(program_output["fluency"]),
+            "relevance": clean_score_string(program_output["relevance"]),
+            "correctness": clean_score_string(program_output["correctness"]),
+        }
+    else:
+        answer = program_output["answer"]
+
+        def extract_scores(text: str) -> Dict[str, float]:
+            fields = ["FLUENCY", "RELEVANCE", "CORRECTNESS"]
+            scores = {}
+            for line in text.splitlines():
+                for field in fields:
+                    if line.startswith(field):
+                        # Sometimes it's "RELEVANCE: 4.5".
+                        # But it can also be "RELEVANCE: 4.5 out of 10".
+                        if "out of 10" in line:
+                            scores[field.lower()] = float(
+                                line.split(":")[1].split()[0].strip()
+                            )
+                        else:
+                            scores[field.lower()] = float(line.split(":")[1].strip())
+            return scores
+
+        scores = extract_scores(answer)
+
+    assert set(scores.keys()) == {"fluency", "relevance", "correctness",}, (
+        f"The scores should be for fluency, relevance, and correctness. "
+        f"Found: {set(scores.keys())} for answer: {answer}"
+    )
+    # Normalize to 1 - 5 range from 1 - 10 range
+    scores = {k: v / 2 for k, v in scores.items()}
+    return scores
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
