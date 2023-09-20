@@ -3,6 +3,8 @@ import os
 import argparse
 import ast
 import random
+import traceback
+
 import yaml
 from tqdm import tqdm
 from typing import Optional, Dict, List, Any
@@ -159,11 +161,24 @@ class LikertEvaluator:
                 rows.append(to_append)
         return rows
 
+    @staticmethod
+    def _safety_wrap(fn, *args, **kwargs) -> Dict[str, Any]:
+        try:
+            return fn(*args, **kwargs)
+        except Exception as e:
+            print("-----")
+            print("Ignoring exception:")
+            exception_string = traceback.format_exc()
+            print(exception_string)
+            print("-----")
+            return {}
+
     def evaluate_likert_score_for_row(
         self, row: Dict[str, Any], inplace: bool = False
     ) -> Dict[str, str]:
         if self.evaluator_function_key == "likert_eval":
-            evaluated_answers = evaluate_answer_with_likert(
+            evaluated_answers = self._safety_wrap(
+                evaluate_answer_with_likert,
                 question=row["question"],
                 gold_block=row["gold_block"],
                 answer=row["answer"],
@@ -177,7 +192,8 @@ class LikertEvaluator:
                 "overall_quality",
             }
         elif self.evaluator_function_key == "likert_debate_eval":
-            evaluated_answers = evaluate_answer_with_likert_and_debate(
+            evaluated_answers = self._safety_wrap(
+                evaluate_answer_with_likert_and_debate,
                 question=row["question"],
                 gold_block=row["gold_block"],
                 answer=row["answer"],
@@ -194,6 +210,9 @@ class LikertEvaluator:
         answer_filtered = {
             f"likert_{k}": v for k, v in evaluated_answers.items() if k in allowed_keys
         }
+        for key in allowed_keys:
+            if key not in answer_filtered:
+                answer_filtered[f"likert_{key}"] = np.nan
         if inplace:
             row.update(answer_filtered)
             row.update({"evaluator_model": self.evaluator_model})
