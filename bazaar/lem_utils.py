@@ -1388,7 +1388,10 @@ def rerank_quotes(
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def synthesize_answer(
-    query: "Query", quotes: List["Quote"], model_name: Optional[str] = None
+    query: "Query",
+    quotes: List["Quote"],
+    force_faithfulness_to_quotes: bool = False,
+    model_name: Optional[str] = None,
 ) -> str:
     question = query.text
     # Make sure all quotes have the same query
@@ -1410,81 +1413,158 @@ def synthesize_answer(
 
     use_deep_guidance = model_name in HF_MODELS
 
-    if use_deep_guidance:
-        # This helps squeeze some juice out of the llama's
-        program_string = """
-        {{#system~}}
-        You are a helpful assistant, and you excel in following instructions.
-
-        Your task is to answer a question to the best of your ability. To help you in that task, you will be given some passages that might contain useful information.  
-
-        It is important that your answer is formulated in a simple and understandable way. 
-        {{~/system}}
-
-        {{#user~}}
-        The question is "{{question}}?"
-
-        Here are some passages that you might find helpful.
-
-        ---{{#each quotes}}
-        {{add @index 1}}. {{this.answer_block}}
-        {{/each}}---
-
-        You'll solve your task step-by-step.
-
-        First, you'll start by discussing the content of all passages in the context of the question, which is "{{question}}". 
-
-        In particular, you will ask yourself which passages help you answer this question and to what extent. It is possible that multiple passages help you towards answering the question. But it is also possible that some passages are not helpful at all, and you should ignore them. Don't be afraid to express uncertainty if you are unsure about something.
-
-        Next, you will formulate your answer. The answer should not have explicit references to the passages. Instead, it should be a standalone answer to the question. 
-
-        Finally, note that it is *very important* that you enclose your answer with <answer> and </answer> tags. If you don't use the <answer> and </answer> tags, I will not be able to parse it and the whole effort will be wasted.
-        {{~/user}}
-
-        {{#assistant~}}
-        I understand. Here's what I think about the passages in the context of the question "{{question}}":
-
-        {{gen "rationale" temperature=0.0 max_tokens=1024 stop="<answer>"}}
-
-        Based on these information, I will now formulate my answer to the question "{{question}}". I also acknowledge that I shouldn't explicitly refer to the passages in my answer.
-
-        <answer>{{gen "answer" temperature=0.0 max_tokens=1024 stop="</answer>"}}</answer>
-        {{~/assistant}}
-        """
+    if not force_faithfulness_to_quotes:
+        if use_deep_guidance:
+            # This helps squeeze some juice out of the llama's
+            program_string = """
+            {{#system~}}
+            You are a helpful assistant, and you excel in following instructions.
+    
+            Your task is to answer a question to the best of your ability. To help you in that task, you will be given some passages that might contain useful information.  
+    
+            It is important that your answer is formulated in a simple and understandable way. 
+            {{~/system}}
+    
+            {{#user~}}
+            The question is "{{question}}?"
+    
+            Here are some passages that you might find helpful.
+    
+            ---{{#each quotes}}
+            {{add @index 1}}. {{this.answer_block}}
+            {{/each}}---
+    
+            You'll solve your task step-by-step.
+    
+            First, you'll start by discussing the content of all passages in the context of the question, which is "{{question}}". 
+    
+            In particular, you will ask yourself which passages help you answer this question and to what extent. It is possible that multiple passages help you towards answering the question. But it is also possible that some passages are not helpful at all, and you should ignore them. Don't be afraid to express uncertainty if you are unsure about something.
+    
+            Next, you will formulate your answer. The answer should not have explicit references to the passages. Instead, it should be a standalone answer to the question. 
+    
+            Finally, note that it is *very important* that you enclose your answer with <answer> and </answer> tags. If you don't use the <answer> and </answer> tags, I will not be able to parse it and the whole effort will be wasted.
+            {{~/user}}
+    
+            {{#assistant~}}
+            I understand. Here's what I think about the passages in the context of the question "{{question}}":
+    
+            {{gen "rationale" temperature=0.0 max_tokens=1024 stop="<answer>"}}
+    
+            Based on these information, I will now formulate my answer to the question "{{question}}". I also acknowledge that I shouldn't explicitly refer to the passages in my answer.
+    
+            <answer>{{gen "answer" temperature=0.0 max_tokens=1024 stop="</answer>"}}</answer>
+            {{~/assistant}}
+            """
+        else:
+            program_string = """
+            {{#system~}}
+            You are a helpful assistant, and you excel in following instructions.
+    
+            Your task is to answer a question to the best of your ability. To help you in that task, you will be given some passages that might contain useful information.  
+    
+            It is important that your answer is formulated in a simple and understandable way. 
+            {{~/system}}
+    
+            {{#user~}}
+            The question is "{{question}}?"
+    
+            Here are some passages that you might find helpful.
+    
+            ---{{#each quotes}}
+            {{add @index 1}}. {{this.answer_block}}
+            {{/each}}---
+    
+            You'll solve your task step-by-step.
+    
+            First, you'll start by discussing the content of all passages in the context of the question, which is "{{question}}". 
+    
+            In particular, you will ask yourself which passages help you answer this question and to what extent. It is possible that multiple passages help you towards answering the question. But it is also possible that some passages are not helpful at all, and you should ignore them. Don't be afraid to express uncertainty if you are unsure about something.
+    
+            Next, you will formulate your answer. The answer should not have explicit references to the passages. Instead, it should be a standalone answer to the question. 
+    
+            Finally, note that it is *very important* that you enclose your answer with <answer> and </answer> tags. If you don't use the <answer> and </answer> tags, I will not be able to parse it and the whole effort will be wasted.
+            {{~/user}}
+    
+            {{#assistant~}}
+            {{gen "answer" temperature=0.0 max_tokens=1024}}
+            {{~/assistant}}
+            """
     else:
-        program_string = """
-        {{#system~}}
-        You are a helpful assistant, and you excel in following instructions.
+        if use_deep_guidance:
+            # This helps squeeze some juice out of the llama's
+            program_string = """
+            {{#system~}}
+            You are a helpful assistant, and you excel in following instructions.
 
-        Your task is to answer a question to the best of your ability. To help you in that task, you will be given some passages that might contain useful information.  
+            Your task is to answer a question to the best of your ability. To help you in that task, you will be given some passages that contain useful information. You are to only use information from these passages to answer the question.   
 
-        It is important that your answer is formulated in a simple and understandable way. 
-        {{~/system}}
+            It is important that your answer is formulated in a simple and understandable way. 
+            {{~/system}}
 
-        {{#user~}}
-        The question is "{{question}}?"
+            {{#user~}}
+            The question is "{{question}}?"
 
-        Here are some passages that you might find helpful.
+            Here are some passages that might contain useful information.
 
-        ---{{#each quotes}}
-        {{add @index 1}}. {{this.answer_block}}
-        {{/each}}---
+            ---{{#each quotes}}
+            {{add @index 1}}. {{this.answer_block}}
+            {{/each}}---
 
-        You'll solve your task step-by-step.
+            You'll solve your task step-by-step.
 
-        First, you'll start by discussing the content of all passages in the context of the question, which is "{{question}}". 
+            First, you'll start by discussing the content of all passages in the context of the question, which is "{{question}}". 
 
-        In particular, you will ask yourself which passages help you answer this question and to what extent. It is possible that multiple passages help you towards answering the question. But it is also possible that some passages are not helpful at all, and you should ignore them. Don't be afraid to express uncertainty if you are unsure about something.
+            In particular, you will ask yourself which passages help you answer this question and to what extent. It is possible that multiple passages help you towards answering the question. But it is also possible that some passages are not helpful at all, and you should ignore them. Don't be afraid to express uncertainty if you are unsure about something.
 
-        Next, you will formulate your answer. The answer should not have explicit references to the passages. Instead, it should be a standalone answer to the question. 
+            Next, you will formulate your answer. Be mindful that the answer should only use information available in the passages. If you cannot find the answer in the passages, you should say something like "I cannot answer the question given the information I have available".
 
-        Finally, note that it is *very important* that you enclose your answer with <answer> and </answer> tags. If you don't use the <answer> and </answer> tags, I will not be able to parse it and the whole effort will be wasted.
-        {{~/user}}
+            Finally, note that it is *very important* that you enclose your answer with <answer> and </answer> tags. If you don't use the <answer> and </answer> tags, I will not be able to parse it and the whole effort will be wasted.
+            {{~/user}}
 
-        {{#assistant~}}
-        {{gen "answer" temperature=0.0 max_tokens=1024}}
-        {{~/assistant}}
-        """
+            {{#assistant~}}
+            I understand. Here's what I think about the passages in the context of the question "{{question}}":
+
+            {{gen "rationale" temperature=0.0 max_tokens=1024 stop="<answer>"}}
+
+            Based on these information, I will now formulate my answer to the question "{{question}}". I also acknowledge that I shouldn't use information outside of the passages to answer the question.
+
+            <answer>{{gen "answer" temperature=0.0 max_tokens=1024 stop="</answer>"}}</answer>
+            {{~/assistant}}
+            """
+        else:
+            program_string = """
+            {{#system~}}
+            You are a helpful assistant, and you excel in following instructions.
+
+            Your task is to answer a question to the best of your ability. To help you in that task, you will be given some passages that contain useful information. You are to only use information from these passages to answer the question.   
+
+            It is important that your answer is formulated in a simple and understandable way. 
+            {{~/system}}
+
+            {{#user~}}
+            The question is "{{question}}?"
+
+            Here are some passages that might contain useful information.
+
+            ---{{#each quotes}}
+            {{add @index 1}}. {{this.answer_block}}
+            {{/each}}---
+
+            You'll solve your task step-by-step.
+
+            First, you'll start by discussing the content of all passages in the context of the question, which is "{{question}}". 
+
+            In particular, you will ask yourself which passages help you answer this question and to what extent. It is possible that multiple passages help you towards answering the question. But it is also possible that some passages are not helpful at all, and you should ignore them. Don't be afraid to express uncertainty if you are unsure about something.
+
+            Next, you will formulate your answer. Be mindful that the answer should only use information available in the passages. If you cannot find the answer in the passages, you should say something like "I cannot answer the question given the information I have available".
+
+            Finally, note that it is *very important* that you enclose your answer with <answer> and </answer> tags. If you don't use the <answer> and </answer> tags, I will not be able to parse it and the whole effort will be wasted.
+            {{~/user}}
+
+            {{#assistant~}}
+            {{gen "answer" temperature=0.0 max_tokens=1024}}
+            {{~/assistant}}
+            """
 
     program_string = clean_program_string(program_string)
     # Run the program

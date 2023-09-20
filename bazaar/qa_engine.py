@@ -104,6 +104,7 @@ class QueryManager:
         follow_up_question_synthesis_model_name: str,
         max_query_depth: int = 3,
         max_num_follow_up_questions_per_question: Optional[int] = None,
+        stay_faithful_to_quotes_when_sythesizing_answers: bool = False,
     ):
         # Private
         self._agent = agent
@@ -116,6 +117,9 @@ class QueryManager:
         self.max_query_depth = max_query_depth
         self.max_num_follow_up_questions_per_question = (
             max_num_follow_up_questions_per_question
+        )
+        self.stay_faithful_to_quotes_when_sythesizing_answers = (
+            stay_faithful_to_quotes_when_sythesizing_answers
         )
         self.question_graph = DiGraph()
 
@@ -176,7 +180,8 @@ class QueryManager:
             if potential_depth > self.max_query_depth:
                 if if_depth_exceeds == "raise":
                     raise ValueError(
-                        f"Adding the query {query} would exceed the maximum allowed depth of {self.max_query_depth}."
+                        f"Adding the query {query} would exceed the maximum "
+                        f"allowed depth of {self.max_query_depth}."
                     )
                 elif if_depth_exceeds == "ignore":
                     return self
@@ -241,7 +246,6 @@ class QueryManager:
         quotes: List[Quote],
         commit: bool = True,
     ) -> Optional[Answer]:
-
         if isinstance(node_or_query, QANode):
             node = node_or_query
             query = node.query
@@ -261,6 +265,7 @@ class QueryManager:
                 query=query,
                 quotes=quotes_for_query,
                 model_name=self.answer_synthesis_model_name,
+                force_faithfulness_to_quotes=self.stay_faithful_to_quotes_when_sythesizing_answers,
             )
             answer = Answer(
                 success=True,
