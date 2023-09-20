@@ -236,6 +236,7 @@ def main(args: Optional[argparse.Namespace] = None):
         parser.add_argument("--experiment_root", type=str)
         parser.add_argument("--experiment_name", type=str)
         parser.add_argument("--evaluator_model", type=str)
+        parser.add_argument("--evaluator_function_key", type=str, default="likert_eval")
         parser.add_argument("--seed", type=int, default=42)
         parser.add_argument("--no_auto_glob", action="store_true", default=False)
         parser.add_argument("--no_save_in_root", action="store_true", default=False)
@@ -250,6 +251,7 @@ def main(args: Optional[argparse.Namespace] = None):
         experiment_root=args.experiment_root,
         experiment_name=args.experiment_name,
         evaluator_model=args.evaluator_model,
+        evaluator_function_key=args.evaluator_function_key,
         auto_glob=(not args.no_auto_glob),
         save_in_root=(not args.no_save_in_root),
         num_threads=args.num_threads,
