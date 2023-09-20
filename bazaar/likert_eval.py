@@ -117,7 +117,7 @@ class LikertEvaluator:
 
     def read_bazaar_summaries(self) -> List[Dict[str, str]]:
         rows = []
-        for experiment_path in self.get_experiment_paths():
+        for experiment_path in tqdm(self.get_experiment_paths()):
             summary_path = os.path.join(experiment_path, "Logs", "bazaar_summary.json")
             config_path = os.path.join(
                 experiment_path, "Configurations", "train_config.yml"
