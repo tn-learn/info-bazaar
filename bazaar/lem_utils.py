@@ -1581,9 +1581,7 @@ def get_open_book_answer(
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
-def bulletize(
-    passage: str, question: str, model_name: Optional[str] = None
-) -> str:
+def bulletize(passage: str, question: str, model_name: Optional[str] = None) -> str:
     program_string = """
     {{#system~}}
     You will be given a passage and a question. 
@@ -1911,6 +1909,155 @@ def evaluate_answer_with_likert(
 
     rank_dict = extract_likert_ranks(answer)
     return rank_dict
+
+
+@backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
+def evaluate_answer_with_likert_and_debate(
+    question: str,
+    gold_block: str,
+    answer: str,
+    bulletize_gold_block: bool = False,
+    model_name: Optional[str] = None,
+) -> Dict[str, float]:
+
+    use_deep_guidance = model_name in HF_MODELS
+
+    if use_deep_guidance:
+        program_string = """
+        {{#system~}}
+        Michael and Bobby are employed at a company that specializes in vetting information. They've been kind of slacking off at work, and now their job hangs on the balance. If they do a good job, they get to keep their jobs. If they don't, they get fired. 
+
+        They are given a question, a gold passage, and a candidate answer. Your job is to simulate a conversation between Michael and Bobby where they evaluate the candidate answer along three dimensions, namely:
+        1. Fluency: this is a measure of how well the answer is written. Well written answers provide the right amount of detail for the given question.
+        2. Relevance: this is a measure of how well the answer addresses the question.
+        3. Correctness: this is a measure of the extent to which the answer is factually correct, with respect to the gold passage.
+
+        Michael hates most answers. He wants the answer to be factually correct, and relevant to the question. He points out, with evidence, where answers go wrong.
+
+        Bobby cares about whether the answer is written in a way that is fluent and easy to understand. 
+
+        Together, they argue about the quality of the answer and arrive at a score, out of 10, for each of these three dimensions.
+
+        {{~/system}}
+
+        {{#user~}}
+        Here is the question, the gold passage, and the candidate answer:
+
+        ---
+
+        Question: {{question}}
+
+        Gold passage: {{gold_passage}}
+
+        Candidate answer: {{answer}}
+
+        ---
+
+        A score of 10 is deserved if a the answer is perfect along a dimension. If the answer is mediocre, then the score should be lower, closer to a 5. If the answer is completely wrong, then the score should be 1. 
+
+        After they have deliberated and arrived at the scores, you will print them as follows:
+        FLUENCY: <number between 1 and 10>
+        RELEVANCE: <number between 1 and 10>
+        CORRECTNESS: <number between 1 and 10>
+        {{~/user}}
+
+        {{#assistant~}}
+        Understood, I will first simulate the argument between Michael and Bobby.
+        --- 
+        {{gen "rationale" temperature=0.0 max_tokens=2048}}
+        ---
+        Now that the debate is over, I will print the scores.
+        {{gen "answer" temperature=0.0 max_tokens=256}}
+        {{~/assistant}}
+        """
+    else:
+        program_string = """
+        {{#system~}}
+        Michael and Bobby are employed at a company that specializes in vetting information. They've been kind of slacking off at work, and now their job hangs on the balance. If they do a good job, they get to keep their jobs. If they don't, they get fired. 
+
+        They are given a question, a gold passage, and a candidate answer. Your job is to simulate a conversation between Michael and Bobby where they evaluate the candidate answer along three dimensions, namely:
+        1. Fluency: this is a measure of how well the answer is written. Well written answers provide the right amount of detail for the given question.
+        2. Relevance: this is a measure of how well the answer addresses the question.
+        3. Correctness: this is a measure of the extent to which the answer is factually correct, with respect to the gold passage.
+
+        Michael hates most answers. He wants the answer to be factually correct, and relevant to the question. He points out, with evidence, where answers go wrong.
+
+        Bobby cares about whether the answer is written in a way that is fluent and easy to understand. 
+
+        Together, they argue about the quality of the answer and arrive at a score, out of 10, for each of these three dimensions.
+
+        {{~/system}}
+
+        {{#user~}}
+        Here is the question, the gold passage, and the candidate answer:
+
+        ---
+
+        Question: {{question}}
+
+        Gold passage: {{gold_passage}}
+
+        Candidate answer: {{answer}}
+
+        ---
+
+        A score of 10 is deserved if a the answer is perfect along a dimension. If the answer is mediocre, then the score should be lower, closer to a 5. If the answer is completely wrong, then the score should be 1. 
+
+        After they have deliberated and arrived at the scores, you will print them as follows:
+        FLUENCY: <number between 1 and 10>
+        RELEVANCE: <number between 1 and 10>
+        CORRECTNESS: <number between 1 and 10>
+        {{~/user}}
+
+        {{#assistant~}}
+        {{gen "answer" temperature=0.0 max_tokens=2048}}
+        {{~/assistant}}
+        """
+    program_string = clean_program_string(program_string)
+    # Bulletize the gold block if required
+    if bulletize_gold_block:
+        gold_block = bulletize(gold_block, question, model_name=model_name)
+    # Run the program
+    program_output = ask_for_guidance(
+        program_string=program_string,
+        llm=get_llm(model_name=model_name),
+        silent=True,
+        inputs=dict(
+            question=question,
+            gold_passage=gold_block,
+            answer=answer,
+        ),
+        output_keys=["answer"],
+    )
+
+    answer = program_output["answer"]
+
+    def extract_scores(text: str) -> Dict[str, float]:
+        fields = ["FLUENCY", "RELEVANCE", "CORRECTNESS"]
+        scores = {}
+        for line in text.splitlines():
+            for field in fields:
+                if line.startswith(field):
+                    # Sometimes it's "RELEVANCE: 4.5".
+                    # But it can also be "RELEVANCE: 4.5 out of 10".
+                    if "out of 10" in line:
+                        scores[field.lower()] = float(
+                            line.split(":")[1].split()[0].strip()
+                        )
+                    else:
+                        scores[field.lower()] = float(line.split(":")[1].strip())
+        return scores
+
+    scores = extract_scores(answer)
+    assert set(scores.keys()) == {
+        "fluency",
+        "relevance",
+        "correctness",
+    }, "The scores should be for fluency, relevance, and correctness."
+
+    # Normalize to 1 - 5 range from 1 - 10 range
+    scores = {k: v / 2 for k, v in scores.items()}
+    return scores
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
