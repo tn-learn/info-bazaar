@@ -1581,24 +1581,43 @@ def get_open_book_answer(
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
-def bulletize(passage: str, question: str, model_name: Optional[str] = None) -> str:
-    program_string = """
-    {{#system~}}
-    You will be given a passage and a question. 
+def bulletize(
+    passage: str, question: Optional[str] = None, model_name: Optional[str] = None
+) -> str:
+    if question is not None:
+        program_string = """
+        {{#system~}}
+        You will be given a passage and a question. 
+        
+        Your task is to convert the passage into bullet points. But you should only include points that are relevant to answering the question while discarding the rest.  
+        {{~/system}}
     
-    Your task is to convert the passage into bullet points. But you should only include points that are relevant to answering the question while discarding the rest.  
-    {{~/system}}
-
-    {{#user~}}
-    Passage: "{{passage}}"
+        {{#user~}}
+        Passage: "{{passage}}"
+        
+        Question: "{{question}}"
+        {{~/user}}
     
-    Question: "{{question}}"
-    {{~/user}}
+        {{#assistant~}}
+        {{gen "answer" temperature=0.0 max_tokens=1024}}
+        {{~/assistant}}
+        """
+    else:
+        program_string = """
+        {{#system~}}
+        You will be given a passage. Your task is to convert the passage into bullet points. Keep in mind that the bullet points should be to-the-point and as self-contained as possile. 
+        {{~/system}}
 
-    {{#assistant~}}
-    {{gen "answer" temperature=0.0 max_tokens=1024}}
-    {{~/assistant}}
-    """
+        {{#user~}}
+        Passage: "{{passage}}"
+
+        Question: "{{question}}"
+        {{~/user}}
+
+        {{#assistant~}}
+        {{gen "answer" temperature=0.0 max_tokens=1024}}
+        {{~/assistant}}
+        """
     program_string = clean_program_string(program_string)
     # Run the program
     program_output = ask_for_guidance(
@@ -1930,7 +1949,7 @@ def evaluate_answer_with_likert_and_debate(
         They are given a question, a gold passage, and a candidate answer. Your job is to simulate a conversation between Michael and Bobby where they evaluate the candidate answer along three dimensions, namely:
         1. Fluency: this is a measure of how well the answer is written. Well written answers provide the right amount of detail for the given question.
         2. Relevance: this is a measure of how well the answer addresses the question.
-        3. Correctness: this is a measure of the extent to which the answer is factually correct, with respect to the gold passage.
+        3. Correctness: this is a measure of the extent to which the answer is factually correct, with respect to the gold passage if applicable.
 
         Michael hates most answers. He wants the answer to be factually correct, and relevant to the question. He points out, with evidence, where answers go wrong.
 
@@ -1967,9 +1986,12 @@ def evaluate_answer_with_likert_and_debate(
         {{gen "rationale" temperature=0.0 max_tokens=2048}}
         ---
         Now that the debate is over, I will print the scores.
-        {{gen "answer" temperature=0.0 max_tokens=256}}
+        FLUENCY: {{gen "fluency" temperature=0.0 max_tokens=8 stop="\n"}}
+        RELEVANCE: {{gen "relevance" temperature=0.0 max_tokens=8 stop="\n"}}
+        CORRECTNESS: {{gen "correctness" temperature=0.0 max_tokens=8 stop="\n"}}
         {{~/assistant}}
         """
+        output_keys = ["fluency", "relevance", "correctness"]
     else:
         program_string = """
         {{#system~}}
@@ -1978,7 +2000,7 @@ def evaluate_answer_with_likert_and_debate(
         They are given a question, a gold passage, and a candidate answer. Your job is to simulate a conversation between Michael and Bobby where they evaluate the candidate answer along three dimensions, namely:
         1. Fluency: this is a measure of how well the answer is written. Well written answers provide the right amount of detail for the given question.
         2. Relevance: this is a measure of how well the answer addresses the question.
-        3. Correctness: this is a measure of the extent to which the answer is factually correct, with respect to the gold passage.
+        3. Correctness: this is a measure of the extent to which the answer is factually correct, with respect to the gold passage if applicable.
 
         Michael hates most answers. He wants the answer to be factually correct, and relevant to the question. He points out, with evidence, where answers go wrong.
 
@@ -2013,10 +2035,11 @@ def evaluate_answer_with_likert_and_debate(
         {{gen "answer" temperature=0.0 max_tokens=2048}}
         {{~/assistant}}
         """
+        output_keys = ["answer"]
     program_string = clean_program_string(program_string)
     # Bulletize the gold block if required
     if bulletize_gold_block:
-        gold_block = bulletize(gold_block, question, model_name=model_name)
+        gold_block = bulletize(gold_block, model_name=model_name)
     # Run the program
     program_output = ask_for_guidance(
         program_string=program_string,
@@ -2027,34 +2050,47 @@ def evaluate_answer_with_likert_and_debate(
             gold_passage=gold_block,
             answer=answer,
         ),
-        output_keys=["answer"],
+        output_keys=output_keys,
     )
 
-    answer = program_output["answer"]
+    if use_deep_guidance:
 
-    def extract_scores(text: str) -> Dict[str, float]:
-        fields = ["FLUENCY", "RELEVANCE", "CORRECTNESS"]
-        scores = {}
-        for line in text.splitlines():
-            for field in fields:
-                if line.startswith(field):
-                    # Sometimes it's "RELEVANCE: 4.5".
-                    # But it can also be "RELEVANCE: 4.5 out of 10".
-                    if "out of 10" in line:
-                        scores[field.lower()] = float(
-                            line.split(":")[1].split()[0].strip()
-                        )
-                    else:
-                        scores[field.lower()] = float(line.split(":")[1].strip())
-        return scores
+        def clean_score_string(s: str) -> float:
+            s = s.strip()
+            if s.endswith("out of 10"):
+                s = s.split()[0].strip()
+            return float(s)
 
-    scores = extract_scores(answer)
-    assert set(scores.keys()) == {
-        "fluency",
-        "relevance",
-        "correctness",
-    }, "The scores should be for fluency, relevance, and correctness."
+        scores = {
+            "fluency": clean_score_string(program_output["fluency"]),
+            "relevance": clean_score_string(program_output["relevance"]),
+            "correctness": clean_score_string(program_output["correctness"]),
+        }
+    else:
+        answer = program_output["answer"]
 
+        def extract_scores(text: str) -> Dict[str, float]:
+            fields = ["FLUENCY", "RELEVANCE", "CORRECTNESS"]
+            scores = {}
+            for line in text.splitlines():
+                for field in fields:
+                    if line.startswith(field):
+                        # Sometimes it's "RELEVANCE: 4.5".
+                        # But it can also be "RELEVANCE: 4.5 out of 10".
+                        if "out of 10" in line:
+                            scores[field.lower()] = float(
+                                line.split(":")[1].split()[0].strip()
+                            )
+                        else:
+                            scores[field.lower()] = float(line.split(":")[1].strip())
+            return scores
+
+        scores = extract_scores(answer)
+
+    assert set(scores.keys()) == {"fluency", "relevance", "correctness",}, (
+        f"The scores should be for fluency, relevance, and correctness. "
+        f"Found: {set(scores.keys())} for answer: {answer}"
+    )
     # Normalize to 1 - 5 range from 1 - 10 range
     scores = {k: v / 2 for k, v in scores.items()}
     return scores
