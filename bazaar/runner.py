@@ -236,6 +236,7 @@ class SimulationRunner(BaseExperiment, IOMixin):
     def simulate(self) -> "SimulationRunner":
         self._build()
         # Run the sim
+        breakpoint()
         if self.get("run_type") == "retrieve":
             self.bazaar.run(
                 self.get("runner/duration", 168),

@@ -818,7 +818,7 @@ def generate_hyde_passage(question: str, model: Optional[str] = None) -> str:
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
-def repharse_passage(passage: str, model: Optional[str] = None) -> str:
+def rephrase_passage(passage: str, model: Optional[str] = None) -> str:
     def _parse_answer(answer: str) -> str:
         return answer.replace("ANSWER:", "").strip()
 
@@ -1371,6 +1371,273 @@ def select_quotes_with_debate(
     selected_quotes = [quote for quote, verdict in zip(quotes, verdicts) if verdict]
     return selected_quotes
 
+
+
+@backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
+def select_quotes_direct(
+    quotes: List["Quote"],
+    budget: Optional[SupportsFloat] = None,
+    fraction_of_max_budget: Optional[float] = None,
+    model_name: Optional[str] = None,
+    use_block_content_metadata: bool = False,
+    use_block_metadata_only: bool = False,
+) -> List["Quote"]:
+    if len(quotes) == 0:
+        return []
+    assert all(
+        [quotes[0].query.compare_content(quote.query) for quote in quotes[1:]]
+    ), "All quotes must have the same query."
+    # Get the budget
+    if budget is None:
+        budget = quotes[0].query.max_budget
+    else:
+        budget = float(budget)
+    if fraction_of_max_budget is not None:
+        budget = round(fraction_of_max_budget * quotes[0].query.max_budget, 1)
+
+    # We need to scale the prices. For this, we can assume that the scaled budget
+    # will always be $100. The prices must be scaled accordingly.
+    scale_factor = 100 / budget
+
+    # Get the question
+    question = quotes[0].query.text
+
+    # Build the content extractor
+    def content_extractor(block: "Block") -> str:
+        if use_block_content_metadata:
+            return block.content_with_metadata
+        elif use_block_metadata_only:
+            return block.metadata
+        else:
+            return block.content
+
+    # Get the options
+    options = [
+        {
+            "answer_block": " [...] ".join(
+                [content_extractor(block) for block in quote.answer_blocks]
+            ),
+            "price": max(int(round(quote.price * scale_factor)), 1),
+        }
+        for quote in quotes
+    ]
+
+    program_string = """
+    {{#system~}}
+    You are employed by a company that specializes in acquiring information. You are trying to answer a question by purchasing information from an information market. In this market, vendors sell pieces of information at a price. Do not exceed the budget of ${{balance}}. 
+    {{~/system}}
+
+    {{#user~}}
+    The question is "{{question}}?"
+
+    Here are your options.
+    ---{{#each options}}
+    Option {{add @index 1}}: {{this.answer_block}}
+    {{/each}}---
+
+    {{#each options~}}
+    Option {{add @index 1}} costs ${{this.price}}
+    {{/each}}
+    Your verdict must be printed as: 
+
+    VERDICT:
+
+    {{#each options~}}
+    Option {{add @index 1}}: <Buy or Pass>
+    {{/each}}
+    {{~/user}}
+
+    {{#assistant~}}
+    {{gen "answer" temperature=0.0 max_tokens=2048}}
+    {{~/assistant}}
+    """
+    program_string = clean_program_string(program_string)
+
+    # Run the program
+    program_output = ask_for_guidance(
+        program_string=program_string,
+        llm=get_llm(model_name=model_name),
+        silent=True,
+        inputs=dict(
+            question=question,
+            options=options,
+            balance=100,
+        ),
+        output_keys=["answer"],
+    )
+    answer = program_output["answer"]
+
+    # Now parse the answer
+    def extract_verdicts(s: str) -> List[bool]:
+        # Split the text into sections based on "VERDICT:"
+        sections = re.split(r"\bVERDICT\b\s*:\s*", s, flags=re.IGNORECASE)
+        if len(sections) < 2:
+            return []
+
+        # Dictionary to store the verdicts of each option
+        option_verdicts = {}
+        for section in sections[1:]:
+            # Extract options and their verdicts in a case-insensitive manner
+            options = re.findall(
+                r"Option (\d+): (Buy|Pass)", section, flags=re.IGNORECASE
+            )
+
+            for option_num, verdict in options:
+                option_num = int(option_num)
+                is_buy = verdict.lower() == "buy"
+
+                # Check if this option was seen before
+                if option_num in option_verdicts:
+                    # If the verdict is inconsistent, raise an exception
+                    if option_verdicts[option_num] != is_buy:
+                        import warnings
+
+                        warnings.warn(f"Inconsistent verdict for Option {option_num}.")
+                else:
+                    option_verdicts[option_num] = is_buy
+
+        # Convert the verdicts dictionary to a sorted list based on option numbers
+        return [option_verdicts[num] for num in sorted(option_verdicts.keys())]
+
+    # Parse the verdicts, select the quotes and return
+    verdicts = extract_verdicts(answer)
+    selected_quotes = [quote for quote, verdict in zip(quotes, verdicts) if verdict]
+    return selected_quotes
+
+
+
+@backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
+def select_quotes_cot(
+    quotes: List["Quote"],
+    budget: Optional[SupportsFloat] = None,
+    fraction_of_max_budget: Optional[float] = None,
+    model_name: Optional[str] = None,
+    use_block_content_metadata: bool = False,
+    use_block_metadata_only: bool = False,
+) -> List["Quote"]:
+    if len(quotes) == 0:
+        return []
+    assert all(
+        [quotes[0].query.compare_content(quote.query) for quote in quotes[1:]]
+    ), "All quotes must have the same query."
+    # Get the budget
+    if budget is None:
+        budget = quotes[0].query.max_budget
+    else:
+        budget = float(budget)
+    if fraction_of_max_budget is not None:
+        budget = round(fraction_of_max_budget * quotes[0].query.max_budget, 1)
+
+    # We need to scale the prices. For this, we can assume that the scaled budget
+    # will always be $100. The prices must be scaled accordingly.
+    scale_factor = 100 / budget
+
+    # Get the question
+    question = quotes[0].query.text
+
+    # Build the content extractor
+    def content_extractor(block: "Block") -> str:
+        if use_block_content_metadata:
+            return block.content_with_metadata
+        elif use_block_metadata_only:
+            return block.metadata
+        else:
+            return block.content
+
+    # Get the options
+    options = [
+        {
+            "answer_block": " [...] ".join(
+                [content_extractor(block) for block in quote.answer_blocks]
+            ),
+            "price": max(int(round(quote.price * scale_factor)), 1),
+        }
+        for quote in quotes
+    ]
+
+    program_string = """
+    {{#system~}}
+    You are employed by a company that specializes in acquiring information. You are trying to answer a question by purchasing information from an information market. In this market, vendors sell pieces of information at a price. Do not exceed the budget of ${{balance}}. 
+    {{~/system}}
+
+    {{#user~}}
+    The question is "{{question}}?"
+
+    Here are your options.
+    ---{{#each options}}
+    Option {{add @index 1}}: {{this.answer_block}}
+    {{/each}}---
+
+    {{#each options~}}
+    Option {{add @index 1}} costs ${{this.price}}
+    {{/each}}
+
+    First, you will write your thoughts about each option, including its price and how well the content answers the question. Then you will write a paragraph summarizing your thoughts and making your verdict.
+    Your verdict must be printed as: 
+
+    VERDICT:
+
+    {{#each options~}}
+    Option {{add @index 1}}: <Buy or Pass>
+    {{/each}}
+    {{~/user}}
+
+    {{#assistant~}}
+    {{gen "answer" temperature=0.0 max_tokens=2048}}
+    {{~/assistant}}
+    """
+    program_string = clean_program_string(program_string)
+
+    # Run the program
+    program_output = ask_for_guidance(
+        program_string=program_string,
+        llm=get_llm(model_name=model_name),
+        silent=True,
+        inputs=dict(
+            question=question,
+            options=options,
+            balance=100,
+        ),
+        output_keys=["answer"],
+    )
+    answer = program_output["answer"]
+
+    # Now parse the answer
+    def extract_verdicts(s: str) -> List[bool]:
+        # Split the text into sections based on "VERDICT:"
+        sections = re.split(r"\bVERDICT\b\s*:\s*", s, flags=re.IGNORECASE)
+        if len(sections) < 2:
+            return []
+
+        # Dictionary to store the verdicts of each option
+        option_verdicts = {}
+        for section in sections[1:]:
+            # Extract options and their verdicts in a case-insensitive manner
+            options = re.findall(
+                r"Option (\d+): (Buy|Pass)", section, flags=re.IGNORECASE
+            )
+
+            for option_num, verdict in options:
+                option_num = int(option_num)
+                is_buy = verdict.lower() == "buy"
+
+                # Check if this option was seen before
+                if option_num in option_verdicts:
+                    # If the verdict is inconsistent, raise an exception
+                    if option_verdicts[option_num] != is_buy:
+                        import warnings
+
+                        warnings.warn(f"Inconsistent verdict for Option {option_num}.")
+                else:
+                    option_verdicts[option_num] = is_buy
+
+        # Convert the verdicts dictionary to a sorted list based on option numbers
+        return [option_verdicts[num] for num in sorted(option_verdicts.keys())]
+
+    # Parse the verdicts, select the quotes and return
+    verdicts = extract_verdicts(answer)
+    selected_quotes = [quote for quote, verdict in zip(quotes, verdicts) if verdict]
+    return selected_quotes
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def clean_content(content: str, model_name: Optional[str] = None) -> str:
