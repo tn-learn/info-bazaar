@@ -117,7 +117,7 @@ class SimulationRunner(BaseExperiment, IOMixin):
             general_question_idxs = [
                 idx
                 for idx, q in enumerate(questions)
-                if q["question_type"] == "specific"
+                if q["question_type"] == "general"
             ]
         else:
             self.print("Getting questions from dataset...")
