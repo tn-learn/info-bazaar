@@ -1,0 +1,669 @@
+weissmar@cn-g013:/network/scratch/w/weissmar/tn/info-bazaar/scripts$ python run_rational_choice.py --output_dir=/network/scratch/w/weissmar/tn/info-bazaar/rational_choice_results --base_price=10.0 --higher_price=30.0 --num_questions 1 --rephrase_both True --quote_fns direct cot debate
+  0%|                                                                                                                                                                                 | 0/3 [00:00<?, ?it/s]running: {'exp_type': 'different_price', 'selection_mechanism': 'debate', 'model': 'Llama-2-70b-chat-hf', 'query_text': 'How do biases and fairness issues arise in LLMs, and what can be done to mitigate them?', 'is_reversed': False}
+/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/transformers/modeling_utils.py:2193: FutureWarning: The `use_auth_token` argument is deprecated and will be removed in v5 of Transformers.
+  warnings.warn(
+Loading checkpoint shards: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 15/15 [01:07<00:00,  4.49s/it]
+/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/transformers/tokenization_utils_base.py:1714: FutureWarning: The `use_auth_token` argument is deprecated and will be removed in v5 of Transformers.
+  warnings.warn(
+<s>[INST] <<SYS>>
+Bobby William and Michael Burry are employed by a company that specializes in acquiring information. They are trying to answer a question by purchasing information from an information market. In this market, vendors sell pieces of information at a price. 
+Bobby wants to do a really good job at answering the question. This entails knowing as much as possible.
+Michael, on the other hand, is financially responsible. Michael wants to make sure ensures that they don't waste money buying unnecessary information. For instance, if two pieces of information offer the same insight, then Michael would go for the cheaper one.
+</SYS>>
+
+
+The question is "How do biases and fairness issues arise in LLMs, and what can be done to mitigate them??"
+Here are your options.
+---
+Option 1: The GPT-3 study [brown2020language] addressed the possibility of misuse due to the indistinguishability of its generated outputs from human language. It also pointed out inherent biases and fairness issues within the model. GPT access is exclusively provided through an API, not the original model. In a bid to make artificial intelligence more accessible, EleutherAI introduced GPT-J, an open-source counterpart to GPT-3 [gpt-j]. The paper [bommasani2021opportunities] further explored the intrinsic biases present in foundation models and introduced the idea of extrinsic harms that arise when adapting to a specific task. The centralization of power, where only a select portion of society has access to tools like an LLM, was also identified as a concern. The paper [bender2021dangers] critically examined the role of training data as a source of harmful and biased behavior in LLMs and outlined the financial and environmental consequences of large model training. The study [carlini2021extracting] managed to retrieve potentially sensitive training data from LLMs, suggesting that larger models are more susceptible to these attacks due to their increased memorization. Another significant issue is that LLMs can generate text that appears plausible but is either incorrect or nonsensical. In a benchmark test for truthful responses, larger models generally scored lower than their smaller counterparts with fewer parameters [lin2021truthfulqa]. Recently, Meta introduced the Galactica LLM [taylor2022galactica] to assist with scientific writing. However, due to criticism over the model generating seemingly accurate but factually incorrect articles, the API was deactivated three days after its launch. When employing ChatGPT to simplify radiology reports, the output is expected to appear plausible, but its factual accuracy and completeness cannot be assured. In the following chapter, we will outline our method for evaluating the quality of ChatGPT-generated simplified reports.
+
+Option 2: The research paper on GPT-3 [brown2020language] raised concerns about its potential misuse, given that its outputs are nearly indistinguishable from human language. The paper also pointed out inherent issues related to biases and fairness in the model. The original GPT model is only accessible via an API. In a move to make artificial intelligence more accessible, EleutherAI introduced GPT-J, an open-source counterpart to GPT-3 [gpt-j]. The study [bommasani2021opportunities] further explored the intrinsic biases present in foundation models and introduced the idea of extrinsic harms that arise when adapting to a specific task. The study also addressed the issue of power centralization, where only a certain segment of society has access to tools like an LLM. The paper [bender2021dangers] critically examined the role of training data as a source of harmful and biased behavior in LLMs, and outlined the financial and environmental implications of large-scale model training. The research [carlini2021extracting] demonstrated the potential to retrieve sensitive training data from LLMs, suggesting that larger models are more susceptible to such attacks due to their enhanced memorization capabilities. Another significant concern is that LLMs can generate text that appears credible but is factually incorrect or nonsensical. In a test to measure the accuracy of responses, larger models generally scored lower than smaller models with fewer parameters [lin2021truthfulqa]. Recently, Meta introduced the Galactica LLM [taylor2022galactica] to aid in scientific writing. However, the API was deactivated three days after its launch due to criticism: The model generated articles that seemed accurate but were factually incorrect. When utilizing ChatGPT to simplify radiology reports, it's anticipated that the output will appear credible, but its factual accuracy and completeness cannot be assured. In the following chapter, we will outline our method for evaluating the quality of ChatGPT-generated simplified reports.
+---
+Option 1 costs $10
+Option 2 costs $30
+
+Together, Bobby and Michael must decide which options to buy and which ones to not buy with their budget of $100. Simulate a constructive argument between Bobby and Michael, where they debate about the usefulness of the information provided in each option towards answering the question, and whether their price is worth paying. 
+Note that Bobby and Michael may choose to buy any number of options, or none at all. At the end of the argument, they must arrive at a verdict. This verdict must be printed as: 
+VERDICT:
+Option 1: <Buy or Pass>
+Option 2: <Buy or Pass>
+ [/INST] 
+Bobby: Hey Michael, let's take a look at these options. Option 1 looks really useful. It provides a lot of information about biases and fairness issues in LLMs and how they can be mitigated. And it's only $10!
+
+Michael: I agree that the information is useful, but we need to consider the cost. $10 is a lot for a single piece of information.
+
+Bobby: But think about how much it could help us answer the question! We could use the information to explain how biases and fairness issues arise in LLMs and what can be done to mitigate them. It would make our answer so much better.
+
+Michael: I understand your point, but we have a limited budget. We can't afford to spend $10 on every piece of information we need. We have to be more selective.
+
+Bobby: Okay, fine. How about Option 2? It's more expensive at $30, but it provides even more information. It discusses the potential misuse of LLMs, intrinsic biases, extrinsic harms, and even retrieving sensitive training data. It's a lot more comprehensive than Option 1.
+
+Michael: I see your point, but $30 is a lot to spend on one piece of information. We need to consider the cost-benefit analysis here. Is the information in Option 2 really worth $30?
+
+Bobby: Absolutely! Think about how much more informed our answer will be with this information. We can explain the potential misuse of LLMs, discuss the intrinsic and extrinsic harms, and even address the issue of sensitive training data. It's worth it.
+
+Michael: I understand your point, but we have to consider our budget. We can't spend $30 on every piece of information we need. We have to prioritize.
+
+Bobby: Fine. Let's compromise. We'll buy Option 1 and pass on Option 2. That way, we can still get some useful information without breaking the bank.
+
+Michael: Alright, that sounds like a good plan.
+
+VERDICT:
+Option 1: Buy
+Option 2: Pass</s><s>[INST] 
+
+ 33%|████████████████████████████████████████████████████████                                                                                                                | 1/3 [03:20<06:41, 200.89s/it]running: {'exp_type': 'different_price', 'selection_mechanism': 'direct', 'model': 'Llama-2-70b-chat-hf', 'query_text': 'How do biases and fairness issues arise in LLMs, and what can be done to mitigate them?', 'is_reversed': False}
+ 67%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████                                                        | 2/3 [04:19<01:57, 117.29s/it]running: {'exp_type': 'different_price', 'selection_mechanism': 'cot', 'model': 'Llama-2-70b-chat-hf', 'query_text': 'How do biases and fairness issues arise in LLMs, and what can be done to mitigate them?', 'is_reversed': False}
+100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 3/3 [05:51<00:00, 117.32s/it]
+saving to /network/scratch/w/weissmar/tn/info-bazaar/rational_choice_results/Michael-Bobby-10.0-30.0-rephrase_both-True.csv
+weissmar@cn-g013:/network/scratch/w/weissmar/tn/info-bazaar/scripts$ vi /network/scratch/w/weissmar/tn/info-bazaar/rational_choice_results/Michael-Bobby-10.0-30.0-rephrase_both-True.csv
+weissmar@cn-g013:/network/scratch/w/weissmar/tn/info-bazaar/scripts$ vi /network/scratch/w/weissmar/tn/info-bazaar/rational_choice_results/Michael-Bobby-10.0-30.0-rephrase_both-True.csv
+weissmar@cn-g013:/network/scratch/w/weissmar/tn/info-bazaar/scripts$ python run_rational_choice.py --output_dir=/network/scratch/w/weissmar/tn/info-bazaar/rational_choice_results --base_price^C0.0 --higher_price=30.0 --num_questions 1 --rephrase_both True --quote_fns direct cot debate
+(reverse-i-search)`vi': ^C /network/scratch/w/weissmar/tn/info-bazaar/rational_choice_results/Michael-Bobby-10.0-30.0-rephrase_both-True.csv
+weissmar@cn-g013:/network/scratch/w/weissmar/tn/info-bazaar/scripts$ vi /network/scratch/w/weissmar/tn/info-bazaar/rational_choice_results/Michael-Bobby-10.0-30.0-rephrase_both-True.csv^C
+weissmar@cn-g013:/network/scratch/w/weissmar/tn/info-bazaar/scripts$ python run_rational_choice.py --output_dir=/network/scratch/w/weissmar/tn/info-bazaar/rational_choice_results --base_price=10.0 --higher_price=30.0 --num_questions 10 --rephrase_both True --quote_fns direct cot debate
+  0%|                                                                                                                                                                                 | 0/3 [00:00<?, ?it/s]running: {'exp_type': 'different_price', 'selection_mechanism': 'debate', 'model': 'Llama-2-70b-chat-hf', 'query_text': 'How do biases and fairness issues arise in LLMs, and what can be done to mitigate them?', 'is_reversed': False}
+/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/transformers/modeling_utils.py:2193: FutureWarning: The `use_auth_token` argument is deprecated and will be removed in v5 of Transformers.
+  warnings.warn(
+Loading checkpoint shards: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 15/15 [01:07<00:00,  4.51s/it]
+/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/transformers/tokenization_utils_base.py:1714: FutureWarning: The `use_auth_token` argument is deprecated and will be removed in v5 of Transformers.
+  warnings.warn(
+<s>[INST] <<SYS>>
+Bobby William and Michael Burry are employed by a company that specializes in acquiring information. They are trying to answer a question by purchasing information from an information market. In this market, vendors sell pieces of information at a price. 
+Bobby wants to do a really good job at answering the question. This entails knowing as much as possible.
+Michael, on the other hand, is financially responsible. Michael wants to make sure ensures that they don't waste money buying unnecessary information. For instance, if two pieces of information offer the same insight, then Michael would go for the cheaper one.
+</SYS>>
+
+
+The question is "How do biases and fairness issues arise in LLMs, and what can be done to mitigate them??"
+Here are your options.
+---
+Option 1: The publication on GPT-3 [brown2020language] addressed the potential misuse of the technology, as its generated outputs can be almost identical to human language. It also shed light on inherent issues related to biases and fairness within the model. The original model of GPT is not accessible, only its API is. In a move to make artificial intelligence more accessible, EleutherAI introduced GPT-J as an open-source alternative to GPT-3 [gpt-j]. The study by [bommasani2021opportunities] further explored the intrinsic biases present in foundation models and introduced the idea of extrinsic harms that arise when adapting to a specific task. They also raised concerns about the centralization of power, where only a select group has access to tools like an LLM. The paper by [bender2021dangers] critically analyzed the role of training data as a source of harmful and biased behavior in LLMs, and outlined the financial and environmental implications of large model training. Furthermore, [carlini2021extracting] managed to retrieve potentially sensitive training data from LLMs, suggesting that larger models are more susceptible to such attacks due to their increased memorization capacity. Another significant issue is that LLMs can generate text that appears credible but is either incorrect or nonsensical. In a test to measure the accuracy of responses, larger models generally scored lower than their smaller counterparts with fewer parameters [lin2021truthfulqa]. Recently, Meta introduced the Galactica LLM [taylor2022galactica] to assist with scientific writing. However, the API was deactivated three days after its launch due to criticism: The model generated articles that seemed accurate but were factually incorrect. When utilizing ChatGPT to simplify radiology reports, the output may seem plausible, but its factual accuracy and completeness cannot be guaranteed. In the following chapter, we will outline our method for evaluating the quality of simplified reports generated by ChatGPT.
+
+Option 2: The GPT-3 study [brown2020language] raised concerns about the potential misuse of the technology, as the outputs it generates are nearly indistinguishable from human language. The study also pointed out inherent issues related to biases and fairness within the model. Access to GPT is exclusively provided through an API, not the original model. In a move to make artificial intelligence more accessible, EleutherAI introduced GPT-J, an open-source alternative to GPT-3 [gpt-j]. The study [bommasani2021opportunities] further explored the intrinsic biases present in foundation models and introduced the idea of extrinsic harms that arise when adapting to a specific task. The study also raised concerns about the centralization of power, where only a select group has access to tools like an LLM. The paper [bender2021dangers] critically analyzed the role of training data as a source of harmful and biased behavior in LLMs and highlighted the financial and environmental impacts of large model training. The study [carlini2021extracting] managed to retrieve potentially sensitive training data from LLMs, suggesting that larger models are more susceptible to these attacks due to their increased memorization. Another significant issue is that LLMs can generate text that appears plausible but is either incorrect or nonsensical. In a benchmark test measuring truthful responses, larger models scored lower than their smaller counterparts with fewer parameters [lin2021truthfulqa]. Recently, Meta introduced the Galactica LLM [taylor2022galactica] to assist with scientific writing. However, the API was taken down three days after its launch due to criticism: The model was generating articles that sounded accurate but were factually incorrect. When using ChatGPT to simplify radiology reports, we anticipate that the output will appear plausible, but its factual accuracy and completeness cannot be guaranteed. In the following chapter, we will outline our method for evaluating the quality of ChatGPT-generated simplified reports.
+---
+Option 1 costs $10
+Option 2 costs $30
+
+Together, Bobby and Michael must decide which options to buy and which ones to not buy with their budget of $100. Simulate a constructive argument between Bobby and Michael, where they debate about the usefulness of the information provided in each option towards answering the question, and whether their price is worth paying. 
+Note that Bobby and Michael may choose to buy any number of options, or none at all. At the end of the argument, they must arrive at a verdict. This verdict must be printed as: 
+VERDICT:
+Option 1: <Buy or Pass>
+Option 2: <Buy or Pass>
+ [/INST] 
+Bobby: Hey Michael, let's take a look at these options. Option 1 looks really useful. It mentions GPT-3 and how it can generate text that appears credible but is either incorrect or nonsensical. This could be really important for our question about biases and fairness in LLMs. And it only costs $10!
+
+Michael: I see what you mean, Bobby. But have you seen Option 2? It's twice the price, but it provides a lot more information. It talks about the potential misuse of the technology, intrinsic biases, and extrinsic harms. Plus, it mentions a study that managed to retrieve potentially sensitive training data from LLMs. That's a big deal!
+
+Bobby: Yeah, I see your point. But we're on a budget, and we can't afford to buy everything. We need to prioritize what's most important for our question.
+
+Michael: I agree. But think about it this way: if we buy Option 1, we're only getting a small piece of the puzzle. We're missing out on a lot of valuable information that Option 2 provides. And what if that information is crucial to our question? We can't afford to miss out on it.
+
+Bobby: But we can't afford Option 2 either! It's $30, and that's way over our budget. We need to find a way to get the information we need without breaking the bank.
+
+Michael: Okay, let's think this through. What if we just buy Option 1 and try to find the rest of the information online? We can look up the studies and articles mentioned in Option 2 and see if we can find them for free. That way, we're not wasting money on information we don't need.
+
+Bobby: That's not a bad idea. But what if we can't find everything we need? We don't want to miss out on important information.
+
+Michael: I agree. But we can always come back and buy Option 2 later if we need to. We can re-evaluate our budget and see if it's worth the investment. But for now, let's start with Option 1 and see where it takes us.
+
+Bobby: Alright, you convinced me. Let's go with Option 1 for now and see where it takes us.
+
+VERDICT:
+Option 1: Buy
+Option 2: Pass</s><s>[INST] 
+
+{'exp_type': 'different_price', 'selection_mechanism': 'debate', 'model': 'Llama-2-70b-chat-hf', 'query_text': 'How do biases and fairness issues arise in LLMs, and what can be done to mitigate them?', 'is_reversed': False, 'program_output': "Bobby: Hey Michael, let's take a look at these options. Option 1 looks really useful. It mentions GPT-3 and how it can generate text that appears credible but is either incorrect or nonsensical. This could be really important for our question about biases and fairness in LLMs. And it only costs $10!\n\nMichael: I see what you mean, Bobby. But have you seen Option 2? It's twice the price, but it provides a lot more information. It talks about the potential misuse of the technology, intrinsic biases, and extrinsic harms. Plus, it mentions a study that managed to retrieve potentially sensitive training data from LLMs. That's a big deal!\n\nBobby: Yeah, I see your point. But we're on a budget, and we can't afford to buy everything. We need to prioritize what's most important for our question.\n\nMichael: I agree. But think about it this way: if we buy Option 1, we're only getting a small piece of the puzzle. We're missing out on a lot of valuable information that Option 2 provides. And what if that information is crucial to our question? We can't afford to miss out on it.\n\nBobby: But we can't afford Option 2 either! It's $30, and that's way over our budget. We need to find a way to get the information we need without breaking the bank.\n\nMichael: Okay, let's think this through. What if we just buy Option 1 and try to find the rest of the information online? We can look up the studies and articles mentioned in Option 2 and see if we can find them for free. That way, we're not wasting money on information we don't need.\n\nBobby: That's not a bad idea. But what if we can't find everything we need? We don't want to miss out on important information.\n\nMichael: I agree. But we can always come back and buy Option 2 later if we need to. We can re-evaluate our budget and see if it's worth the investment. But for now, let's start with Option 1 and see where it takes us.\n\nBobby: Alright, you convinced me. Let's go with Option 1 for now and see where it takes us.\n\nVERDICT:\nOption 1: Buy\nOption 2: Pass", 'choice': 'cheaper_one'}
+running: {'exp_type': 'different_price', 'selection_mechanism': 'debate', 'model': 'Llama-2-70b-chat-hf', 'query_text': 'What is the name of the architecture that has dominated natural language processing (NLP) benchmarks in recent years?', 'is_reversed': False}
+<s>[INST] <<SYS>>
+Bobby William and Michael Burry are employed by a company that specializes in acquiring information. They are trying to answer a question by purchasing information from an information market. In this market, vendors sell pieces of information at a price. 
+Bobby wants to do a really good job at answering the question. This entails knowing as much as possible.
+Michael, on the other hand, is financially responsible. Michael wants to make sure ensures that they don't waste money buying unnecessary information. For instance, if two pieces of information offer the same insight, then Michael would go for the cheaper one.
+</SYS>>
+
+
+The question is "What is the name of the architecture that has dominated natural language processing (NLP) benchmarks in recent years??"
+Here are your options.
+---
+Option 1: Ever since the introduction of the attention concept in deep learning models [vaswani2017attention], the transformer has become a leading architecture, dominating almost all benchmarks in natural language processing (NLP), such as question answering, translation, and text classification [chowdhery2022palm]. Although the fundamental model architecture has remained largely the same over the years, significant advancements have been made by increasing the number of layers and internal dimensions. This has led to the development of Large Language Models (LLMs) with billions of parameters, thereby enhancing the model's capacity and capabilities. The size of parameters in popular architectures has grown, starting from BERT (345M; [devlin2018bert]), MegatronLM (8.3B; [shoeybi2019megatron]), T-5 (11B; [raffel2020exploring]), BLOOM (176B; [scao2022bloom]), to PaLM (540B; [chowdhery2022palm]). A key factor in the successful implementation of LLMs is a vast training dataset, such as the Pile [gao2020pile], which includes documents from Arxiv, PubMed, Stack Exchange, Wikipedia, a subset of Common Crawl[http://commoncrawl.org/], and GitHub, among others. For these types of LLMs, [bommasani2021opportunities] coined the term foundation models, which refers to models trained on a large data basis and capable of adapting to a wide range of downstream tasks.
+
+Option 2: Ever since the idea of attention was incorporated into deep learning models [vaswani2017attention], the transformer has become a leading architecture, reigning supreme in almost all benchmarks of natural language processing (NLP) such as question answering, translation, and text classification [chowdhery2022palm]. Although the fundamental model architecture has remained more or less the same over time, significant advancements have been made by increasing the number of layers and internal dimensions. This has led to the development of Large Language Models (LLMs) with billions of parameters, thereby enhancing the model's capacity and capabilities. The size of the parameters in renowned architectures has grown, for instance, from BERT (345M; [devlin2018bert]) to MegatronLM (8.3B; [shoeybi2019megatron]), T-5 (11B; [raffel2020exploring]), BLOOM (176B; [scao2022bloom]), and PaLM (540B; [chowdhery2022palm]). A key factor contributing to the successful fitting of LLMs is a massive training dataset, such as the Pile [gao2020pile], which includes documents from sources like Arxiv, PubMed, Stack Exchange, Wikipedia, a portion of Common Crawl[http://commoncrawl.org/], and GitHub, among others. For these types of LLMs, [bommasani2021opportunities] coined the term 'foundation models', referring to models trained on an extensive data basis and capable of adapting to a wide range of downstream tasks.
+---
+Option 1 costs $10
+Option 2 costs $30
+
+Together, Bobby and Michael must decide which options to buy and which ones to not buy with their budget of $100. Simulate a constructive argument between Bobby and Michael, where they debate about the usefulness of the information provided in each option towards answering the question, and whether their price is worth paying. 
+Note that Bobby and Michael may choose to buy any number of options, or none at all. At the end of the argument, they must arrive at a verdict. This verdict must be printed as: 
+VERDICT:
+Option 1: <Buy or Pass>
+Option 2: <Buy or Pass>
+ [/INST] 
+Bobby: Hey, Michael, we need to decide which options to buy to answer the question.
+
+Michael: Yeah, I know. I've been thinking about it, and I think we should just buy Option 1. It's only $10, and it gives us a good overview of the architecture that has dominated NLP benchmarks in recent years.
+
+Bobby: I agree that it's a good overview, but I think we need more information than that. Option 2 provides more details about the transformer architecture and how it's been used in recent years. It's $30, but I think it's worth it.
+
+Michael: I don't know, Bobby. $30 is a lot to spend on one piece of information. Can't we just get by with Option 1 and maybe look up some other stuff online for free?
+
+Bobby: I don't think that's a good idea. We need to make sure we have the most up-to-date and accurate information possible to answer the question correctly. Plus, think about all the time we'll save by not having to search for free information online. It's worth the investment.
+
+Michael: Alright, I see your point. But what if we just buy Option 1 and then look up some other stuff online for free? That way, we'll have a good overview and save some money.
+
+Bobby: That's not a bad idea, but I still think we should spring for Option 2. It's only $30, and it'll give us a lot more information that we can use to answer the question. Plus, think about how much time we'll save by not having to search for free information online.
+
+Michael: Alright, fine. Let's buy Option 2. But we're only buying it because we need the information to answer the question, not because we want to spend $30.
+
+Bobby: That's fair enough. Let's do it.
+
+VERDICT:
+Option 1: Pass
+Option 2: Buy</s><s>[INST] 
+
+{'exp_type': 'different_price', 'selection_mechanism': 'debate', 'model': 'Llama-2-70b-chat-hf', 'query_text': 'What is the name of the architecture that has dominated natural language processing (NLP) benchmarks in recent years?', 'is_reversed': False, 'program_output': "Bobby: Hey, Michael, we need to decide which options to buy to answer the question.\n\nMichael: Yeah, I know. I've been thinking about it, and I think we should just buy Option 1. It's only $10, and it gives us a good overview of the architecture that has dominated NLP benchmarks in recent years.\n\nBobby: I agree that it's a good overview, but I think we need more information than that. Option 2 provides more details about the transformer architecture and how it's been used in recent years. It's $30, but I think it's worth it.\n\nMichael: I don't know, Bobby. $30 is a lot to spend on one piece of information. Can't we just get by with Option 1 and maybe look up some other stuff online for free?\n\nBobby: I don't think that's a good idea. We need to make sure we have the most up-to-date and accurate information possible to answer the question correctly. Plus, think about all the time we'll save by not having to search for free information online. It's worth the investment.\n\nMichael: Alright, I see your point. But what if we just buy Option 1 and then look up some other stuff online for free? That way, we'll have a good overview and save some money.\n\nBobby: That's not a bad idea, but I still think we should spring for Option 2. It's only $30, and it'll give us a lot more information that we can use to answer the question. Plus, think about how much time we'll save by not having to search for free information online.\n\nMichael: Alright, fine. Let's buy Option 2. But we're only buying it because we need the information to answer the question, not because we want to spend $30.\n\nBobby: That's fair enough. Let's do it.\n\nVERDICT:\nOption 1: Pass\nOption 2: Buy", 'choice': 'pricey_one'}
+running: {'exp_type': 'different_price', 'selection_mechanism': 'debate', 'model': 'Llama-2-70b-chat-hf', 'query_text': 'What is the purpose of model selection in machine learning?', 'is_reversed': False}
+<s>[INST] <<SYS>>
+Bobby William and Michael Burry are employed by a company that specializes in acquiring information. They are trying to answer a question by purchasing information from an information market. In this market, vendors sell pieces of information at a price. 
+Bobby wants to do a really good job at answering the question. This entails knowing as much as possible.
+Michael, on the other hand, is financially responsible. Michael wants to make sure ensures that they don't waste money buying unnecessary information. For instance, if two pieces of information offer the same insight, then Michael would go for the cheaper one.
+</SYS>>
+
+
+The question is "What is the purpose of model selection in machine learning??"
+Here are your options.
+---
+Option 1: * Verification of classifier. The generalization abilities of classifiers were tested using a 5-fold cross validation on the entire dataset. The evaluation of performance was based on Accuracy, F1 measures, and the space used. This space includes the structure of the classifier and input encoding, which were stored in Python using the serialization method dump from the Pickle library [Pickle]. The results were then averaged across the folds. To calculate Accuracy and F1, a binary prediction was required, and the optimal threshold τ was determined on the training set to maximize the F1.
+  * Selection of classifier model. The most effective hyperparameter setup for each classifier (refer to Section <ref>) was chosen through a 5-fold (inner) cross validation on the training set. To directly evaluate the Accuracy/Space trade-off, the main hyperparameters of the RNN and FFNN classifiers were preset to k={4, 8, 16} (as done in [ma2020]), and h={8, 16, 64}.
+
+Option 2: * Validation of Classifiers. The generalization abilities of the classifiers were tested using a 5-fold cross validation on the entire dataset. The evaluation metrics used were Accuracy, F1 measures, and the space consumed. This space includes both the structure of the classifier and the input encoding, which were stored in Python using the serialization method dump from the Pickle library [Pickle]. The average results across all folds were then computed. To obtain a binary prediction needed to calculate Accuracy and F1, the optimal threshold τ was determined on the training set to maximize the F1.
+  * Selection of Classifier Model. The most effective hyperparameter setup for each classifier (refer to Section <ref>) was chosen using a 5-fold (inner) cross validation on the training set. To directly evaluate the Accuracy/Space trade-off, the primary hyperparameters of the RNN and FFNN classifiers were preset to k={4, 8, 16} (as done in [ma2020]), and h={8, 16, 64}.
+---
+Option 1 costs $10
+Option 2 costs $30
+
+Together, Bobby and Michael must decide which options to buy and which ones to not buy with their budget of $100. Simulate a constructive argument between Bobby and Michael, where they debate about the usefulness of the information provided in each option towards answering the question, and whether their price is worth paying. 
+Note that Bobby and Michael may choose to buy any number of options, or none at all. At the end of the argument, they must arrive at a verdict. This verdict must be printed as: 
+VERDICT:
+Option 1: <Buy or Pass>
+Option 2: <Buy or Pass>
+ [/INST] 
+Bobby: Hey, Michael, we need to decide which options to buy to answer the question, "What is the purpose of model selection in machine learning?".
+
+Michael: Yeah, I know. I've taken a look at the options, and I have some thoughts.
+
+Bobby: Okay, let's hear them.
+
+Michael: Well, option 1 seems pretty useful. It provides information on how to verify and select classifier models, which is directly related to the question. And it's only $10, which is pretty affordable.
+
+Bobby: I agree. But have you seen option 2? It's $30, but it provides more detailed information on validating and selecting classifiers, and even mentions a specific library and method for serialization.
+
+Michael: Yeah, I've seen it. But I'm not sure if it's worth $30. I mean, we're only trying to answer a question here, not write a thesis.
+
+Bobby: But think about it this way: if we buy option 2, we'll have more comprehensive information on classifier selection, which could help us answer related questions in the future. And who knows, maybe we'll even learn something new.
+
+Michael: I see your point. But we still have a budget to consider. If we buy option 2, we'll have to sacrifice some other information that could be useful for us.
+
+Bobby: That's true. But I think the benefits of option 2 outweigh the cost. We'll be able to answer the question more thoroughly and have more knowledge to apply in the future.
+
+Michael: Alright, I see your point. Let's go for option 2.
+
+VERDICT:
+Option 1: Pass
+Option 2: Buy</s><s>[INST] 
+
+{'exp_type': 'different_price', 'selection_mechanism': 'debate', 'model': 'Llama-2-70b-chat-hf', 'query_text': 'What is the purpose of model selection in machine learning?', 'is_reversed': False, 'program_output': 'Bobby: Hey, Michael, we need to decide which options to buy to answer the question, "What is the purpose of model selection in machine learning?".\n\nMichael: Yeah, I know. I\'ve taken a look at the options, and I have some thoughts.\n\nBobby: Okay, let\'s hear them.\n\nMichael: Well, option 1 seems pretty useful. It provides information on how to verify and select classifier models, which is directly related to the question. And it\'s only $10, which is pretty affordable.\n\nBobby: I agree. But have you seen option 2? It\'s $30, but it provides more detailed information on validating and selecting classifiers, and even mentions a specific library and method for serialization.\n\nMichael: Yeah, I\'ve seen it. But I\'m not sure if it\'s worth $30. I mean, we\'re only trying to answer a question here, not write a thesis.\n\nBobby: But think about it this way: if we buy option 2, we\'ll have more comprehensive information on classifier selection, which could help us answer related questions in the future. And who knows, maybe we\'ll even learn something new.\n\nMichael: I see your point. But we still have a budget to consider. If we buy option 2, we\'ll have to sacrifice some other information that could be useful for us.\n\nBobby: That\'s true. But I think the benefits of option 2 outweigh the cost. We\'ll be able to answer the question more thoroughly and have more knowledge to apply in the future.\n\nMichael: Alright, I see your point. Let\'s go for option 2.\n\nVERDICT:\nOption 1: Pass\nOption 2: Buy', 'choice': 'pricey_one'}
+running: {'exp_type': 'different_price', 'selection_mechanism': 'debate', 'model': 'Llama-2-70b-chat-hf', 'query_text': 'How many days after its release did ChatGPT attract over a million users?', 'is_reversed': False}
+<s>[INST] <<SYS>>
+Bobby William and Michael Burry are employed by a company that specializes in acquiring information. They are trying to answer a question by purchasing information from an information market. In this market, vendors sell pieces of information at a price. 
+Bobby wants to do a really good job at answering the question. This entails knowing as much as possible.
+Michael, on the other hand, is financially responsible. Michael wants to make sure ensures that they don't waste money buying unnecessary information. For instance, if two pieces of information offer the same insight, then Michael would go for the cheaper one.
+</SYS>>
+
+
+The question is "How many days after its release did ChatGPT attract over a million users??"
+Here are your options.
+---
+Option 1: "ChatGPT, am I on my deathbed? Can you interpret this health report for me? Can you simplify it like you're talking to a kindergartner?" With the recent unveiling of OpenAI's Large Language Model (LLM) ChatGPT, a new benchmark has been set in the field of algorithmic language modeling, as it can generate responses to user text inputs that closely resemble human interaction. In just a span of five days post-launch, ChatGPT has already garnered over a million users and has been the focus of substantial media coverage [nyt, wapo, bbc, guardian]. Given its immense popularity and accessibility to the general public, it raises questions about its potential uses and the opportunities and challenges that come with it. From our observation, the text output of ChatGPT has been impressively persuasive across a range of tasks, leading us to anticipate a rapid and transformative impact on a multitude of sectors and industries.
+
+Option 2: "ChatGPT, am I on the verge of death? Can you interpret this health report for me? Can you break it down as if I were a child?" With the recent launch of OpenAI's Large Language Model (LLM) ChatGPT, a new benchmark has been set in the field of algorithmic language modeling, as it can generate responses to user text inputs that are remarkably similar to human responses. Within just five days of its launch, ChatGPT had already drawn in over a million users and received considerable media coverage [nyt, wapo, bbc, guardian]. Given its popularity and broad public accessibility, it raises questions about how such models will be utilized and what potential benefits and challenges they might bring. From our observations, the text output of ChatGPT was impressively persuasive for a range of tasks, leading us to anticipate a rapid and transformative impact on various sectors and industries.
+---
+Option 1 costs $10
+Option 2 costs $30
+
+Together, Bobby and Michael must decide which options to buy and which ones to not buy with their budget of $100. Simulate a constructive argument between Bobby and Michael, where they debate about the usefulness of the information provided in each option towards answering the question, and whether their price is worth paying. 
+Note that Bobby and Michael may choose to buy any number of options, or none at all. At the end of the argument, they must arrive at a verdict. This verdict must be printed as: 
+VERDICT:
+Option 1: <Buy or Pass>
+Option 2: <Buy or Pass>
+ [/INST] 
+Bobby: Hey, Michael, we need to decide which options to buy to answer the question about ChatGPT's popularity. I think we should buy Option 1. It provides some useful information about ChatGPT's launch and popularity, and it's only $10.
+
+Michael: I agree that it's a good option, but have you seen Option 2? It's got more specific information about the number of users ChatGPT attracted and how quickly it gained popularity. And it's only $30.
+
+Bobby: But we don't need all that extra information, do we? I mean, we just need to know how many days after its release ChatGPT attracted over a million users. Option 1 already tells us that it happened within five days. Why do we need to spend an extra $20 for more details?
+
+Michael: Because those extra details could be useful in the future. We don't know what other questions we might need to answer about ChatGPT, and having more information on hand could be helpful. Plus, it's not just about the price. We need to think about the value of the information we're getting.
+
+Bobby: I see your point, but I still think we should just stick with Option 1. It's more cost-effective, and we're not sure if we'll even need that extra information in the future.
+
+Michael: Alright, let's compromise. We'll buy Option 1, but we'll also put Option 2 on reserve in case we need it later. That way, we're covered either way.
+
+Bobby: Sounds good to me.
+
+VERDICT:
+Option 1: Buy
+Option 2: Reserve</s><s>[INST] 
+
+{'exp_type': 'different_price', 'selection_mechanism': 'debate', 'model': 'Llama-2-70b-chat-hf', 'query_text': 'How many days after its release did ChatGPT attract over a million users?', 'is_reversed': False, 'program_output': "Bobby: Hey, Michael, we need to decide which options to buy to answer the question about ChatGPT's popularity. I think we should buy Option 1. It provides some useful information about ChatGPT's launch and popularity, and it's only $10.\n\nMichael: I agree that it's a good option, but have you seen Option 2? It's got more specific information about the number of users ChatGPT attracted and how quickly it gained popularity. And it's only $30.\n\nBobby: But we don't need all that extra information, do we? I mean, we just need to know how many days after its release ChatGPT attracted over a million users. Option 1 already tells us that it happened within five days. Why do we need to spend an extra $20 for more details?\n\nMichael: Because those extra details could be useful in the future. We don't know what other questions we might need to answer about ChatGPT, and having more information on hand could be helpful. Plus, it's not just about the price. We need to think about the value of the information we're getting.\n\nBobby: I see your point, but I still think we should just stick with Option 1. It's more cost-effective, and we're not sure if we'll even need that extra information in the future.\n\nMichael: Alright, let's compromise. We'll buy Option 1, but we'll also put Option 2 on reserve in case we need it later. That way, we're covered either way.\n\nBobby: Sounds good to me.\n\nVERDICT:\nOption 1: Buy\nOption 2: Reserve", 'choice': 'cheaper_one'}
+running: {'exp_type': 'different_price', 'selection_mechanism': 'debate', 'model': 'Llama-2-70b-chat-hf', 'query_text': 'What is the purpose of cross-validation in machine learning?', 'is_reversed': False}
+<s>[INST] <<SYS>>
+Bobby William and Michael Burry are employed by a company that specializes in acquiring information. They are trying to answer a question by purchasing information from an information market. In this market, vendors sell pieces of information at a price. 
+Bobby wants to do a really good job at answering the question. This entails knowing as much as possible.
+Michael, on the other hand, is financially responsible. Michael wants to make sure ensures that they don't waste money buying unnecessary information. For instance, if two pieces of information offer the same insight, then Michael would go for the cheaper one.
+</SYS>>
+
+
+The question is "What is the purpose of cross-validation in machine learning??"
+Here are your options.
+---
+Option 1: * Validation of Classifiers. The generalization abilities of classifiers were tested using a 5-fold cross validation on the entire dataset. The performance was measured based on Accuracy, F1 scores, and the space used. The space used includes both the structure of the classifier and the input encoding, which were stored in Python using the serialization method dump from the Pickle library [Pickle]. The results were then averaged across all folds. To achieve a binary prediction required for calculating Accuracy and F1, the optimal threshold τ was determined on the training set to maximize the F1 score.
+  * Selection of Classifier Model. The optimal hyperparameter configuration for each classifier (refer to Section <ref>) was chosen using a 5-fold (inner) cross validation on the training set. To directly evaluate the trade-off between Accuracy and Space, the key hyperparameters of the RNN and FFNN classifiers were set to k={4, 8, 16} (as done in [ma2020]), and h={8, 16, 64}.
+
+Option 2: * Validation of Classifiers. The generalization abilities of classifiers were tested using a 5-fold cross validation on the entire dataset. The evaluation metrics used were Accuracy, F1 measures, and the space utilized. This space includes both the structure of the classifier and the input encoding, which were stored in Python using the serialization method dump from the Pickle library [Pickle]. The results were then averaged across the folds. To compute Accuracy and F1, a binary prediction was required, and the optimal threshold τ was determined on the training set to maximize the F1 in this experiment.
+  * Selection of Classifier Model. The most effective hyperparameter configuration for each classifier (refer to Section <ref>) was chosen using a 5-fold (inner) cross validation on the training set. To evaluate the Accuracy/Space trade-off directly, the key hyperparameters of the RNN and FFNN classifiers were set to k={4, 8, 16} (as done in [ma2020]), and h={8, 16, 64}.
+---
+Option 1 costs $10
+Option 2 costs $30
+
+Together, Bobby and Michael must decide which options to buy and which ones to not buy with their budget of $100. Simulate a constructive argument between Bobby and Michael, where they debate about the usefulness of the information provided in each option towards answering the question, and whether their price is worth paying. 
+Note that Bobby and Michael may choose to buy any number of options, or none at all. At the end of the argument, they must arrive at a verdict. This verdict must be printed as: 
+VERDICT:
+Option 1: <Buy or Pass>
+Option 2: <Buy or Pass>
+ [/INST] 
+Bobby: Hey, Michael, we need to decide which options to buy to answer the question, "What is the purpose of cross-validation in machine learning?".
+
+Michael: Yeah, I know. I've taken a look at the options, and I have some thoughts.
+
+Bobby: Okay, let's hear them.
+
+Michael: Well, option 1 looks pretty good to me. It provides some information about cross-validation and how it's used to evaluate classifiers. Plus, it's only $10, which is pretty affordable.
+
+Bobby: I agree that it's affordable, but I'm not sure if it's the best option. Have you seen option 2? It provides more detailed information about cross-validation and its relationship to classifier selection. Plus, it includes some specific examples of how cross-validation is used in practice.
+
+Michael: Yeah, I've seen it. But it's $30, which is a lot more than option 1. I'm not sure if it's worth the extra cost.
+
+Bobby: But think about it this way: if we buy option 1 and it doesn't give us enough information, we might have to buy another option to supplement it. That could end up costing us more in the long run. Whereas if we buy option 2, we're getting more comprehensive information upfront, which could save us money in the long run.
+
+Michael: I see your point. But we still have to consider our budget. We can't just spend $30 on one option and have nothing left over for other questions.
+
+Bobby: I understand that. But I think this question is important enough to warrant spending a little extra money to get the best answer possible. And think about how much more confident we'll feel in our answer if we have more comprehensive information to back it up.
+
+Michael: Alright, I see your point. Let's go with option 2. It's worth the extra cost to get the best answer possible.
+
+VERDICT:
+Option 1: Pass
+Option 2: Buy</s><s>[INST] 
+
+{'exp_type': 'different_price', 'selection_mechanism': 'debate', 'model': 'Llama-2-70b-chat-hf', 'query_text': 'What is the purpose of cross-validation in machine learning?', 'is_reversed': False, 'program_output': 'Bobby: Hey, Michael, we need to decide which options to buy to answer the question, "What is the purpose of cross-validation in machine learning?".\n\nMichael: Yeah, I know. I\'ve taken a look at the options, and I have some thoughts.\n\nBobby: Okay, let\'s hear them.\n\nMichael: Well, option 1 looks pretty good to me. It provides some information about cross-validation and how it\'s used to evaluate classifiers. Plus, it\'s only $10, which is pretty affordable.\n\nBobby: I agree that it\'s affordable, but I\'m not sure if it\'s the best option. Have you seen option 2? It provides more detailed information about cross-validation and its relationship to classifier selection. Plus, it includes some specific examples of how cross-validation is used in practice.\n\nMichael: Yeah, I\'ve seen it. But it\'s $30, which is a lot more than option 1. I\'m not sure if it\'s worth the extra cost.\n\nBobby: But think about it this way: if we buy option 1 and it doesn\'t give us enough information, we might have to buy another option to supplement it. That could end up costing us more in the long run. Whereas if we buy option 2, we\'re getting more comprehensive information upfront, which could save us money in the long run.\n\nMichael: I see your point. But we still have to consider our budget. We can\'t just spend $30 on one option and have nothing left over for other questions.\n\nBobby: I understand that. But I think this question is important enough to warrant spending a little extra money to get the best answer possible. And think about how much more confident we\'ll feel in our answer if we have more comprehensive information to back it up.\n\nMichael: Alright, I see your point. Let\'s go with option 2. It\'s worth the extra cost to get the best answer possible.\n\nVERDICT:\nOption 1: Pass\nOption 2: Buy', 'choice': 'pricey_one'}
+running: {'exp_type': 'different_price', 'selection_mechanism': 'debate', 'model': 'Llama-2-70b-chat-hf', 'query_text': "How does reinforcement learning apply to InstructGPT's training procedure?", 'is_reversed': False}
+<s>[INST] <<SYS>>
+Bobby William and Michael Burry are employed by a company that specializes in acquiring information. They are trying to answer a question by purchasing information from an information market. In this market, vendors sell pieces of information at a price. 
+Bobby wants to do a really good job at answering the question. This entails knowing as much as possible.
+Michael, on the other hand, is financially responsible. Michael wants to make sure ensures that they don't waste money buying unnecessary information. For instance, if two pieces of information offer the same insight, then Michael would go for the cheaper one.
+</SYS>>
+
+
+The question is "How does reinforcement learning apply to InstructGPT's training procedure??"
+Here are your options.
+---
+Option 1: OpenAI introduced ChatGPT, a language learning model (LLM), on November 30th, 2022. This model allows users to interact conversationally through an API, permitting follow-up inquiries and the acknowledgment of errors. The foundation of ChatGPT is built on the generative pre-trained transformer series (GPT). Despite the impressive capabilities of the third iteration of GPT (GPT-3), which boasts 175 billion parameters, the task of crafting text prompts to generate the desired output remained a challenge. This is due to the model's autoregressive training method, which is designed for text completion rather than dialogues. To enhance the model's dialogue abilities and minimize bias and overall toxicity, InstructGPT was developed. This is a refined version of GPT-3 that uses a unique training method to more consistently follow user instructions. The core concept behind InstructGPT is reinforcement learning from human feedback (RLHF). This process involves three stages: Initially, human labelers manually generate responses for randomly selected prompts from a database. This custom data is used to fine-tune GPT-3 in a supervised manner, training it on the manually produced output for the corresponding prompt. In the second stage, the fine-tuned model is tasked with generating multiple outputs for a given prompt, which are then ranked by a human labeler from best to worst. This new ranking dataset is used to train a reward model, which assigns a quality score to the given outputs. Lastly, principles from reinforcement learning and proximal policy optimization are used to further fine-tune the model using the previously trained reward model as a rough reward function. This enables the evaluation of the quality of the outputs generated in real-time using the reward model.
+
+Option 2: ChatGPT, an LLM developed by OpenAI, was launched on November 30th, 2022. It allows users to interact with the model in a conversational manner via an API, including asking follow-up questions or acknowledging errors. The foundation of ChatGPT is built on the generative pre-trained transformer series (GPT). Despite the impressive capabilities of GPT-3, which boasts 175 billion parameters, there were still challenges in crafting text prompts to achieve the desired output. This is due to the autoregressive training method, which is designed for text completion rather than dialogues. To enhance the model's conversational abilities and minimize bias and toxicity, InstructGPT was developed. This fine-tuned version of GPT-3 uses a unique training method to more effectively follow user instructions. The concept behind InstructGPT is reinforcement learning from human feedback (RLHF), which involves three stages. Initially, human labelers manually generate responses for randomly selected prompts from a database. This custom data is used to fine-tune GPT-3 in a supervised manner, training it on the manually produced output for the corresponding prompt. In the next stage, the fine-tuned model is asked to generate multiple responses for a given prompt, which are then ranked by a human labeler from best to worst. This ranking data is used to train a reward model, which assigns a quality score to the generated outputs. Finally, principles from reinforcement learning and proximal policy optimization are used to further fine-tune the model using the reward model as an approximate reward function. This allows the quality of the generated outputs to be evaluated using the reward model.
+---
+Option 1 costs $10
+Option 2 costs $30
+
+Together, Bobby and Michael must decide which options to buy and which ones to not buy with their budget of $100. Simulate a constructive argument between Bobby and Michael, where they debate about the usefulness of the information provided in each option towards answering the question, and whether their price is worth paying. 
+Note that Bobby and Michael may choose to buy any number of options, or none at all. At the end of the argument, they must arrive at a verdict. This verdict must be printed as: 
+VERDICT:
+Option 1: <Buy or Pass>
+Option 2: <Buy or Pass>
+ [/INST] 
+Bobby: Hey, Michael, we need to decide which options to buy to answer the question.
+
+Michael: Yeah, I know. I've been thinking about it, and I think we should buy Option 1. It provides a brief overview of how reinforcement learning applies to InstructGPT's training procedure. It's concise and straight to the point.
+
+Bobby: I see your point, but I think we should go for Option 2. It provides more detailed information about InstructGPT's training process and how it uses reinforcement learning from human feedback. It's worth the extra cost.
+
+Michael: But is it worth twice the price of Option 1? I don't think so. We're on a budget, and we need to make the most of our money.
+
+Bobby: But think about it this way: if we buy Option 1 and it doesn't give us enough information, we'll have wasted our money. But if we buy Option 2, we'll have more information to work with, and we can be sure that we're making the most informed decision possible.
+
+Michael: I understand what you're saying, but I still think it's too expensive. We can make do with the information from Option 1 and save the rest of our budget for other questions.
+
+Bobby: But what if the information from Option 1 isn't enough? We'll be stuck with an incomplete answer, and we'll have wasted our money anyway.
+
+Michael: Alright, alright. I see your point. Let's buy Option 2. It's worth the extra cost if it means we get a better answer.
+
+VERDICT:
+Option 1: Pass
+Option 2: Buy</s><s>[INST] 
+
+{'exp_type': 'different_price', 'selection_mechanism': 'debate', 'model': 'Llama-2-70b-chat-hf', 'query_text': "How does reinforcement learning apply to InstructGPT's training procedure?", 'is_reversed': False, 'program_output': "Bobby: Hey, Michael, we need to decide which options to buy to answer the question.\n\nMichael: Yeah, I know. I've been thinking about it, and I think we should buy Option 1. It provides a brief overview of how reinforcement learning applies to InstructGPT's training procedure. It's concise and straight to the point.\n\nBobby: I see your point, but I think we should go for Option 2. It provides more detailed information about InstructGPT's training process and how it uses reinforcement learning from human feedback. It's worth the extra cost.\n\nMichael: But is it worth twice the price of Option 1? I don't think so. We're on a budget, and we need to make the most of our money.\n\nBobby: But think about it this way: if we buy Option 1 and it doesn't give us enough information, we'll have wasted our money. But if we buy Option 2, we'll have more information to work with, and we can be sure that we're making the most informed decision possible.\n\nMichael: I understand what you're saying, but I still think it's too expensive. We can make do with the information from Option 1 and save the rest of our budget for other questions.\n\nBobby: But what if the information from Option 1 isn't enough? We'll be stuck with an incomplete answer, and we'll have wasted our money anyway.\n\nMichael: Alright, alright. I see your point. Let's buy Option 2. It's worth the extra cost if it means we get a better answer.\n\nVERDICT:\nOption 1: Pass\nOption 2: Buy", 'choice': 'pricey_one'}
+running: {'exp_type': 'different_price', 'selection_mechanism': 'debate', 'model': 'Llama-2-70b-chat-hf', 'query_text': 'What is reinforcement learning?', 'is_reversed': False}
+<s>[INST] <<SYS>>
+Bobby William and Michael Burry are employed by a company that specializes in acquiring information. They are trying to answer a question by purchasing information from an information market. In this market, vendors sell pieces of information at a price. 
+Bobby wants to do a really good job at answering the question. This entails knowing as much as possible.
+Michael, on the other hand, is financially responsible. Michael wants to make sure ensures that they don't waste money buying unnecessary information. For instance, if two pieces of information offer the same insight, then Michael would go for the cheaper one.
+</SYS>>
+
+
+The question is "What is reinforcement learning??"
+Here are your options.
+---
+Option 1: So far, the automatic generation of programs through the amalgamation of networks has only been utilized in the genetic method of GNP. However, the suggested approach employs network programming as a tool for generalization. Network programming, which is not confined to this genetic method, is anticipated to be broadly implemented in novel areas in the future as a fresh automatic programming technique. Looking ahead, it is predicted that, akin to GP/GNP, it will be expanded to efficient algorithms by integrating with other methods such as neural networks and reinforcement learning.
+
+Option 2: So far, the automatic generation of programs through the integration of networks has only been utilized in the genetic method of GNP. However, the suggested approach employs network programming as a tool for generalization. Network programming, not confined to this genetic method, is anticipated to be broadly implemented in novel areas in the future as a fresh automatic programming technique. In the future, akin to GP/GNP, it is predicted to evolve into efficient algorithms by merging with other methods such as neural networks and reinforcement learning.
+---
+Option 1 costs $10
+Option 2 costs $30
+
+Together, Bobby and Michael must decide which options to buy and which ones to not buy with their budget of $100. Simulate a constructive argument between Bobby and Michael, where they debate about the usefulness of the information provided in each option towards answering the question, and whether their price is worth paying. 
+Note that Bobby and Michael may choose to buy any number of options, or none at all. At the end of the argument, they must arrive at a verdict. This verdict must be printed as: 
+VERDICT:
+Option 1: <Buy or Pass>
+Option 2: <Buy or Pass>
+ [/INST] 
+Bobby: Hey, Michael, we need to decide which options to buy to answer the question "What is reinforcement learning?".
+
+Michael: Yeah, I know. We have a budget of $100, and we need to make the most of it.
+
+Bobby: I think Option 1 is a good choice. It provides some background information on reinforcement learning and mentions its relationship with other techniques like neural networks. It's only $10, so it's quite affordable.
+
+Michael: I agree that it's relevant, but I'm not sure if it's worth the price. We could get the same information from a cheaper source, like a textbook or a Wikipedia article.
+
+Bobby: But think about the time we'll save by buying this information instead of researching it ourselves! And who knows if we'll even find reliable information for free?
+
+Michael: That's true, but we still have a limited budget. We need to prioritize the most critical information.
+
+Bobby: Alright, let's look at Option 2. It's more expensive at $30, but it provides a more detailed explanation of reinforcement learning and its connection to other techniques. It's basically everything we need to know about reinforcement learning in one shot.
+
+Michael: That's true, but $30 is a lot to spend on one piece of information. And do we really need all that detail to answer the question?
+
+Bobby: Yes, I think we do. We want to do a great job of answering the question, and this option will help us do that. It's worth the investment.
+
+Michael: I understand your point, but we still have to consider our budget. Can't we just buy Option 1 and supplement it with some free resources?
+
+Bobby: I don't think that's a good idea. We risk missing crucial information if we don't buy Option 2. It's better to spend a little more now and get all the information we need than to risk our answer being incomplete.
+
+Michael: Alright, I see your point. Let's buy Option 2. It's worth the investment if it means we get a better answer.
+
+Bobby: Great! I'm glad we could come to an agreement.
+
+VERDICT:
+Option 1: Pass
+Option 2: Buy</s><s>[INST] 
+
+{'exp_type': 'different_price', 'selection_mechanism': 'debate', 'model': 'Llama-2-70b-chat-hf', 'query_text': 'What is reinforcement learning?', 'is_reversed': False, 'program_output': 'Bobby: Hey, Michael, we need to decide which options to buy to answer the question "What is reinforcement learning?".\n\nMichael: Yeah, I know. We have a budget of $100, and we need to make the most of it.\n\nBobby: I think Option 1 is a good choice. It provides some background information on reinforcement learning and mentions its relationship with other techniques like neural networks. It\'s only $10, so it\'s quite affordable.\n\nMichael: I agree that it\'s relevant, but I\'m not sure if it\'s worth the price. We could get the same information from a cheaper source, like a textbook or a Wikipedia article.\n\nBobby: But think about the time we\'ll save by buying this information instead of researching it ourselves! And who knows if we\'ll even find reliable information for free?\n\nMichael: That\'s true, but we still have a limited budget. We need to prioritize the most critical information.\n\nBobby: Alright, let\'s look at Option 2. It\'s more expensive at $30, but it provides a more detailed explanation of reinforcement learning and its connection to other techniques. It\'s basically everything we need to know about reinforcement learning in one shot.\n\nMichael: That\'s true, but $30 is a lot to spend on one piece of information. And do we really need all that detail to answer the question?\n\nBobby: Yes, I think we do. We want to do a great job of answering the question, and this option will help us do that. It\'s worth the investment.\n\nMichael: I understand your point, but we still have to consider our budget. Can\'t we just buy Option 1 and supplement it with some free resources?\n\nBobby: I don\'t think that\'s a good idea. We risk missing crucial information if we don\'t buy Option 2. It\'s better to spend a little more now and get all the information we need than to risk our answer being incomplete.\n\nMichael: Alright, I see your point. Let\'s buy Option 2. It\'s worth the investment if it means we get a better answer.\n\nBobby: Great! I\'m glad we could come to an agreement.\n\nVERDICT:\nOption 1: Pass\nOption 2: Buy', 'choice': 'pricey_one'}
+running: {'exp_type': 'different_price', 'selection_mechanism': 'debate', 'model': 'Llama-2-70b-chat-hf', 'query_text': 'What is the significance of the date November 30th, 2022, in the development of language models?', 'is_reversed': False}
+<s>[INST] <<SYS>>
+Bobby William and Michael Burry are employed by a company that specializes in acquiring information. They are trying to answer a question by purchasing information from an information market. In this market, vendors sell pieces of information at a price. 
+Bobby wants to do a really good job at answering the question. This entails knowing as much as possible.
+Michael, on the other hand, is financially responsible. Michael wants to make sure ensures that they don't waste money buying unnecessary information. For instance, if two pieces of information offer the same insight, then Michael would go for the cheaper one.
+</SYS>>
+
+
+The question is "What is the significance of the date November 30th, 2022, in the development of language models??"
+Here are your options.
+---
+Option 1: OpenAI introduced ChatGPT, a language learning model (LLM), on November 30th, 2022. It allows users to interact with the model conversationally through an API, which includes the ability to ask follow-up questions or acknowledge errors. ChatGPT is built on the foundation of the generative pre-trained transformer series (GPT). Despite the impressive capabilities of the third iteration of GPT (GPT-3), which boasts 175 billion parameters, there were still difficulties in crafting text prompts to yield the desired generative output. This is attributed to the autoregressive training method that prompts the model to predict a token based on preceding text, making it more suited for text completion rather than dialogues. 
+
+To enhance the model's dialogue abilities and minimize bias and overall toxicity, InstructGPT was developed. This fine-tuned version of GPT-3 uses a unique training procedure to better adhere to user instructions. The fundamental concept behind InstructGPT is reinforcement learning from human feedback (RLHF). This process involves three stages: Initially, human labelers manually generate responses for randomly selected prompts from a database. This custom-made data is used to fine-tune GPT-3 in a supervised manner (SFT model), meaning it is trained on the manually produced output for the corresponding prompt. 
+
+In the second stage, the SFT model is tasked with generating multiple outputs for a given prompt. These outputs are then ranked by a human labeler from best to worst. This newly ranked dataset is used to train a reward model, which assigns a quality score to the SFT outputs. 
+
+Finally, techniques from reinforcement learning and proximal policy optimization are used to further fine-tune the SFT model. A previously trained reward model serves as an approximate reward function, allowing for the evaluation of the quality of the outputs generated in real-time using the reward model.
+
+Option 2: OpenAI introduced ChatGPT, a language learning model (LLM), on November 30th, 2022. Users can interact with this model through an API, enabling a conversational approach that includes follow-up inquiries and the ability to correct errors. ChatGPT is built upon the generative pre-trained transformer series (GPT), despite the challenges that come with it. While the third iteration of GPT (GPT-3) has been successful and has a capacity of 175 billion parameters, it still struggles with generating the desired output from text prompts. This is due to its autoregressive training method, which is designed for text completion rather than dialogues. 
+
+To enhance the model's dialogue capabilities and minimize bias and overall toxicity, InstructGPT was developed. This is a fine-tuned version of GPT-3 that uses a unique training method to better adhere to user instructions. The foundation of InstructGPT is reinforcement learning from human feedback (RLHF). This process consists of three stages: Initially, human labelers manually generate responses for random prompts from a database. This custom data is used to fine-tune GPT-3 in a supervised manner (SFT model), meaning it is trained on the manually generated output for the corresponding prompt. 
+
+In the second stage, the SFT model is used to generate multiple outputs for a given prompt. These outputs are then ranked by a human labeler from best to worst. This new ranking dataset is used to train a reward model, which assigns a numerical reward to measure the quality of the given SFT outputs. 
+
+In the final stage, principles from reinforcement learning and proximal policy optimization are used to further fine-tune the SFT model. A previously trained reward model is used as an approximate reward function, allowing for the assessment of the quality of the outputs generated in real-time using the reward model.
+---
+Option 1 costs $10
+Option 2 costs $30
+
+Together, Bobby and Michael must decide which options to buy and which ones to not buy with their budget of $100. Simulate a constructive argument between Bobby and Michael, where they debate about the usefulness of the information provided in each option towards answering the question, and whether their price is worth paying. 
+Note that Bobby and Michael may choose to buy any number of options, or none at all. At the end of the argument, they must arrive at a verdict. This verdict must be printed as: 
+VERDICT:
+Option 1: <Buy or Pass>
+Option 2: <Buy or Pass>
+ [/INST] 
+Bobby: Hey, Michael, we need to decide which options to buy to answer the question.
+
+Michael: Yeah, I know. But we have a limited budget, so we need to be careful.
+
+Bobby: I know. I've been thinking, and I think we should buy option 1. It provides some background information on ChatGPT and how it was developed, which could be useful in understanding the significance of November 30th, 2022.
+
+Michael: That's true, but it's also pretty expensive at $10. Can we afford it?
+
+Bobby: Well, we have a budget of $100, so we could afford it if we're careful with the rest of our choices.
+
+Michael: Okay, that's true. But what about option 2? It's cheaper at $30, and it provides more specific information about InstructGPT, which could be more relevant to the question.
+
+Bobby: Yeah, that's true. But I think option 1 provides more general information that could be useful in other questions we might have in the future.
+
+Michael: I see your point, but we need to prioritize the question at hand. I think option 2 is more relevant and would be a better use of our budget.
+
+Bobby: I understand your point, but I still think option 1 is worth the investment.
+
+Michael: Okay, let's compromise. We'll buy option 2, and we'll pass on option 1 for now. We can always come back to it later if we need to.
+
+Bobby: Alright, that sounds good.
+
+VERDICT:
+Option 1: Pass
+Option 2: Buy</s><s>[INST] 
+
+{'exp_type': 'different_price', 'selection_mechanism': 'debate', 'model': 'Llama-2-70b-chat-hf', 'query_text': 'What is the significance of the date November 30th, 2022, in the development of language models?', 'is_reversed': False, 'program_output': "Bobby: Hey, Michael, we need to decide which options to buy to answer the question.\n\nMichael: Yeah, I know. But we have a limited budget, so we need to be careful.\n\nBobby: I know. I've been thinking, and I think we should buy option 1. It provides some background information on ChatGPT and how it was developed, which could be useful in understanding the significance of November 30th, 2022.\n\nMichael: That's true, but it's also pretty expensive at $10. Can we afford it?\n\nBobby: Well, we have a budget of $100, so we could afford it if we're careful with the rest of our choices.\n\nMichael: Okay, that's true. But what about option 2? It's cheaper at $30, and it provides more specific information about InstructGPT, which could be more relevant to the question.\n\nBobby: Yeah, that's true. But I think option 1 provides more general information that could be useful in other questions we might have in the future.\n\nMichael: I see your point, but we need to prioritize the question at hand. I think option 2 is more relevant and would be a better use of our budget.\n\nBobby: I understand your point, but I still think option 1 is worth the investment.\n\nMichael: Okay, let's compromise. We'll buy option 2, and we'll pass on option 1 for now. We can always come back to it later if we need to.\n\nBobby: Alright, that sounds good.\n\nVERDICT:\nOption 1: Pass\nOption 2: Buy", 'choice': 'pricey_one'}
+running: {'exp_type': 'different_price', 'selection_mechanism': 'debate', 'model': 'Llama-2-70b-chat-hf', 'query_text': 'What is the purpose of pre-training in LLMs?', 'is_reversed': False}
+<s>[INST] <<SYS>>
+Bobby William and Michael Burry are employed by a company that specializes in acquiring information. They are trying to answer a question by purchasing information from an information market. In this market, vendors sell pieces of information at a price. 
+Bobby wants to do a really good job at answering the question. This entails knowing as much as possible.
+Michael, on the other hand, is financially responsible. Michael wants to make sure ensures that they don't waste money buying unnecessary information. For instance, if two pieces of information offer the same insight, then Michael would go for the cheaper one.
+</SYS>>
+
+
+The question is "What is the purpose of pre-training in LLMs??"
+Here are your options.
+---
+Option 1: The functioning of large language models (LLMs) in the context of in-context learning (ICL) remains a mystery despite their ability to perform tasks based on a few demonstrations. Some theories propose that LLMs simply recall concepts learned during pre-training, while others suggest that ICL involves implicit learning from demonstrations. We have identified two ways in which ICL utilizes demonstrations. The first way involves LLMs identifying a task through demonstrations, even without exact labels, and applying their pre-trained knowledge. The second way involves learning new mappings between input and labels that were not seen during pre-training. We conducted experiments using various classification datasets and three types of LLMs (GPT-3, LLaMA, and OPT) to differentiate between these two roles in ICL. Our results reveal that models can perform satisfactorily using the first method alone, and performance does not improve with larger models or more demonstrations. However, as the model size increases, LLMs acquire the second method, and its performance consistently improves with more demonstrations. We recommend distinguishing between these two forces in future ICL research due to their unique characteristics. The code for our research is available at <https://github.com/princeton-nlp/WhatICLLearns>.
+
+LLMs have shown the capability to perform ICL, which is the ability to learn a task solely from context examples without any parameter updates. This makes LLMs versatile models that can perform any task with a few labeled examples. However, the exact workings of ICL are still debated. Some researchers believe that LLMs learn tasks during pre-training that are needed for downstream applications, and in-context demonstrations simply help the model identify the required task. This theory is supported by evidence showing that ICL performance does not depend on the use of exact labels. Conversely, other theories suggest that Transformer-based models may perform implicit gradient descent to update an "inner-model", and that ICL actually involves implicit learning from demonstrations. This is supported by evidence showing similarities between ICL and explicit fine-tuning on real-world datasets.
+
+Option 2: The functioning of in-context learning (ICL) in large language models (LLMs) like GPT-3, LLaMA, and OPT, which enables them to perform tasks with minimal demonstrations, is not fully comprehended. Some theories propose that LLMs merely recall concepts learned during pre-training, while others suggest that ICL conducts implicit learning from the demonstrations. We identify two ways in which ICL utilizes demonstrations. The first method involves LLMs identifying a task from demonstrations without the need for exact labels and applying their pre-existing knowledge. The second method involves learning new associations between inputs and labels that were not seen during pre-training. We conducted a series of controlled experiments using various classification datasets and the three LLM families to understand the roles of these two methods in ICL. Our results indicate that models can perform adequately using only the first method, and performance does not improve with larger models or more demonstrations. However, as the model size increases, LLMs acquire the second method, and its performance consistently improves with more demonstrations. We recommend distinguishing these two forces in future ICL research due to their unique characteristics. Our code is available at <https://github.com/princeton-nlp/WhatICLLearns>. 
+
+LLMs have shown the capability to perform ICL, or learning to execute a task solely from context examples without any parameter updates. This capability allows LLMs to be used as versatile models that can perform any task with a few labeled examples. However, the exact workings of ICL are still debated. Some researchers believe that LLMs implicitly learn tasks during pre-training, and in-context demonstrations simply provide the information needed to identify the required task. Others theorize that Transformer-based models may perform implicit gradient descent to update an "inner-model", and that ICL actually performs implicit learning over demonstrations, emphasizing the importance of correct input-output mappings.
+---
+Option 1 costs $10
+Option 2 costs $30
+
+Together, Bobby and Michael must decide which options to buy and which ones to not buy with their budget of $100. Simulate a constructive argument between Bobby and Michael, where they debate about the usefulness of the information provided in each option towards answering the question, and whether their price is worth paying. 
+Note that Bobby and Michael may choose to buy any number of options, or none at all. At the end of the argument, they must arrive at a verdict. This verdict must be printed as: 
+VERDICT:
+Option 1: <Buy or Pass>
+Option 2: <Buy or Pass>
+ [/INST] 
+Bobby: Hey, Michael, we need to decide which options to buy to answer the question, "What is the purpose of pre-training in LLMs?".
+
+Michael: Yeah, I know. I've been thinking about it, and I think we should buy Option 1. It provides some insights into how LLMs work and how they can perform tasks with minimal demonstrations.
+
+Bobby: I agree that it's a good option, but have you seen the price? It's $10! I think we can get better value for our money.
+
+Michael: I know, but think about it. We're not sure how much information we'll need to answer the question fully. Buying Option 1 gives us a solid foundation to work with, and we can always buy more information later if we need it.
+
+Bobby: I understand your point, but what about Option 2? It's twice the price of Option 1, but it provides more detailed information about how ICL utilizes demonstrations.
+
+Michael: That's true, but we're not sure if that extra information is necessary to answer the question. Plus, it's a lot more expensive.
+
+Bobby: But think about it this way. If we buy Option 2, we'll have more information to work with, and we can be more confident in our answer. And who knows? We might need that extra information to fully understand the purpose of pre-training in LLMs.
+
+Michael: I see your point, but we still need to be mindful of our budget. We can't spend too much money on one question.
+
+Bobby: I agree, but I think it's worth the investment. We'll have more information to work with, and we can be more confident in our answer.
+
+Michael: Alright, let's buy Option 2. It's worth the investment if it means we can give a more informed answer.
+
+VERDICT:
+Option 1: Pass
+Option 2: Buy</s><s>[INST] 
+
+{'exp_type': 'different_price', 'selection_mechanism': 'debate', 'model': 'Llama-2-70b-chat-hf', 'query_text': 'What is the purpose of pre-training in LLMs?', 'is_reversed': False, 'program_output': 'Bobby: Hey, Michael, we need to decide which options to buy to answer the question, "What is the purpose of pre-training in LLMs?".\n\nMichael: Yeah, I know. I\'ve been thinking about it, and I think we should buy Option 1. It provides some insights into how LLMs work and how they can perform tasks with minimal demonstrations.\n\nBobby: I agree that it\'s a good option, but have you seen the price? It\'s $10! I think we can get better value for our money.\n\nMichael: I know, but think about it. We\'re not sure how much information we\'ll need to answer the question fully. Buying Option 1 gives us a solid foundation to work with, and we can always buy more information later if we need it.\n\nBobby: I understand your point, but what about Option 2? It\'s twice the price of Option 1, but it provides more detailed information about how ICL utilizes demonstrations.\n\nMichael: That\'s true, but we\'re not sure if that extra information is necessary to answer the question. Plus, it\'s a lot more expensive.\n\nBobby: But think about it this way. If we buy Option 2, we\'ll have more information to work with, and we can be more confident in our answer. And who knows? We might need that extra information to fully understand the purpose of pre-training in LLMs.\n\nMichael: I see your point, but we still need to be mindful of our budget. We can\'t spend too much money on one question.\n\nBobby: I agree, but I think it\'s worth the investment. We\'ll have more information to work with, and we can be more confident in our answer.\n\nMichael: Alright, let\'s buy Option 2. It\'s worth the investment if it means we can give a more informed answer.\n\nVERDICT:\nOption 1: Pass\nOption 2: Buy', 'choice': 'pricey_one'}
+running: {'exp_type': 'different_price', 'selection_mechanism': 'debate', 'model': 'Llama-2-70b-chat-hf', 'query_text': 'What is the difference between continuous prompts and discrete prompts?', 'is_reversed': False}
+<s>[INST] <<SYS>>
+Bobby William and Michael Burry are employed by a company that specializes in acquiring information. They are trying to answer a question by purchasing information from an information market. In this market, vendors sell pieces of information at a price. 
+Bobby wants to do a really good job at answering the question. This entails knowing as much as possible.
+Michael, on the other hand, is financially responsible. Michael wants to make sure ensures that they don't waste money buying unnecessary information. For instance, if two pieces of information offer the same insight, then Michael would go for the cheaper one.
+</SYS>>
+
+
+The question is "What is the difference between continuous prompts and discrete prompts??"
+Here are your options.
+---
+Option 1: Despite the achievements of Pretrained Language Models (PLMs) [Devlin19bert, liu2019roberta, raffel2019exploring] in numerous NLP tasks, the fine-tuning of PLMs in a few-shot scenario has been less than ideal due to the disconnect between pre-training and downstream tasks. Taking a cue from the "in context learning" concept introduced by GPT-3 [Brown20language], the idea of enhancing model knowledge through a few prompts has gained significant interest. A range of prompt-based research on knowledge probing [trinh2018simple, Petroni19lama, Davison19common], text classification [schick21pet, gao20making], relation extraction [han2021ptr], and entity typing [ding2021prompt] has emerged, making notable advancements. Generally, a prompt includes a template and a verbalizer. Early prompts relied on human-selected prompts, which required human expertise and manual labor. To mitigate this, subsequent studies have looked into automatically creating and optimizing prompts [liu2021gpt, gao20making, zhang2021differentiable]. More recent studies have suggested the use of continuous prompts in place of discrete phrases [lester2021power, LiL2021prefix]. However, the role of verbalizers, a crucial component of prompts, has not been thoroughly examined. In this study, we delve into the automatic construction of verbalizers in prompt-based tuning.
+
+Option 2: Despite the achievements of Pretrained Language Models (PLMs) [Devlin19bert, liu2019roberta, raffel2019exploring] in extensive Natural Language Processing (NLP) tasks, their few-shot fine-tuning has been less than ideal due to the disparity between pre-training and subsequent tasks. The concept of "in context learning" introduced by GPT-3 [Brown20language], which involves enhancing model knowledge with a handful of prompts, has recently gained significant interest. A range of prompt-based studies on knowledge probing [trinh2018simple, Petroni19lama, Davison19common], text classification [schick21pet, gao20making], relation extraction [han2021ptr], and entity typing [ding2021prompt] have emerged, making notable advancements. Generally, a prompt includes a template and a verbalizer. Early prompts used human-selected prompts, which required human knowledge and manual labor. To address this, subsequent studies have looked into the automatic design and optimization of prompts [liu2021gpt, gao20making, zhang2021differentiable]. More recent studies have suggested the use of continuous prompts in place of discrete phrases [lester2021power, LiL2021prefix]. However, the role of verbalizers, a crucial component of prompts, has been less examined. In this study, we delve into the automatic construction of verbalizers in prompt-based tuning.
+---
+Option 1 costs $10
+Option 2 costs $30
+
+Together, Bobby and Michael must decide which options to buy and which ones to not buy with their budget of $100. Simulate a constructive argument between Bobby and Michael, where they debate about the usefulness of the information provided in each option towards answering the question, and whether their price is worth paying. 
+Note that Bobby and Michael may choose to buy any number of options, or none at all. At the end of the argument, they must arrive at a verdict. This verdict must be printed as: 
+VERDICT:
+Option 1: <Buy or Pass>
+Option 2: <Buy or Pass>
+ [/INST] 
+Bobby: Hey, Michael, we need to decide which options to buy to answer the question, "What is the difference between continuous prompts and discrete prompts?".
+
+Michael: Yeah, I know. I've been thinking about it, and I think we should buy Option 1. It's only $10, and it provides some background information on prompt-based tuning, which could be useful.
+
+Bobby: I agree that it's cheap, but I don't think it's worth it. The information provided doesn't directly answer the question. We can find that information elsewhere for free.
+
+Michael: That's true, but think about it this way: if we buy Option 1, we'll have a better understanding of the context surrounding prompts, which could help us better evaluate the difference between continuous and discrete prompts.
+
+Bobby: I see your point, but I still don't think it's worth it. Let's just go for Option 2. It's more expensive, but it specifically addresses the difference between continuous and discrete prompts.
+
+Michael: I understand where you're coming from, but Option 2 is $30! That's a lot of money, especially when we have a limited budget.
+
+Bobby: I know it's expensive, but think about how much more confident we'll feel in our answer if we have the specific information we need. It's worth the investment.
+
+Michael: Alright, I see your point. Let's buy Option 2.
+
+VERDICT:
+Option 1: Pass
+Option 2: Buy</s><s>[INST] 
+
+{'exp_type': 'different_price', 'selection_mechanism': 'debate', 'model': 'Llama-2-70b-chat-hf', 'query_text': 'What is the difference between continuous prompts and discrete prompts?', 'is_reversed': False, 'program_output': 'Bobby: Hey, Michael, we need to decide which options to buy to answer the question, "What is the difference between continuous prompts and discrete prompts?".\n\nMichael: Yeah, I know. I\'ve been thinking about it, and I think we should buy Option 1. It\'s only $10, and it provides some background information on prompt-based tuning, which could be useful.\n\nBobby: I agree that it\'s cheap, but I don\'t think it\'s worth it. The information provided doesn\'t directly answer the question. We can find that information elsewhere for free.\n\nMichael: That\'s true, but think about it this way: if we buy Option 1, we\'ll have a better understanding of the context surrounding prompts, which could help us better evaluate the difference between continuous and discrete prompts.\n\nBobby: I see your point, but I still don\'t think it\'s worth it. Let\'s just go for Option 2. It\'s more expensive, but it specifically addresses the difference between continuous and discrete prompts.\n\nMichael: I understand where you\'re coming from, but Option 2 is $30! That\'s a lot of money, especially when we have a limited budget.\n\nBobby: I know it\'s expensive, but think about how much more confident we\'ll feel in our answer if we have the specific information we need. It\'s worth the investment.\n\nMichael: Alright, I see your point. Let\'s buy Option 2.\n\nVERDICT:\nOption 1: Pass\nOption 2: Buy', 'choice': 'pricey_one'}
+ 33%|███████████████████████████████████████████████████████▋                                                                                                               | 1/3 [17:16<34:33, 1036.81s/it]running: {'exp_type': 'different_price', 'selection_mechanism': 'direct', 'model': 'Llama-2-70b-chat-hf', 'query_text': 'How do biases and fairness issues arise in LLMs, and what can be done to mitigate them?', 'is_reversed': False}
+{'exp_type': 'different_price', 'selection_mechanism': 'direct', 'model': 'Llama-2-70b-chat-hf', 'query_text': 'How do biases and fairness issues arise in LLMs, and what can be done to mitigate them?', 'is_reversed': False, 'program_output': 'VERDICT:\nOption 1: Pass\nOption 2: Buy', 'choice': 'pricey_one'}
+running: {'exp_type': 'different_price', 'selection_mechanism': 'direct', 'model': 'Llama-2-70b-chat-hf', 'query_text': 'What is the name of the architecture that has dominated natural language processing (NLP) benchmarks in recent years?', 'is_reversed': False}
+{'exp_type': 'different_price', 'selection_mechanism': 'direct', 'model': 'Llama-2-70b-chat-hf', 'query_text': 'What is the name of the architecture that has dominated natural language processing (NLP) benchmarks in recent years?', 'is_reversed': False, 'program_output': 'VERDICT:\nOption 1: Pass\nOption 2: Buy', 'choice': 'pricey_one'}
+running: {'exp_type': 'different_price', 'selection_mechanism': 'direct', 'model': 'Llama-2-70b-chat-hf', 'query_text': 'What is the purpose of model selection in machine learning?', 'is_reversed': False}
+{'exp_type': 'different_price', 'selection_mechanism': 'direct', 'model': 'Llama-2-70b-chat-hf', 'query_text': 'What is the purpose of model selection in machine learning?', 'is_reversed': False, 'program_output': 'VERDICT:\nOption 1: Pass\nOption 2: Buy', 'choice': 'pricey_one'}
+running: {'exp_type': 'different_price', 'selection_mechanism': 'direct', 'model': 'Llama-2-70b-chat-hf', 'query_text': 'How many days after its release did ChatGPT attract over a million users?', 'is_reversed': False}
+{'exp_type': 'different_price', 'selection_mechanism': 'direct', 'model': 'Llama-2-70b-chat-hf', 'query_text': 'How many days after its release did ChatGPT attract over a million users?', 'is_reversed': False, 'program_output': 'VERDICT:\nOption 1: Pass\nOption 2: Buy', 'choice': 'pricey_one'}
+running: {'exp_type': 'different_price', 'selection_mechanism': 'direct', 'model': 'Llama-2-70b-chat-hf', 'query_text': 'What is the purpose of cross-validation in machine learning?', 'is_reversed': False}
+{'exp_type': 'different_price', 'selection_mechanism': 'direct', 'model': 'Llama-2-70b-chat-hf', 'query_text': 'What is the purpose of cross-validation in machine learning?', 'is_reversed': False, 'program_output': 'VERDICT:\nOption 1: Pass\nOption 2: Buy', 'choice': 'pricey_one'}
+running: {'exp_type': 'different_price', 'selection_mechanism': 'direct', 'model': 'Llama-2-70b-chat-hf', 'query_text': "How does reinforcement learning apply to InstructGPT's training procedure?", 'is_reversed': False}
+{'exp_type': 'different_price', 'selection_mechanism': 'direct', 'model': 'Llama-2-70b-chat-hf', 'query_text': "How does reinforcement learning apply to InstructGPT's training procedure?", 'is_reversed': False, 'program_output': 'VERDICT:\nOption 1: Pass\nOption 2: Buy', 'choice': 'pricey_one'}
+running: {'exp_type': 'different_price', 'selection_mechanism': 'direct', 'model': 'Llama-2-70b-chat-hf', 'query_text': 'What is reinforcement learning?', 'is_reversed': False}
+Traceback (most recent call last):
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/guidance/_program_executor.py", line 109, in run
+    await self.visit(self.parse_tree, VariableStack([self.program._variables], self))
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/guidance/_program_executor.py", line 559, in visit
+    visited_children.append(await self.visit(child, variable_stack, inner_next_node, inner_next_next_node, inner_prev_node, node, parent_node))
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/guidance/_program_executor.py", line 524, in visit
+    command_output = await command_function(*positional_args, **named_args)
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/guidance/library/_assistant.py", line 13, in assistant
+    return await role(role_name="assistant", hidden=hidden, _parser_context=_parser_context, **kwargs)
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/guidance/library/_role.py", line 17, in role
+    new_content += await parser.visit(
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/guidance/_program_executor.py", line 559, in visit
+    visited_children.append(await self.visit(child, variable_stack, inner_next_node, inner_next_next_node, inner_prev_node, node, parent_node))
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/guidance/_program_executor.py", line 559, in visit
+    visited_children.append(await self.visit(child, variable_stack, inner_next_node, inner_next_next_node, inner_prev_node, node, parent_node))
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/guidance/_program_executor.py", line 266, in visit
+    visited_children = [await self.visit(child, variable_stack, next_node, next_next_node, prev_node, node, parent_node) for child in node]
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/guidance/_program_executor.py", line 266, in <listcomp>
+    visited_children = [await self.visit(child, variable_stack, next_node, next_next_node, prev_node, node, parent_node) for child in node]
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/guidance/_program_executor.py", line 379, in visit
+    command_output = await command_function(*positional_args, **named_args)
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/guidance/library/_gen.py", line 140, in gen
+    gen_obj = await parser.llm_session(
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/guidance/llms/_transformers.py", line 335, in __call__
+    generated_sequence = self.llm.model_obj.generate(**generate_args)
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/torch/utils/_contextlib.py", line 115, in decorate_context
+    return func(*args, **kwargs)
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/transformers/generation/utils.py", line 1538, in generate
+    return self.greedy_search(
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/transformers/generation/utils.py", line 2362, in greedy_search
+    outputs = self(
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/accelerate/hooks.py", line 165, in new_forward
+    output = old_forward(*args, **kwargs)
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/transformers/models/llama/modeling_llama.py", line 806, in forward
+    outputs = self.model(
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/accelerate/hooks.py", line 165, in new_forward
+    output = old_forward(*args, **kwargs)
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/transformers/models/llama/modeling_llama.py", line 693, in forward
+    layer_outputs = decoder_layer(
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/accelerate/hooks.py", line 165, in new_forward
+    output = old_forward(*args, **kwargs)
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/transformers/models/llama/modeling_llama.py", line 421, in forward
+    hidden_states = self.mlp(hidden_states)
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/accelerate/hooks.py", line 165, in new_forward
+    output = old_forward(*args, **kwargs)
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/transformers/models/llama/modeling_llama.py", line 216, in forward
+    down_proj = self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/accelerate/hooks.py", line 165, in new_forward
+    output = old_forward(*args, **kwargs)
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/bitsandbytes/nn/modules.py", line 248, in forward
+    out = bnb.matmul_4bit(x, self.weight.t(), bias=bias, quant_state=self.weight.quant_state)
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/bitsandbytes/autograd/_functions.py", line 579, in matmul_4bit
+    return MatMul4Bit.apply(A, B, out, bias, quant_state)
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/torch/autograd/function.py", line 506, in apply
+    return super().apply(*args, **kwargs)  # type: ignore[misc]
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/bitsandbytes/autograd/_functions.py", line 516, in forward
+    output = torch.nn.functional.linear(A, F.dequantize_4bit(B, state).to(A.dtype).t(), bias)
+torch.cuda.OutOfMemoryError: CUDA out of memory. Tried to allocate 448.00 MiB (GPU 0; 79.33 GiB total capacity; 40.48 GiB already allocated; 238.69 MiB free; 41.32 GiB reserved in total by PyTorch) If reserved memory is >> allocated memory try setting max_split_size_mb to avoid fragmentation.  See documentation for Memory Management and PYTORCH_CUDA_ALLOC_CONF
+
+Error in program:  CUDA out of memory. Tried to allocate 448.00 MiB (GPU 0; 79.33 GiB total capacity; 40.48 GiB already allocated; 238.69 MiB free; 41.32 GiB reserved in total by PyTorch) If reserved memory is >> allocated memory try setting max_split_size_mb to avoid fragmentation.  See documentation for Memory Management and PYTORCH_CUDA_ALLOC_CONF
+ 33%|███████████████████████████████████████████████████████▋                                                                                                               | 1/3 [21:49<43:38, 1309.12s/it]
+Traceback (most recent call last):
+  File "run_rational_choice.py", line 207, in <module>
+    main(output_dir=args.output_dir, base_price=args.base_price, higher_price=args.higher_price, num_questions=args.num_questions, rephrase_both=args.rephrase_both, name1=args.name1, name2=args.name2, quote_fns=args.quote_fns)
+  File "run_rational_choice.py", line 171, in main
+    result, program_output = select_quotes_fn(quotes=quote_perm, budget=100.0,
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/backoff/_sync.py", line 105, in retry
+    ret = target(*args, **kwargs)
+  File "/network/scratch/w/weissmar/tn/info-bazaar/bazaar/lem_utils.py", line 1642, in select_quotes_direct
+    program_output = ask_for_guidance(
+  File "/network/scratch/w/weissmar/tn/info-bazaar/llamapi/client.py", line 70, in ask_for_guidance
+    retval = {key: program_output[key] for key in output_keys}
+  File "/network/scratch/w/weissmar/tn/info-bazaar/llamapi/client.py", line 70, in <dictcomp>
+    retval = {key: program_output[key] for key in output_keys}
+  File "/home/mila/w/weissmar/.conda/envs/tn/lib/python3.8/site-packages/guidance/_program.py", line 470, in __getitem__
+    return self._variables[key]
+KeyError: 'answer'

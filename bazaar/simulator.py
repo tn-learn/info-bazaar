@@ -198,11 +198,12 @@ class VendorAgent(BazaarAgent):
 
         if len(queries_in_bulletin_board) == 0:
             return
-
+        
         all_retrieved_outputs = self._retriever(
             queries=queries_in_bulletin_board,
             blocks=list(self.principal.public_blocks.values()),
         )
+        
         # Issue the quotes
         for retrieved in all_retrieved_outputs:
             for retrieved_block, retrieval_score in zip(
