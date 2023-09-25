@@ -216,7 +216,7 @@ class SimulationRunner(BaseExperiment, IOMixin):
         for buyer_principal in buyer_principals:
             self.print("-" * 80)
             self.print(f"Question: {buyer_principal.query.text}")
-            if buyer_principal.answer.success:
+            if buyer_principal.answer is not None and buyer_principal.answer.success:
                 self.print(f"Answer: {buyer_principal.answer.text}")
                 self.print("==== References ====")
                 for block_idx, block in enumerate(buyer_principal.answer.blocks):
