@@ -928,7 +928,6 @@ def generate_embedding(
 def split_to_paragraphs(
     block: "Block", model_name: str, target_num_paragraphs: int = -1
 ) -> List["Block"]:
-
     if model_name in OAI_MODELS:
         raise NotImplementedError("Deep guidance not implemented for OpenAI models.")
     if target_num_paragraphs == -1:
@@ -1194,11 +1193,11 @@ def extract_reasonable_questions_from_passage(
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def evaluate_answer_with_likert_and_debate_no_gold(
-        question: str,
-        answer: str,
-        supporting_passages: List[Dict[str, str]],
-        do_bulletize: bool = True,
-        model_name: Optional[str] = None,
+    question: str,
+    answer: str,
+    supporting_passages: List[Dict[str, str]],
+    do_bulletize: bool = True,
+    model_name: Optional[str] = None,
 ) -> Dict[str, float]:
     use_deep_guidance = model_name in HF_MODELS
 
@@ -1359,7 +1358,11 @@ def evaluate_answer_with_likert_and_debate_no_gold(
 
         scores = extract_scores(answer)
 
-    assert set(scores.keys()) == {"fluency", "relevance", "correctness", }, (
+    assert set(scores.keys()) == {
+        "fluency",
+        "relevance",
+        "correctness",
+    }, (
         f"The scores should be for fluency, relevance, and correctness. "
         f"Found: {set(scores.keys())} for answer: {answer}"
     )
@@ -1512,7 +1515,6 @@ def select_quotes_with_debate(
         output_keys=["answer"],
         caching=caching,
     )
-    print(program_output["program_output"])
     answer = program_output["answer"]
 
     # Now parse the answer
@@ -1553,7 +1555,6 @@ def select_quotes_with_debate(
     if return_program_output:
         return selected_quotes, program_output
     return selected_quotes
-
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
@@ -1693,7 +1694,6 @@ def select_quotes_direct(
     return selected_quotes
 
 
-
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def select_quotes_cot(
     quotes: List["Quote"],
@@ -1831,6 +1831,7 @@ def select_quotes_cot(
     if return_program_output:
         return selected_quotes, program_output
     return selected_quotes
+
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def clean_content(content: str, model_name: Optional[str] = None) -> str:
@@ -2513,7 +2514,6 @@ def evaluate_answer_with_likert_and_debate(
     bulletize_gold_block: bool = False,
     model_name: Optional[str] = None,
 ) -> Dict[str, float]:
-
     use_deep_guidance = model_name in HF_MODELS
 
     if use_deep_guidance:
@@ -2662,7 +2662,11 @@ def evaluate_answer_with_likert_and_debate(
 
         scores = extract_scores(answer)
 
-    assert set(scores.keys()) == {"fluency", "relevance", "correctness",}, (
+    assert set(scores.keys()) == {
+        "fluency",
+        "relevance",
+        "correctness",
+    }, (
         f"The scores should be for fluency, relevance, and correctness. "
         f"Found: {set(scores.keys())} for answer: {answer}"
     )
