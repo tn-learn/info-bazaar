@@ -818,7 +818,7 @@ def generate_hyde_passage(question: str, model: Optional[str] = None) -> str:
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
-def rephrase_passage(passage: str, model: Optional[str] = None) -> str:
+def rephrase_passage(passage: str, model: Optional[str] = None, caching: bool = True) -> str:
     def _parse_answer(answer: str) -> str:
         return answer.replace("ANSWER:", "").strip()
 
@@ -835,7 +835,7 @@ def rephrase_passage(passage: str, model: Optional[str] = None) -> str:
     {{~/user}}
 
     {{#assistant~}} 
-    {{gen 'rephrased' stop="\\n" temperature=0.0}}
+    {{gen 'rephrased' stop="\\n" temperature=0.2}}
     {{~/assistant}}
     """  # noqa
     program_string = clean_program_string(program_string)
@@ -847,6 +847,7 @@ def rephrase_passage(passage: str, model: Optional[str] = None) -> str:
             passage=passage,
         ),
         output_keys=["rephrased"],
+        caching=caching,
     )
     rephrased_answered = program_outputs["rephrased"]
     return _parse_answer(rephrased_answered)
@@ -1418,6 +1419,8 @@ def select_quotes_with_debate(
     model_name: Optional[str] = None,
     use_block_content_metadata: bool = False,
     use_block_metadata_only: bool = False,
+    return_program_output: bool = False,
+    caching: bool = True,
 ) -> List["Quote"]:
     if len(quotes) == 0:
         return []
@@ -1507,7 +1510,9 @@ def select_quotes_with_debate(
             balance=100,
         ),
         output_keys=["answer"],
+        caching=caching,
     )
+    print(program_output["program_output"])
     answer = program_output["answer"]
 
     # Now parse the answer
@@ -1545,6 +1550,8 @@ def select_quotes_with_debate(
     # Parse the verdicts, select the quotes and return
     verdicts = extract_verdicts(answer)
     selected_quotes = [quote for quote, verdict in zip(quotes, verdicts) if verdict]
+    if return_program_output:
+        return selected_quotes, program_output
     return selected_quotes
 
 
@@ -1557,6 +1564,8 @@ def select_quotes_direct(
     model_name: Optional[str] = None,
     use_block_content_metadata: bool = False,
     use_block_metadata_only: bool = False,
+    return_program_output: bool = False,
+    caching: bool = True,
 ) -> List["Quote"]:
     if len(quotes) == 0:
         return []
@@ -1640,6 +1649,7 @@ def select_quotes_direct(
             balance=100,
         ),
         output_keys=["answer"],
+        caching=caching,
     )
     answer = program_output["answer"]
 
@@ -1678,6 +1688,8 @@ def select_quotes_direct(
     # Parse the verdicts, select the quotes and return
     verdicts = extract_verdicts(answer)
     selected_quotes = [quote for quote, verdict in zip(quotes, verdicts) if verdict]
+    if return_program_output:
+        return selected_quotes, program_output
     return selected_quotes
 
 
@@ -1690,6 +1702,8 @@ def select_quotes_cot(
     model_name: Optional[str] = None,
     use_block_content_metadata: bool = False,
     use_block_metadata_only: bool = False,
+    return_program_output: bool = False,
+    caching: bool = True,
 ) -> List["Quote"]:
     if len(quotes) == 0:
         return []
@@ -1775,6 +1789,7 @@ def select_quotes_cot(
             balance=100,
         ),
         output_keys=["answer"],
+        caching=caching,
     )
     answer = program_output["answer"]
 
@@ -1813,6 +1828,8 @@ def select_quotes_cot(
     # Parse the verdicts, select the quotes and return
     verdicts = extract_verdicts(answer)
     selected_quotes = [quote for quote, verdict in zip(quotes, verdicts) if verdict]
+    if return_program_output:
+        return selected_quotes, program_output
     return selected_quotes
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
