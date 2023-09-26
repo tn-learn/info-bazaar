@@ -146,6 +146,8 @@ class LikertEvaluator:
                 to_append["gold_block"] = buyer_agent_summary["principal"]["query"][
                     "gold_block"
                 ]["content"]
+                if buyer_agent_summary["principal"]["answer"] is None:
+                    buyer_agent_summary["principal"]["answer"] = {"text": None, "blocks": []}
                 to_append["answer"] = buyer_agent_summary["principal"]["answer"]["text"]
                 to_append["answer_type"] = config.get("run_type", "retrieve")
                 to_append["num_answer_blocks"] = len(
