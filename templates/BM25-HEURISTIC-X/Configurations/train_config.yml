@@ -30,14 +30,14 @@ vendor_agent_kwargs:
     bm25_top_k: 30
     bm25_score_threshold: 0.5
     bm25_use_caching: true
-    bm25_weight: 0.0
-    filter_with_mips: true
+    bm25_weight: 1.0
+    filter_with_mips: false
     mips_use_hyde: true
     mips_top_k: 10
     mips_score_threshold: 0.8
     mips_half_sphere: true
     mips_embed_block_content_with_metadata: true
-    mips_weight: 1.0
+    mips_weight: 0.0
 bulletin_board_retrieval_top_k: 1
 bulletin_board_retrieval_score_threshold: 0.7
 llm_name: "gpt-4"
