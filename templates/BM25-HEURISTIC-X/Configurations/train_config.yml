@@ -4,7 +4,7 @@ author_fraction_of_private_blocks: 0.0
 institution_num_blocks: 10
 author_response_time_mean: 5
 author_response_time_sigma: 3
-buyer_max_budget_mean: 8
+buyer_max_budget_mean: 3.219
 buyer_max_budget_sigma: 0
 buyer_urgency_min: 20
 buyer_urgency_max: 21
@@ -24,6 +24,7 @@ buyer_agent_kwargs:
   use_reranker: false
   reranker_max_num_quotes: 50
   quote_selection_function_name: "select_quotes_with_bm25_heuristic"
+  disable_answer_synthesis: true
 vendor_agent_kwargs:
   retriever_config:
     filter_with_bm25: true

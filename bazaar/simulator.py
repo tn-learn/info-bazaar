@@ -143,6 +143,7 @@ class BazaarAgent(mesa.Agent):
                 self.print(f"Exception encountered: {str(e)}")
                 self.print(f"Exception stack trace: {self._exception_str}")
                 self.terminate_agent()
+                raise
 
     def print(self, *messages):
         message = " ".join([str(m) for m in messages])
@@ -248,7 +249,8 @@ class BuyerAgent(BazaarAgent):
         answer_synthesis_model_name: Optional[str] = None,
         follow_up_question_synthesis_model_name: Optional[str] = None,
         reranking_model_name: Optional[str] = None,
-        quote_selection_function_name: str = "select_quotes_with_debate"
+        quote_selection_function_name: str = "select_quotes_with_debate",
+        disable_answer_synthesis: bool = False,
     ):
         super().__init__(principal)
         # Privates
@@ -278,6 +280,7 @@ class BuyerAgent(BazaarAgent):
         self.quote_selection_model_name = self.get_llm_name(quote_selection_model_name)
         self.reranking_model_name = self.get_reranker_name(reranking_model_name)
         self.quote_selection_function_name = quote_selection_function_name
+        self.disable_answer_synthesis = disable_answer_synthesis
 
     def prepare(self):
         """
@@ -398,7 +401,19 @@ class BuyerAgent(BazaarAgent):
                 self.bulletin_board.mark_query_as_processed(query)
 
     def synthesize_final_response(self) -> Answer:
-        return self._query_manager.answer_root(self._accepted_quotes)
+        if self.disable_answer_synthesis:
+            if len(self._accepted_quotes) > 0:
+                answer = Answer(
+                    success=True,
+                    text="\n---\n".join([quote.answer_blocks[0].content for quote in self._accepted_quotes]),
+                    blocks=[quote.answer_blocks[0] for quote in self._accepted_quotes],
+                    relevance_scores=[max(quote.relevance_scores) for quote in self._accepted_quotes],
+                )
+            else:
+                answer = Answer(success=False)
+        else:
+            answer = self._query_manager.answer_root(self._accepted_quotes)
+        return answer
 
     def enqueue_follow_up_queries(self):
         follow_up_queries = self._query_manager.generate_follow_up_queries(
@@ -419,7 +434,7 @@ class BuyerAgent(BazaarAgent):
             # If this happens, we need to submit a final response.
             final_response = self.synthesize_final_response()
             self.submit_final_response(final_response)
-        else:
+        elif self._query_manager.max_query_depth > 0:
             # If there are accepted quotes, we synthesize an answer with them.
             self.enqueue_follow_up_queries()
 
@@ -524,7 +539,6 @@ class BuyerAgent(BazaarAgent):
                     )
                 )
             elif self.quote_selection_function_name == "select_quotes_with_bm25_heuristic":
-                breakpoint()
                 selected_quotes.extend(
                     list(
                         select_quotes_with_bm25_heuristic(

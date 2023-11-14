@@ -27,6 +27,7 @@ import openai
 import platformdirs
 import backoff
 
+from scipy.stats import rankdata
 from rank_bm25 import BM25Okapi
 from nltk.tokenize import word_tokenize
 
@@ -1539,28 +1540,27 @@ def select_quotes_with_debate(
 
 def select_quotes_with_bm25_heuristic(
     quotes: List["Quote"],
-    budget: Optional[SupportsFloat] = None,
-    bm25_weight: float = 0.5,
-    price_weight: float = 0.5,
+    budget: float,
+    bm25_weight: float = 1.0,
+    price_weight: float = 0.0,
 ) -> List["Quote"]:
     normalized_prices = [(quote.price / budget) for quote in quotes]
     # Get the query
     query = quotes[0].query
     # Tokenize the query
-    query_tokens = word_tokenize(query)
+    query_tokens = word_tokenize(query.text)
     # Get the BM25 object
     bm25 = BM25Okapi(
         [word_tokenize(quote.answer_blocks[0].content) for quote in quotes]
     )
     bm25_scores = bm25.get_scores(query_tokens)
 
-    quantiles = [0.25, 0.5, 0.75, 1.0]
-    price_quantiles = np.quantile(normalized_prices, quantiles)
-    bm25_quantiles = np.quantile(bm25_scores, quantiles)
+    bm25_ranks = rankdata(bm25_scores) / len(bm25_scores)
+    price_ranks = rankdata(normalized_prices) / len(normalized_prices)
 
     # Calculate combined scores
     combined_scores = [
-        (bm25_weight * bm25_quantiles[i] - price_weight * price_quantiles[i], i)
+        (bm25_weight * bm25_ranks[i] - price_weight * price_ranks[i], i)
         for i in range(len(quotes))
     ]
 
