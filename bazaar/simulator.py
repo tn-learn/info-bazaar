@@ -10,7 +10,7 @@ from bazaar.lem_utils import (
     select_quotes_with_debate,
     rerank_quotes,
     default_llm_name,
-    default_reranker_name,
+    default_reranker_name, select_quotes_with_bm25_heuristic,
 )
 from bazaar.qa_engine import QueryManager
 from bazaar.schema import (
@@ -248,6 +248,7 @@ class BuyerAgent(BazaarAgent):
         answer_synthesis_model_name: Optional[str] = None,
         follow_up_question_synthesis_model_name: Optional[str] = None,
         reranking_model_name: Optional[str] = None,
+        quote_selection_function_name: str = "select_quotes_with_debate"
     ):
         super().__init__(principal)
         # Privates
@@ -276,6 +277,7 @@ class BuyerAgent(BazaarAgent):
         self.reranker_max_num_quotes = reranker_max_num_quotes
         self.quote_selection_model_name = self.get_llm_name(quote_selection_model_name)
         self.reranking_model_name = self.get_reranker_name(reranking_model_name)
+        self.quote_selection_function_name = quote_selection_function_name
 
     def prepare(self):
         """
@@ -507,18 +509,35 @@ class BuyerAgent(BazaarAgent):
             index_start = try_count * self.quote_review_top_k
             index_end = (try_count + 1) * self.quote_review_top_k
             candidate_quotes_this_try = candidate_quotes[index_start:index_end]
-            # Select the quotes
-            selected_quotes.extend(
-                list(
-                    select_quotes_with_debate(
-                        candidate_quotes_this_try,
-                        budget=self.credit,
-                        model_name=self.quote_selection_model_name,
-                        use_block_content_metadata=self.quote_review_use_block_metadata,
-                        use_block_metadata_only=self.quote_review_use_metadata_only,
+            # Get the selector function
+            if self.quote_selection_function_name == "select_quotes_with_debate":
+                # Select the quotes
+                selected_quotes.extend(
+                    list(
+                        select_quotes_with_debate(
+                            candidate_quotes_this_try,
+                            budget=self.credit,
+                            model_name=self.quote_selection_model_name,
+                            use_block_content_metadata=self.quote_review_use_block_metadata,
+                            use_block_metadata_only=self.quote_review_use_metadata_only,
+                        )
                     )
                 )
-            )
+            elif self.quote_selection_function_name == "select_quotes_with_bm25_heuristic":
+                breakpoint()
+                selected_quotes.extend(
+                    list(
+                        select_quotes_with_bm25_heuristic(
+                            candidate_quotes_this_try,
+                            budget=self.credit,
+                        )
+                    )
+                )
+            else:
+                raise NotImplementedError(
+                    f"Quote selection function {self.quote_selection_function_name} not implemented."
+                )
+
         selected_quotes = [quote.progress_quote() for quote in selected_quotes]
         if len(candidate_quotes) > 0:
             self.print(

@@ -27,6 +27,9 @@ import openai
 import platformdirs
 import backoff
 
+from rank_bm25 import BM25Okapi
+from nltk.tokenize import word_tokenize
+
 from bazaar.py_utils import DiskCache
 from llamapi.client import ask_for_guidance
 
@@ -410,14 +413,10 @@ class TransformersEmbedding:
         # Resolve model id
         model_id = resolve_embedding_model_id(model_id)
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model_id,
-            cache_dir=hf_cache_directory,
-            use_auth_token=hf_auth_token,
+            model_id, cache_dir=hf_cache_directory, use_auth_token=hf_auth_token,
         )
         self.model = transformers.AutoModel.from_pretrained(
-            model_id,
-            cache_dir=hf_cache_directory,
-            use_auth_token=hf_auth_token,
+            model_id, cache_dir=hf_cache_directory, use_auth_token=hf_auth_token,
         )
         # Manually ship to device
         self.model.to(self.device)
@@ -528,14 +527,10 @@ class LMReranker:
         hf_cache_directory = get_hf_cache_directory(hf_cache_directory)
         # Init the tokenizer and model
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model_id,
-            cache_dir=hf_cache_directory,
-            use_auth_token=hf_auth_token,
+            model_id, cache_dir=hf_cache_directory, use_auth_token=hf_auth_token,
         )
         self.model = transformers.AutoModelForSequenceClassification.from_pretrained(
-            model_id,
-            cache_dir=hf_cache_directory,
-            use_auth_token=hf_auth_token,
+            model_id, cache_dir=hf_cache_directory, use_auth_token=hf_auth_token,
         )
         self.model.to(self.device)
         self.model.eval()
@@ -808,9 +803,7 @@ def generate_hyde_passage(question: str, model: Optional[str] = None) -> str:
         program_string=program_string,
         llm=get_llm(model),
         silent=True,
-        inputs=dict(
-            question=question,
-        ),
+        inputs=dict(question=question,),
         output_keys=["hyde_answer"],
     )
     hyde_answer = program_outputs["hyde_answer"]
@@ -818,7 +811,9 @@ def generate_hyde_passage(question: str, model: Optional[str] = None) -> str:
 
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
-def rephrase_passage(passage: str, model: Optional[str] = None, caching: bool = True) -> str:
+def rephrase_passage(
+    passage: str, model: Optional[str] = None, caching: bool = True
+) -> str:
     def _parse_answer(answer: str) -> str:
         return answer.replace("ANSWER:", "").strip()
 
@@ -843,9 +838,7 @@ def rephrase_passage(passage: str, model: Optional[str] = None, caching: bool = 
         program_string=program_string,
         llm=get_llm(model),
         silent=True,
-        inputs=dict(
-            passage=passage,
-        ),
+        inputs=dict(passage=passage,),
         output_keys=["rephrased"],
         caching=caching,
     )
@@ -986,10 +979,7 @@ def split_to_paragraphs(
         program_string=program_string,
         llm=get_llm(model_name=model_name),
         silent=True,
-        inputs=dict(
-            sentences=sentences,
-            num_para=target_num_paragraphs,
-        ),
+        inputs=dict(sentences=sentences, num_para=target_num_paragraphs,),
         output_keys=["parasplits"],
     )
     paragraph_indices = [int(x) - 1 for x in program_output["parasplits"]]
@@ -1317,9 +1307,7 @@ def evaluate_answer_with_likert_and_debate_no_gold(
         llm=get_llm(model_name=model_name),
         silent=True,
         inputs=dict(
-            question=question,
-            supporting_passages=supporting_passages,
-            answer=answer,
+            question=question, supporting_passages=supporting_passages, answer=answer,
         ),
         output_keys=output_keys,
     )
@@ -1358,11 +1346,7 @@ def evaluate_answer_with_likert_and_debate_no_gold(
 
         scores = extract_scores(answer)
 
-    assert set(scores.keys()) == {
-        "fluency",
-        "relevance",
-        "correctness",
-    }, (
+    assert set(scores.keys()) == {"fluency", "relevance", "correctness",}, (
         f"The scores should be for fluency, relevance, and correctness. "
         f"Found: {set(scores.keys())} for answer: {answer}"
     )
@@ -1507,11 +1491,7 @@ def select_quotes_with_debate(
         program_string=program_string,
         llm=get_llm(model_name=model_name),
         silent=True,
-        inputs=dict(
-            question=question,
-            options=options,
-            balance=100,
-        ),
+        inputs=dict(question=question, options=options, balance=100,),
         output_keys=["answer"],
         caching=caching,
     )
@@ -1554,6 +1534,49 @@ def select_quotes_with_debate(
     selected_quotes = [quote for quote, verdict in zip(quotes, verdicts) if verdict]
     if return_program_output:
         return selected_quotes, program_output
+    return selected_quotes
+
+
+def select_quotes_with_bm25_heuristic(
+    quotes: List["Quote"],
+    budget: Optional[SupportsFloat] = None,
+    bm25_weight: float = 0.5,
+    price_weight: float = 0.5,
+) -> List["Quote"]:
+    normalized_prices = [(quote.price / budget) for quote in quotes]
+    # Get the query
+    query = quotes[0].query
+    # Tokenize the query
+    query_tokens = word_tokenize(query)
+    # Get the BM25 object
+    bm25 = BM25Okapi(
+        [word_tokenize(quote.answer_blocks[0].content) for quote in quotes]
+    )
+    bm25_scores = bm25.get_scores(query_tokens)
+
+    quantiles = [0.25, 0.5, 0.75, 1.0]
+    price_quantiles = np.quantile(normalized_prices, quantiles)
+    bm25_quantiles = np.quantile(bm25_scores, quantiles)
+
+    # Calculate combined scores
+    combined_scores = [
+        (bm25_weight * bm25_quantiles[i] - price_weight * price_quantiles[i], i)
+        for i in range(len(quotes))
+    ]
+
+    # Sort and select quotes
+    sorted_quotes = sorted(combined_scores, key=lambda x: x[0], reverse=True)
+
+    selected_quotes = []
+    total_cost = 0
+    for _, index in sorted_quotes:
+        quote = quotes[index]
+        if total_cost + quote.price <= budget:
+            selected_quotes.append(quote)
+            total_cost += quote.price
+        else:
+            break  # Stop if the next quote exceeds the budget
+
     return selected_quotes
 
 
@@ -1644,11 +1667,7 @@ def select_quotes_direct(
         program_string=program_string,
         llm=get_llm(model_name=model_name),
         silent=True,
-        inputs=dict(
-            question=question,
-            options=options,
-            balance=100,
-        ),
+        inputs=dict(question=question, options=options, balance=100,),
         output_keys=["answer"],
         caching=caching,
     )
@@ -1783,11 +1802,7 @@ def select_quotes_cot(
         program_string=program_string,
         llm=get_llm(model_name=model_name),
         silent=True,
-        inputs=dict(
-            question=question,
-            options=options,
-            balance=100,
-        ),
+        inputs=dict(question=question, options=options, balance=100,),
         output_keys=["answer"],
         caching=caching,
     )
@@ -2068,10 +2083,7 @@ def synthesize_answer(
         program_string=program_string,
         llm=get_llm(model_name=model_name),
         silent=True,
-        inputs=dict(
-            question=question,
-            quotes=passages,
-        ),
+        inputs=dict(question=question, quotes=passages,),
         output_keys=["answer"],
     )
     answer = program_output["answer"]
@@ -2464,11 +2476,7 @@ def evaluate_answer_with_likert(
         program_string=program_string,
         llm=get_llm(model_name=model_name),
         silent=True,
-        inputs=dict(
-            question=question,
-            gold_passage=gold_block,
-            answer=answer,
-        ),
+        inputs=dict(question=question, gold_passage=gold_block, answer=answer,),
         output_keys=["answer"],
     )
     answer = program_output["answer"]
@@ -2620,11 +2628,7 @@ def evaluate_answer_with_likert_and_debate(
         program_string=program_string,
         llm=get_llm(model_name=model_name),
         silent=True,
-        inputs=dict(
-            question=question,
-            gold_passage=gold_block,
-            answer=answer,
-        ),
+        inputs=dict(question=question, gold_passage=gold_block, answer=answer,),
         output_keys=output_keys,
     )
 
@@ -2662,11 +2666,7 @@ def evaluate_answer_with_likert_and_debate(
 
         scores = extract_scores(answer)
 
-    assert set(scores.keys()) == {
-        "fluency",
-        "relevance",
-        "correctness",
-    }, (
+    assert set(scores.keys()) == {"fluency", "relevance", "correctness",}, (
         f"The scores should be for fluency, relevance, and correctness. "
         f"Found: {set(scores.keys())} for answer: {answer}"
     )
@@ -2806,11 +2806,7 @@ def evaluate_answer_with_debate(
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def evaluate_answer_with_debate_retrieved_closed(
-    question: str,
-    gold_passage: str,
-    answer1: str,
-    answer2: str,
-    model_name: str,
+    question: str, gold_passage: str, answer1: str, answer2: str, model_name: str,
 ) -> Dict[str, Dict[str, int]]:
     program_string = """
     {{#system~}}
