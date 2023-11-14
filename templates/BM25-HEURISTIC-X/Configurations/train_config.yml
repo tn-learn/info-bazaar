@@ -30,6 +30,7 @@ vendor_agent_kwargs:
     filter_with_bm25: true
     bm25_top_k: 30
     bm25_score_threshold: 0.5
+    use_query_keywords: false
     bm25_use_caching: true
     bm25_weight: 1.0
     filter_with_mips: false
