@@ -12,7 +12,7 @@ query_creation_time_start: 0
 query_creation_time_end: 1
 embedding_manager_path: "data/final_dataset_embeddings.db"
 dataset_path: "data/final_dataset_with_metadata.json"
-query_range: "51"
+query_range: "0:10"
 fraction_active_vendors: 1.0
 
 # Simulator

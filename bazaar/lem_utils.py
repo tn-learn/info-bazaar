@@ -46,7 +46,7 @@ OAI_EXCEPTIONS = (
 )
 
 MODEL_CACHE = {}
-OAI_MODELS = ["gpt-3.5-turbo", "gpt-3.5-turbo-16k", "gpt-4", "gpt-4-32k"]
+OAI_MODELS = ["gpt-3.5-turbo", "gpt-3.5-turbo-16k", "gpt-3.5-turbo-1106", "gpt-4", "gpt-4-32k"]
 HF_MODELS = [  # Huggingface models support advanced guidance
     "Llama-2-70b-chat-hf",
     "Llama-2-13b-chat-hf",
@@ -91,7 +91,7 @@ def default_embedding_name(set_to: Optional[str] = None) -> str:
 
 
 def get_hf_auth_token(
-    hf_auth_token: Optional[str], raise_if_not_found: bool = False
+        hf_auth_token: Optional[str], raise_if_not_found: bool = False
 ) -> str:
     if hf_auth_token is None:
         hf_auth_token = os.getenv("HF_AUTH_TOKEN")
@@ -108,7 +108,7 @@ def set_hf_auth_token(hf_auth_token: Optional[str] = None):
 
 
 def get_hf_cache_directory(
-    hf_cache_directory: Optional[str], raise_if_not_found: bool = False
+        hf_cache_directory: Optional[str], raise_if_not_found: bool = False
 ) -> str:
     if hf_cache_directory is None:
         hf_cache_directory = os.getenv("HF_CACHE_DIRECTORY")
@@ -148,9 +148,9 @@ def resolve_embedding_model_id(model_id: str) -> str:
 
 
 def get_guidance_cache_directory(
-    guidance_cache_directory: Optional[str] = None,
-    raise_if_not_found: bool = False,
-    auto_default: bool = True,
+        guidance_cache_directory: Optional[str] = None,
+        raise_if_not_found: bool = False,
+        auto_default: bool = True,
 ) -> str:
     if guidance_cache_directory is None:
         guidance_cache_directory = os.getenv("GUIDANCE_CACHE_DIRECTORY")
@@ -205,14 +205,14 @@ class LLaMa2(guidance.llms.Transformers):
     )
 
     def __init__(
-        self,
-        hf_auth_token: Optional[str] = None,
-        hf_cache_directory: Optional[str] = None,
-        guidance_cache_directory: Optional[str] = None,
-        size: str = "70b",
-        rope_scaling: str = "dynamic:2.0",
-        monitor_model: bool = False,
-        **super_kwargs,
+            self,
+            hf_auth_token: Optional[str] = None,
+            hf_cache_directory: Optional[str] = None,
+            guidance_cache_directory: Optional[str] = None,
+            size: str = "70b",
+            rope_scaling: str = "dynamic:2.0",
+            monitor_model: bool = False,
+            **super_kwargs,
     ):
         # Init the super
         self.initialize_model(
@@ -235,13 +235,13 @@ class LLaMa2(guidance.llms.Transformers):
         self.llm_name = self.model_id.split("/")[-1]
 
     def initialize_model(
-        self,
-        hf_auth_token: str,
-        hf_cache_directory: str,
-        size: str,
-        rope_scaling: str,
-        monitor_model: bool,
-        use_bnb_config: bool = True,
+            self,
+            hf_auth_token: str,
+            hf_cache_directory: str,
+            size: str,
+            rope_scaling: str,
+            monitor_model: bool,
+            use_bnb_config: bool = True,
     ):
         import transformers
         import torch
@@ -390,12 +390,12 @@ def get_llm(model_name: Optional[str] = None, **extra_kwargs):
 
 class TransformersEmbedding:
     def __init__(
-        self,
-        model_id: str,
-        hf_auth_token: Optional[str] = None,
-        hf_cache_directory: Optional[str] = None,
-        normalize_embeddings: bool = True,
-        device: str = "auto",
+            self,
+            model_id: str,
+            hf_auth_token: Optional[str] = None,
+            hf_cache_directory: Optional[str] = None,
+            normalize_embeddings: bool = True,
+            device: str = "auto",
     ):
         import torch
         import transformers
@@ -437,7 +437,7 @@ class TransformersEmbedding:
         return sentence_embeddings
 
     def encode(
-        self, string: Union[str, List[str]], as_query: bool = False
+            self, string: Union[str, List[str]], as_query: bool = False
     ) -> Union[List[float], List[List[float]]]:
         import torch
 
@@ -504,13 +504,13 @@ def get_embedder(model_name: str, **extra_kwargs) -> TransformersEmbedding:
 
 class LMReranker:
     def __init__(
-        self,
-        model_id: str,
-        hf_auth_token: Optional[str] = None,
-        hf_cache_directory: Optional[str] = None,
-        device: str = "auto",
-        max_batch_size: int = 32,
-        max_num_tokens: int = 512,
+            self,
+            model_id: str,
+            hf_auth_token: Optional[str] = None,
+            hf_cache_directory: Optional[str] = None,
+            device: str = "auto",
+            max_batch_size: int = 32,
+            max_num_tokens: int = 512,
     ):
         import torch
         import transformers
@@ -537,7 +537,7 @@ class LMReranker:
         self.model.eval()
 
     def encode_batch(
-        self, paired_queries: List[str], paired_passages: List[str]
+            self, paired_queries: List[str], paired_passages: List[str]
     ) -> List[float]:
         import torch
 
@@ -564,7 +564,7 @@ class LMReranker:
         return scores.tolist()
 
     def encode(
-        self, query: Union[str, List[str]], passages: Union[str, List[str]]
+            self, query: Union[str, List[str]], passages: Union[str, List[str]]
     ) -> List[List[float]]:
         # Convert to lists
         if isinstance(query, str):
@@ -579,11 +579,11 @@ class LMReranker:
         paired_queries, paired_passages = zip(*pairs)
         # Split to batches
         paired_query_batches = [
-            paired_queries[i : i + self.max_batch_size]
+            paired_queries[i: i + self.max_batch_size]
             for i in range(0, len(paired_queries), self.max_batch_size)
         ]
         paired_passage_batches = [
-            paired_passages[i : i + self.max_batch_size]
+            paired_passages[i: i + self.max_batch_size]
             for i in range(0, len(paired_passages), self.max_batch_size)
         ]
         # Run it in a loop
@@ -593,7 +593,7 @@ class LMReranker:
         assert len(scores) == len(pairs)
         # Reshape to a matrix
         scores = [
-            scores[i : i + len(passages)] for i in range(0, len(scores), len(passages))
+            scores[i: i + len(passages)] for i in range(0, len(scores), len(passages))
         ]
         assert len(scores) == len(query)
         return scores
@@ -648,10 +648,10 @@ class EmbeddingManager:
         return hashlib.sha256((text + model_name).encode()).hexdigest()
 
     def get_embedding(
-        self,
-        content: str,
-        model_name: Optional[str] = None,
-        generate_if_missing: bool = True,
+            self,
+            content: str,
+            model_name: Optional[str] = None,
+            generate_if_missing: bool = True,
     ) -> Optional[List[float]]:
         if model_name is None:
             model_name = default_embedding_name()
@@ -673,7 +673,7 @@ class EmbeddingManager:
             return None
 
     def new_embedding(
-        self, content: str, model_name: str, key: Optional[str] = None
+            self, content: str, model_name: str, key: Optional[str] = None
     ) -> List[float]:
         if key is None:
             key = self._create_key(content, model_name)
@@ -699,7 +699,7 @@ class EmbeddingManager:
         return self
 
     def build_index(
-        self, texts: List[str], model_name: Optional[str] = None, use_tqdm: bool = False
+            self, texts: List[str], model_name: Optional[str] = None, use_tqdm: bool = False
     ) -> "EmbeddingManager":
         if use_tqdm:
             from tqdm import tqdm
@@ -711,7 +711,7 @@ class EmbeddingManager:
 
 
 def global_embedding_manager(
-    init_from_path: Optional[str] = None, **embedding_manager_kwargs
+        init_from_path: Optional[str] = None, **embedding_manager_kwargs
 ) -> "EmbeddingManager":
     global EMBEDDING_MANAGER
     if init_from_path is not None:
@@ -804,7 +804,7 @@ def generate_hyde_passage(question: str, model: Optional[str] = None) -> str:
         program_string=program_string,
         llm=get_llm(model),
         silent=True,
-        inputs=dict(question=question,),
+        inputs=dict(question=question, ),
         output_keys=["hyde_answer"],
     )
     hyde_answer = program_outputs["hyde_answer"]
@@ -813,7 +813,7 @@ def generate_hyde_passage(question: str, model: Optional[str] = None) -> str:
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def rephrase_passage(
-    passage: str, model: Optional[str] = None, caching: bool = True
+        passage: str, model: Optional[str] = None, caching: bool = True
 ) -> str:
     def _parse_answer(answer: str) -> str:
         return answer.replace("ANSWER:", "").strip()
@@ -839,7 +839,7 @@ def rephrase_passage(
         program_string=program_string,
         llm=get_llm(model),
         silent=True,
-        inputs=dict(passage=passage,),
+        inputs=dict(passage=passage, ),
         output_keys=["rephrased"],
         caching=caching,
     )
@@ -848,7 +848,7 @@ def rephrase_passage(
 
 
 def generate_keywords(
-    text: str, model_name: Optional[str] = None, num_keywords: int = 3
+        text: str, model_name: Optional[str] = None, num_keywords: int = 3
 ) -> List[str]:
     program_string = """
     {{#system~}}
@@ -884,12 +884,12 @@ def generate_keywords(
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def generate_embedding(
-    text: str,
-    model: Optional[str] = None,
-    as_query: bool = False,
-    embedding_manager: Optional["EmbeddingManager"] = None,
-    cache_if_embedding_manager_available: bool = False,
-    **embedder_kwargs,
+        text: str,
+        model: Optional[str] = None,
+        as_query: bool = False,
+        embedding_manager: Optional["EmbeddingManager"] = None,
+        cache_if_embedding_manager_available: bool = False,
+        **embedder_kwargs,
 ) -> List[float]:
     if model is None:
         model = default_embedding_name()
@@ -920,7 +920,7 @@ def generate_embedding(
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def split_to_paragraphs(
-    block: "Block", model_name: str, target_num_paragraphs: int = -1
+        block: "Block", model_name: str, target_num_paragraphs: int = -1
 ) -> List["Block"]:
     if model_name in OAI_MODELS:
         raise NotImplementedError("Deep guidance not implemented for OpenAI models.")
@@ -980,7 +980,7 @@ def split_to_paragraphs(
         program_string=program_string,
         llm=get_llm(model_name=model_name),
         silent=True,
-        inputs=dict(sentences=sentences, num_para=target_num_paragraphs,),
+        inputs=dict(sentences=sentences, num_para=target_num_paragraphs, ),
         output_keys=["parasplits"],
     )
     paragraph_indices = [int(x) - 1 for x in program_output["parasplits"]]
@@ -1010,10 +1010,10 @@ def split_to_paragraphs(
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def select_quotes_with_heuristic(
-    quotes: List["Quote"],
-    budget: Optional[SupportsFloat] = None,
-    fraction_of_max_budget: Optional[float] = None,
-    model_name: Optional[str] = None,
+        quotes: List["Quote"],
+        budget: Optional[SupportsFloat] = None,
+        fraction_of_max_budget: Optional[float] = None,
+        model_name: Optional[str] = None,
 ) -> List["Quote"]:
     assert all(
         [quotes[0].query.compare_content(quote.query) for quote in quotes[1:]]
@@ -1135,7 +1135,7 @@ def select_quotes_with_heuristic(
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def extract_reasonable_questions_from_passage(
-    passage: str, model_name: Optional[str] = None
+        passage: str, model_name: Optional[str] = None
 ) -> List[str]:
     program_string = """
     {{#system~}}
@@ -1166,6 +1166,7 @@ def extract_reasonable_questions_from_passage(
         inputs=dict(passage=passage),
         output_keys=["deliberation"],
     )
+
     # Extract questions
     def extract_questions(text):
         lines = text.split("\n")
@@ -1184,11 +1185,11 @@ def extract_reasonable_questions_from_passage(
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def evaluate_answer_with_likert_and_debate_no_gold(
-    question: str,
-    answer: str,
-    supporting_passages: List[Dict[str, str]],
-    do_bulletize: bool = True,
-    model_name: Optional[str] = None,
+        question: str,
+        answer: str,
+        supporting_passages: List[Dict[str, str]],
+        do_bulletize: bool = True,
+        model_name: Optional[str] = None,
 ) -> Dict[str, float]:
     use_deep_guidance = model_name in HF_MODELS
 
@@ -1347,7 +1348,7 @@ def evaluate_answer_with_likert_and_debate_no_gold(
 
         scores = extract_scores(answer)
 
-    assert set(scores.keys()) == {"fluency", "relevance", "correctness",}, (
+    assert set(scores.keys()) == {"fluency", "relevance", "correctness", }, (
         f"The scores should be for fluency, relevance, and correctness. "
         f"Found: {set(scores.keys())} for answer: {answer}"
     )
@@ -1401,14 +1402,14 @@ def extract_questions(content: str, model_name: Optional[str] = None) -> List[st
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def select_quotes_with_debate(
-    quotes: List["Quote"],
-    budget: Optional[SupportsFloat] = None,
-    fraction_of_max_budget: Optional[float] = None,
-    model_name: Optional[str] = None,
-    use_block_content_metadata: bool = False,
-    use_block_metadata_only: bool = False,
-    return_program_output: bool = False,
-    caching: bool = True,
+        quotes: List["Quote"],
+        budget: Optional[SupportsFloat] = None,
+        fraction_of_max_budget: Optional[float] = None,
+        model_name: Optional[str] = None,
+        use_block_content_metadata: bool = False,
+        use_block_metadata_only: bool = False,
+        return_program_output: bool = False,
+        caching: bool = True,
 ) -> List["Quote"]:
     if len(quotes) == 0:
         return []
@@ -1492,7 +1493,7 @@ def select_quotes_with_debate(
         program_string=program_string,
         llm=get_llm(model_name=model_name),
         silent=True,
-        inputs=dict(question=question, options=options, balance=100,),
+        inputs=dict(question=question, options=options, balance=100, ),
         output_keys=["answer"],
         caching=caching,
     )
@@ -1539,10 +1540,10 @@ def select_quotes_with_debate(
 
 
 def select_quotes_with_bm25_heuristic(
-    quotes: List["Quote"],
-    budget: float,
-    bm25_weight: float = 1.0,
-    price_weight: float = 0.0,
+        quotes: List["Quote"],
+        budget: float,
+        bm25_weight: float = 1.0,
+        price_weight: float = 0.0,
 ) -> List["Quote"]:
     normalized_prices = [(quote.price / budget) for quote in quotes]
     # Get the query
@@ -1582,14 +1583,14 @@ def select_quotes_with_bm25_heuristic(
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def select_quotes_direct(
-    quotes: List["Quote"],
-    budget: Optional[SupportsFloat] = None,
-    fraction_of_max_budget: Optional[float] = None,
-    model_name: Optional[str] = None,
-    use_block_content_metadata: bool = False,
-    use_block_metadata_only: bool = False,
-    return_program_output: bool = False,
-    caching: bool = True,
+        quotes: List["Quote"],
+        budget: Optional[SupportsFloat] = None,
+        fraction_of_max_budget: Optional[float] = None,
+        model_name: Optional[str] = None,
+        use_block_content_metadata: bool = False,
+        use_block_metadata_only: bool = False,
+        return_program_output: bool = False,
+        caching: bool = True,
 ) -> List["Quote"]:
     if len(quotes) == 0:
         return []
@@ -1667,7 +1668,7 @@ def select_quotes_direct(
         program_string=program_string,
         llm=get_llm(model_name=model_name),
         silent=True,
-        inputs=dict(question=question, options=options, balance=100,),
+        inputs=dict(question=question, options=options, balance=100, ),
         output_keys=["answer"],
         caching=caching,
     )
@@ -1715,14 +1716,14 @@ def select_quotes_direct(
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def select_quotes_cot(
-    quotes: List["Quote"],
-    budget: Optional[SupportsFloat] = None,
-    fraction_of_max_budget: Optional[float] = None,
-    model_name: Optional[str] = None,
-    use_block_content_metadata: bool = False,
-    use_block_metadata_only: bool = False,
-    return_program_output: bool = False,
-    caching: bool = True,
+        quotes: List["Quote"],
+        budget: Optional[SupportsFloat] = None,
+        fraction_of_max_budget: Optional[float] = None,
+        model_name: Optional[str] = None,
+        use_block_content_metadata: bool = False,
+        use_block_metadata_only: bool = False,
+        return_program_output: bool = False,
+        caching: bool = True,
 ) -> List["Quote"]:
     if len(quotes) == 0:
         return []
@@ -1802,7 +1803,7 @@ def select_quotes_cot(
         program_string=program_string,
         llm=get_llm(model_name=model_name),
         silent=True,
-        inputs=dict(question=question, options=options, balance=100,),
+        inputs=dict(question=question, options=options, balance=100, ),
         output_keys=["answer"],
         caching=caching,
     )
@@ -1884,7 +1885,7 @@ def clean_content(content: str, model_name: Optional[str] = None) -> str:
 
 
 def rerank_quotes(
-    quotes: List["Quote"], model_name: Optional[str] = None
+        quotes: List["Quote"], model_name: Optional[str] = None
 ) -> List[float]:
     question = quotes[0].query.text
     passages = [
@@ -1899,10 +1900,10 @@ def rerank_quotes(
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def synthesize_answer(
-    query: "Query",
-    quotes: List["Quote"],
-    force_faithfulness_to_quotes: bool = False,
-    model_name: Optional[str] = None,
+        query: "Query",
+        quotes: List["Quote"],
+        force_faithfulness_to_quotes: bool = False,
+        model_name: Optional[str] = None,
 ) -> str:
     question = query.text
     # Make sure all quotes have the same query
@@ -2083,7 +2084,7 @@ def synthesize_answer(
         program_string=program_string,
         llm=get_llm(model_name=model_name),
         silent=True,
-        inputs=dict(question=question, quotes=passages,),
+        inputs=dict(question=question, quotes=passages, ),
         output_keys=["answer"],
     )
     answer = program_output["answer"]
@@ -2137,7 +2138,7 @@ def get_closed_book_answer(question: str, model_name: Optional[str] = None) -> s
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def get_open_book_answer(
-    question: str, gold_passage: str, model_name: Optional[str] = None
+        question: str, gold_passage: str, model_name: Optional[str] = None
 ) -> str:
     program_string = """
     {{#system~}}
@@ -2170,7 +2171,7 @@ def get_open_book_answer(
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def bulletize(
-    passage: str, question: Optional[str] = None, model_name: Optional[str] = None
+        passage: str, question: Optional[str] = None, model_name: Optional[str] = None
 ) -> str:
     if question is not None:
         program_string = """
@@ -2220,10 +2221,10 @@ def bulletize(
 
 
 def select_follow_up_question(
-    question: str,
-    current_answer: str,
-    max_num_follow_up_questions: Optional[int] = None,
-    model_name: Optional[str] = None,
+        question: str,
+        current_answer: str,
+        max_num_follow_up_questions: Optional[int] = None,
+        model_name: Optional[str] = None,
 ) -> List[str]:
     program_string = """
     {{#system~}}
@@ -2270,7 +2271,7 @@ def select_follow_up_question(
         follow_ups = []
         for line in lines:
             if line.lower().startswith("follow-up question:"):
-                follow_ups.append(line[len("follow-up question:") :].strip())
+                follow_ups.append(line[len("follow-up question:"):].strip())
         return follow_ups
 
     follow_up = extract_follow_up(answer)
@@ -2280,11 +2281,11 @@ def select_follow_up_question(
 
 
 def refine_answer(
-    question: str,
-    original_answer: str,
-    follow_up_questions: List[str],
-    answers_to_follow_up_questions: List[str],
-    model_name: Optional[str] = None,
+        question: str,
+        original_answer: str,
+        follow_up_questions: List[str],
+        answers_to_follow_up_questions: List[str],
+        model_name: Optional[str] = None,
 ) -> str:
     assert len(follow_up_questions) == len(answers_to_follow_up_questions)
     assert len(follow_up_questions) > 0
@@ -2424,7 +2425,7 @@ def refine_answer(
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def evaluate_answer_with_likert(
-    question: str, gold_block: str, answer: str, model_name: str
+        question: str, gold_block: str, answer: str, model_name: str
 ):
     program_string = """
     {{#system~}}
@@ -2476,7 +2477,7 @@ def evaluate_answer_with_likert(
         program_string=program_string,
         llm=get_llm(model_name=model_name),
         silent=True,
-        inputs=dict(question=question, gold_passage=gold_block, answer=answer,),
+        inputs=dict(question=question, gold_passage=gold_block, answer=answer, ),
         output_keys=["answer"],
     )
     answer = program_output["answer"]
@@ -2516,11 +2517,11 @@ def evaluate_answer_with_likert(
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def evaluate_answer_with_likert_and_debate(
-    question: str,
-    gold_block: str,
-    answer: str,
-    bulletize_gold_block: bool = False,
-    model_name: Optional[str] = None,
+        question: str,
+        gold_block: str,
+        answer: str,
+        bulletize_gold_block: bool = False,
+        model_name: Optional[str] = None,
 ) -> Dict[str, float]:
     use_deep_guidance = model_name in HF_MODELS
 
@@ -2628,7 +2629,7 @@ def evaluate_answer_with_likert_and_debate(
         program_string=program_string,
         llm=get_llm(model_name=model_name),
         silent=True,
-        inputs=dict(question=question, gold_passage=gold_block, answer=answer,),
+        inputs=dict(question=question, gold_passage=gold_block, answer=answer, ),
         output_keys=output_keys,
     )
 
@@ -2666,7 +2667,7 @@ def evaluate_answer_with_likert_and_debate(
 
         scores = extract_scores(answer)
 
-    assert set(scores.keys()) == {"fluency", "relevance", "correctness",}, (
+    assert set(scores.keys()) == {"fluency", "relevance", "correctness", }, (
         f"The scores should be for fluency, relevance, and correctness. "
         f"Found: {set(scores.keys())} for answer: {answer}"
     )
@@ -2677,12 +2678,12 @@ def evaluate_answer_with_likert_and_debate(
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def evaluate_answer_with_debate(
-    question: str,
-    gold_passage: str,
-    retrieved_answer: Optional[str],
-    open_book_answer: str,
-    closed_book_answer: str,
-    model_name: str = "gpt-4",
+        question: str,
+        gold_passage: str,
+        retrieved_answer: Optional[str],
+        open_book_answer: str,
+        closed_book_answer: str,
+        model_name: str = "gpt-4",
 ) -> Dict[str, Dict[str, int]]:
     program_string = """
     {{#system~}}
@@ -2758,7 +2759,7 @@ def evaluate_answer_with_debate(
         # Splitting the text into potential categories with case-insensitive matching
         potential_categories = re.split(r"([A-Za-z]+):", text, flags=re.IGNORECASE)[1:]
         potential_categories = [
-            potential_categories[i : i + 2]
+            potential_categories[i: i + 2]
             for i in range(0, len(potential_categories), 2)
         ]
 
@@ -2806,7 +2807,7 @@ def evaluate_answer_with_debate(
 
 @backoff.on_exception(backoff.expo, OAI_EXCEPTIONS, max_tries=5)
 def evaluate_answer_with_debate_retrieved_closed(
-    question: str, gold_passage: str, answer1: str, answer2: str, model_name: str,
+        question: str, gold_passage: str, answer1: str, answer2: str, model_name: str,
 ) -> Dict[str, Dict[str, int]]:
     program_string = """
     {{#system~}}
@@ -2873,7 +2874,7 @@ def evaluate_answer_with_debate_retrieved_closed(
         # Splitting the text into potential categories with case-insensitive matching
         potential_categories = re.split(r"([A-Za-z]+):", text, flags=re.IGNORECASE)[1:]
         potential_categories = [
-            potential_categories[i : i + 2]
+            potential_categories[i: i + 2]
             for i in range(0, len(potential_categories), 2)
         ]
 
