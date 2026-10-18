@@ -36,7 +36,6 @@ def generate_hash(exp_params):
     return hashlib.sha256(serialized_params.encode()).hexdigest()
 
 def main(output_dir: str, base_price: int, higher_price: int, num_questions: int, rephrase_both: bool, name1: str, name2: str, quote_fns: List[str], rephraser_model: str):
-    os.environ["OPENAI_API_KEY"] = "REDACTED"
     summary = json.load(open("/network/scratch/w/weissmar/tn/info-bazaar/experiments/fup-stackexchange-specific-Llama-2-7b-100q/Logs/bazaar_summary.json", "r"))
     # summary = json.load(open("/network/scratch/w/weissmar/tn/info-bazaar/experiments/fup-specific-gpt-4-4.605-retrieve/Logs/bazaar_summary.json", "r"))
     # summary = json.load(open("/network/scratch/w/weissmar/tn/info-bazaar/experiments/fup-general-gpt-4-4.605-retrieve/Logs/bazaar_summary.json", "r"))

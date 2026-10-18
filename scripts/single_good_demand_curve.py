@@ -26,7 +26,6 @@ from bazaar.py_utils import dataclass_from_dict
 from bazaar.schema import Query
 from bazaar.schema import Block
 import copy
-os.environ["OPENAI_API_KEY"] = "REDACTED"
 
 class IssuedBy:
     def __init__(self, unique_id):

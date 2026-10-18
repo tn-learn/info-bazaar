@@ -20,7 +20,7 @@ mkdir -p $HUGGINGFACE_CACHE_DIR
 # Export the paths of these directories so that they can be accessed by other processes
 export GUIDANCE_CACHE_DIRECTORY=$GUIDANCE_CACHE_DIR
 export HF_CACHE_DIRECTORY=$HUGGINGFACE_CACHE_DIR
-export HF_AUTH_TOKEN=REDACTED
+export HF_AUTH_TOKEN="${HF_AUTH_TOKEN:?set HF_AUTH_TOKEN in your environment}"
 
 # Get the directory where the script resides
 SCRIPT_DIR=$(dirname $(realpath $0))
